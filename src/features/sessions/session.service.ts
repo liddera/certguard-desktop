@@ -1,0 +1,38 @@
+import { apiClient } from '../../lib/apiClient';
+import type { Sessao, HeartbeatResponse } from '../../types/api';
+
+export const SessionService = {
+  async activate(
+    certificadoId: number,
+    deviceId: number,
+    justification?: string
+  ): Promise<Sessao> {
+    const { data } = await apiClient.post<Sessao>('/desktop/sessoes', {
+      certificado_id: certificadoId,
+      device_id: deviceId,
+      justification,
+    });
+
+    // Notificar main process para cleanup ao fechar
+    window.ipcRenderer?.send('session:activated', {
+      sessionId: data.session_id,
+      token: (apiClient.defaults.headers as any)?.Authorization?.replace('Bearer ', '') || '',
+      apiUrl: apiClient.defaults.baseURL || '',
+    });
+
+    return data;
+  },
+
+  async heartbeat(sessionId: number): Promise<HeartbeatResponse> {
+    const { data } = await apiClient.post<HeartbeatResponse>(
+      '/desktop/heartbeat',
+      { session_id: sessionId }
+    );
+    return data;
+  },
+
+  async deactivate(sessionId: number): Promise<void> {
+    await apiClient.delete(`/desktop/sessoes/${sessionId}`);
+    window.ipcRenderer?.send('session:deactivated');
+  },
+};
