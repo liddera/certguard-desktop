@@ -92,5 +92,6 @@ export function useHeartbeat() {
       if (heartbeatRef.current) clearInterval(heartbeatRef.current);
       if (countdownRef.current) clearInterval(countdownRef.current);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSession?.session_id]);
 }

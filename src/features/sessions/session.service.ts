@@ -16,7 +16,7 @@ export const SessionService = {
     // Notificar main process para cleanup ao fechar
     window.ipcRenderer?.send('session:activated', {
       sessionId: data.session_id,
-      token: (apiClient.defaults.headers as any)?.Authorization?.replace('Bearer ', '') || '',
+      token: (apiClient.defaults.headers as { Authorization?: string } | undefined)?.Authorization?.replace('Bearer ', '') || '',
       apiUrl: apiClient.defaults.baseURL || '',
     });
 
