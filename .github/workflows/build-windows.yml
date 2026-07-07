@@ -34,7 +34,13 @@ jobs:
         run: npm ci
 
       - name: Configurar variável de ambiente da API
-        run: echo "VITE_API_URL=${{ vars.VITE_API_URL }}" | Out-File -FilePath .env -Encoding utf8
+        run: |
+          $apiUrl = "${{ vars.VITE_API_URL }}"
+          if ([string]::IsNullOrWhiteSpace($apiUrl)) {
+            $apiUrl = "https://homolog.lidderaplus.com.br/api"
+          }
+          "VITE_API_URL=$apiUrl" | Out-File -FilePath .env -Encoding utf8
+          Write-Host "Usando API: $apiUrl"
 
       - name: Rodar lint
         run: npm run lint
