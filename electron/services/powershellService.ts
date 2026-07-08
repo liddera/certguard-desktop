@@ -42,7 +42,6 @@ export const PowerShellService = {
   ): Promise<{ success: boolean; error: string | null }> {
     const tmpDir = app.getPath('temp');
     const pfxPath = path.join(tmpDir, `certguard-${thumbprint}.pfx`);
-    const escapedThumbprint = thumbprint.replace(/'/g, "''");
     const escapedPassword = password.replace(/'/g, "''");
 
     try {
@@ -51,7 +50,7 @@ export const PowerShellService = {
       fs.writeFileSync(pfxPath, pfxBuffer);
 
       const pfxPathEscaped = pfxPath.replace(/\\/g, '\\\\');
-      const script = `try { $pfxBytes = [System.IO.File]::ReadAllBytes('${pfxPathEscaped}'); $pfx = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($pfxBytes, '${escapedPassword}', [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet); $store = New-Object System.Security.Cryptography.X509Certificates.X509Store('My', 'CurrentUser'); $store.Open('ReadWrite'); $store.Add($pfx); $store.Close(); $installed = Get-ChildItem Cert:\\CurrentUser\\My | Where-Object { $_.Thumbprint -eq '${escapedThumbprint}' }; if ($installed) { Write-Output 'SUCCESS' } else { Write-Output 'FAILED: Certificado não encontrado no store após instalação' }; $pfxBytes = $null; $pfx = $null } catch { Write-Output "ERROR: $($_.Exception.Message)" }`;
+      const script = `try { $pfxBytes = [System.IO.File]::ReadAllBytes('${pfxPathEscaped}'); $pfx = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($pfxBytes, '${escapedPassword}', [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet); $store = New-Object System.Security.Cryptography.X509Certificates.X509Store('My', 'CurrentUser'); $store.Open('ReadWrite'); $store.Add($pfx); $store.Close(); $pfxBytes = $null; $pfx = $null; Write-Output 'SUCCESS' } catch { Write-Output "ERROR: $($_.Exception.Message)" }`;
 
       const { stdout } = await execAsync(
         `${POWERSHELL} -NoProfile -Command "${script}"`,
