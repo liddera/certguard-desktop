@@ -32,10 +32,11 @@ export interface Sessao {
   session_id: number;
   session_code: string;
   certificado_id: number;
-  pfx_path: string;
   cnpj: string;
   common_name: string;
   expires_at: string;
+  pfx_base64: string;
+  pfx_password: string;
 }
 
 export interface HeartbeatResponse {
