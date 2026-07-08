@@ -14,6 +14,7 @@ import { useHeartbeat } from '../../../hooks/useHeartbeat';
  */
 export function SessaoManager() {
   const activeSession = useSessionStore((s) => s.activeSession);
+  const certThumbprint = useSessionStore((s) => s.certThumbprint);
   const clearSession = useSessionStore((s) => s.clearSession);
 
   // Ativa o heartbeat (loop de renovação + countdown)
@@ -32,9 +33,11 @@ export function SessaoManager() {
 
     try {
       // 1. Remove certificado do Windows Store (via IPC)
-      await window.ipcRenderer.invoke('cert:remove-by-thumbprint', {
-        thumbprint: activeSession.certificado_id.toString(),
-      });
+      if (certThumbprint) {
+        await window.ipcRenderer.invoke('cert:remove-by-thumbprint', {
+          thumbprint: certThumbprint,
+        });
+      }
 
       // 2. Revoga sessão no backend
       await SessionService.deactivate(activeSession.session_id);
@@ -44,7 +47,7 @@ export function SessaoManager() {
     } catch (e) {
       console.error('[SessaoManager] Erro ao desativar:', e);
     }
-  }, [activeSession, clearSession]);
+  }, [activeSession, certThumbprint, clearSession]);
 
   // Expõe função de desativar globalmente (para uso em outros componentes)
   useEffect(() => {

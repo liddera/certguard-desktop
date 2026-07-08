@@ -99,7 +99,7 @@ app.on('before-quit', async (event) => {
   destroyTray()
   globalShortcut.unregisterAll()
 
-  // Encerrar sessão ativa no backend
+  // Encerrar sessão ativa no backend + remover certificado do store
   const session = getActiveSession()
   if (session) {
     event.preventDefault()
@@ -116,16 +116,15 @@ app.on('before-quit', async (event) => {
     } catch (e) {
       logger.warn('main', 'Erro ao encerrar sessão no backend', { error: String(e) })
     }
-  }
 
-  if (process.platform === 'win32') {
-    event.preventDefault()
-
-    try {
-      await PowerShellService.cleanupOrphanCerts()
-      logger.info('main', 'Certificados temporários removidos antes de fechar')
-    } catch (e) {
-      logger.warn('main', 'Erro ao limpar certificados', { error: String(e) })
+    // Remover certificado do Windows Store
+    if (session.certThumbprint && process.platform === 'win32') {
+      try {
+        await PowerShellService.removeCertByThumbprint(session.certThumbprint)
+        logger.info('main', 'Certificado removido do store', { thumbprint: session.certThumbprint })
+      } catch (e) {
+        logger.warn('main', 'Erro ao remover certificado do store', { error: String(e) })
+      }
     }
   }
 

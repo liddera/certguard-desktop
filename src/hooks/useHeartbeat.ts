@@ -15,6 +15,7 @@ const COUNTDOWN_TICK = 1000; // 1 segundo
  */
 export function useHeartbeat() {
   const activeSession = useSessionStore((s) => s.activeSession);
+  const certThumbprint = useSessionStore((s) => s.certThumbprint);
   const updateCountdown = useSessionStore((s) => s.updateCountdown);
   const setShowExpiryModal = useSessionStore((s) => s.setShowExpiryModal);
   const clearSession = useSessionStore((s) => s.clearSession);
@@ -50,9 +51,11 @@ export function useHeartbeat() {
           modalDismissedRef.current = false;
         } else if (response.status === 'revoked' || response.status === 'expired') {
           clearSession();
-          window.ipcRenderer.invoke('cert:remove-by-thumbprint', {
-            thumbprint: activeSession.certificado_id.toString(),
-          });
+          if (certThumbprint) {
+            window.ipcRenderer.invoke('cert:remove-by-thumbprint', {
+              thumbprint: certThumbprint,
+            });
+          }
           return;
         }
       } catch (e) {
@@ -78,9 +81,11 @@ export function useHeartbeat() {
       // Sessão expirou
       if (remainingSec <= 0) {
         clearSession();
-        window.ipcRenderer.invoke('cert:remove-by-thumbprint', {
-          thumbprint: activeSession.certificado_id.toString(),
-        });
+        if (certThumbprint) {
+          window.ipcRenderer.invoke('cert:remove-by-thumbprint', {
+            thumbprint: certThumbprint,
+          });
+        }
       }
     };
 
@@ -93,5 +98,5 @@ export function useHeartbeat() {
       if (countdownRef.current) clearInterval(countdownRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSession?.session_id]);
+  }, [activeSession?.session_id, certThumbprint]);
 }

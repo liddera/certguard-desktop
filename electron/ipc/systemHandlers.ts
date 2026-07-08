@@ -5,7 +5,7 @@ import { generateFingerprint } from '../services/keygenService';
 import { logger } from '../services/logger';
 
 // Estado da sessão ativa (guardado no main process para cleanup ao fechar)
-let activeSessionInfo: { sessionId: number; token: string; apiUrl: string } | null = null;
+let activeSessionInfo: { sessionId: number; token: string; apiUrl: string; certThumbprint: string | null } | null = null;
 
 export function getActiveSession() {
   return activeSessionInfo;
@@ -109,9 +109,9 @@ function getOSRelease(): string {
 
 // ── Session tracking (para cleanup ao fechar app) ──────────────
 
-ipcMain.on('session:activated', (_event, data: { sessionId: number; token: string; apiUrl: string }) => {
+ipcMain.on('session:activated', (_event, data: { sessionId: number; token: string; apiUrl: string; certThumbprint: string | null }) => {
   activeSessionInfo = data;
-  logger.info('main', 'Sessão registrada para cleanup', { sessionId: data.sessionId });
+  logger.info('main', 'Sessão registrada para cleanup', { sessionId: data.sessionId, certThumbprint: data.certThumbprint });
 });
 
 ipcMain.on('session:deactivated', () => {

@@ -34,17 +34,6 @@ export function registerCertHandlers(): void {
     thumbprint: string;
   }) => {
     try {
-      // DEBUG: Log what arrives at main process
-      console.log('[cert:decrypt-and-install] Received args:', {
-        pfxBase64Type: typeof args.pfxBase64,
-        pfxBase64Length: args.pfxBase64?.length,
-        pfxBase64Preview: args.pfxBase64?.substring(0, 50),
-        passwordType: typeof args.password,
-        thumbprint: args.thumbprint,
-      });
-
-      logger.info('cert', 'Instalando PFX em memória', { thumbprint: args.thumbprint });
-
       const result = await PowerShellService.installPfxInMemory(
         args.pfxBase64,
         args.password,
@@ -52,7 +41,10 @@ export function registerCertHandlers(): void {
       );
 
       if (result.success) {
-        logger.info('cert', 'PFX instalado com sucesso', { thumbprint: args.thumbprint });
+        logger.info('cert', 'PFX instalado com sucesso', {
+          thumbprint: args.thumbprint,
+          realThumbprint: result.realThumbprint,
+        });
       } else {
         logger.error('cert', 'Falha ao instalar PFX', {
           thumbprint: args.thumbprint,
@@ -64,7 +56,7 @@ export function registerCertHandlers(): void {
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : String(e);
       logger.error('cert', 'Erro ao instalar PFX', { error: errorMsg });
-      return { success: false, error: errorMsg };
+      return { success: false, error: errorMsg, realThumbprint: null };
     }
   });
 

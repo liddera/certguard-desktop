@@ -8,7 +8,7 @@ interface SessionState {
   expiryModalDismissed: boolean;
   certThumbprint: string | null;
 
-  setActiveSession: (session: Sessao | null) => void;
+  setActiveSession: (session: Sessao | null, realThumbprint?: string | null) => void;
   setCertThumbprint: (thumbprint: string | null) => void;
   updateCountdown: (seconds: number) => void;
   setShowExpiryModal: (show: boolean) => void;
@@ -22,9 +22,10 @@ export const useSessionStore = create<SessionState>((set) => ({
   expiryModalDismissed: false,
   certThumbprint: null,
 
-  setActiveSession: (session) =>
+  setActiveSession: (session, realThumbprint = null) =>
     set({
       activeSession: session,
+      certThumbprint: realThumbprint,
       countdown: session
         ? Math.max(
             0,

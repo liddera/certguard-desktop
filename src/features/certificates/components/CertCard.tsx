@@ -46,26 +46,19 @@ export function CertCard({ cert, showCnpj = true }: CertCardProps) {
       );
 
       // 3. Instalar PFX no Windows Certificate Store (em memória)
-      console.log('[CertCard] Session data before IPC:', {
-        pfx_base64Type: typeof session.pfx_base64,
-        pfx_base64Length: session.pfx_base64?.length,
-        pfx_base64Preview: session.pfx_base64?.substring(0, 50),
-        pfx_password: session.pfx_password,
-        certificado_id: session.certificado_id,
-      });
-
       const installResult = await window.ipcRenderer.invoke('cert:decrypt-and-install', {
         pfxBase64: session.pfx_base64,
         password: session.pfx_password,
         thumbprint: session.certificado_id.toString(),
-      }) as { success: boolean; error: string | null };
+      }) as { success: boolean; error: string | null; realThumbprint: string | null };
 
       if (!installResult.success) {
         setError(`Falha ao instalar: ${installResult.error || 'erro desconhecido'}`);
         return;
       }
 
-      setActiveSession(session);
+      setActiveSession(session, installResult.realThumbprint);
+      SessionService.notifyMainProcess(session, installResult.realThumbprint);
       setShowJustificativa(false);
     } catch (e) {
       const error = e as { response?: { data?: { message?: string } } };

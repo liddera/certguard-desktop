@@ -13,14 +13,16 @@ export const SessionService = {
       justification,
     });
 
-    // Notificar main process para cleanup ao fechar
+    return data;
+  },
+
+  notifyMainProcess(session: Sessao, certThumbprint: string | null): void {
     window.ipcRenderer?.send('session:activated', {
-      sessionId: data.session_id,
+      sessionId: session.session_id,
       token: (apiClient.defaults.headers as { Authorization?: string } | undefined)?.Authorization?.replace('Bearer ', '') || '',
       apiUrl: apiClient.defaults.baseURL || '',
+      certThumbprint,
     });
-
-    return data;
   },
 
   async heartbeat(sessionId: number): Promise<HeartbeatResponse> {
