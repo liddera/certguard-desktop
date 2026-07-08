@@ -1,538 +1,827 @@
-import { app as mt, safeStorage as Sr, ipcMain as at, nativeImage as Ua, Tray as ui, Menu as li, BrowserWindow as fn, globalShortcut as cn } from "electron";
-import { fileURLToPath as fi } from "node:url";
-import Bt from "node:path";
-import { hostname as hn, userInfo as ci, networkInterfaces as hi } from "os";
-import * as Et from "fs";
-import va from "crypto";
-import * as di from "path";
-import { exec as pi } from "child_process";
-import { promisify as vi } from "util";
-var yi = typeof globalThis < "u" ? globalThis : typeof window < "u" ? window : typeof global < "u" ? global : typeof self < "u" ? self : {}, z = {
+import { app, safeStorage, ipcMain, nativeImage, Tray, Menu, BrowserWindow, globalShortcut } from "electron";
+import { fileURLToPath } from "node:url";
+import path$1 from "node:path";
+import { hostname, userInfo, networkInterfaces } from "os";
+import * as fs from "fs";
+import require$$4 from "crypto";
+import * as path from "path";
+import { exec } from "child_process";
+import { promisify } from "util";
+var commonjsGlobal = typeof globalThis !== "undefined" ? globalThis : typeof window !== "undefined" ? window : typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : {};
+var forge$C = {
   // default options
   options: {
-    usePureJavaScript: !1
+    usePureJavaScript: false
   }
-}, ya = {}, gi = ya, Pa = {};
-ya.encode = function(e, t, a) {
-  if (typeof t != "string")
+};
+var api = {};
+var baseN$1 = api;
+var _reverseAlphabets = {};
+api.encode = function(input, alphabet, maxline) {
+  if (typeof alphabet !== "string") {
     throw new TypeError('"alphabet" must be a string.');
-  if (a !== void 0 && typeof a != "number")
+  }
+  if (maxline !== void 0 && typeof maxline !== "number") {
     throw new TypeError('"maxline" must be a number.');
-  var r = "";
-  if (!(e instanceof Uint8Array))
-    r = mi(e, t);
-  else {
-    var n = 0, s = t.length, i = t.charAt(0), o = [0];
-    for (n = 0; n < e.length; ++n) {
-      for (var l = 0, u = e[n]; l < o.length; ++l)
-        u += o[l] << 8, o[l] = u % s, u = u / s | 0;
-      for (; u > 0; )
-        o.push(u % s), u = u / s | 0;
+  }
+  var output = "";
+  if (!(input instanceof Uint8Array)) {
+    output = _encodeWithByteBuffer(input, alphabet);
+  } else {
+    var i = 0;
+    var base = alphabet.length;
+    var first = alphabet.charAt(0);
+    var digits = [0];
+    for (i = 0; i < input.length; ++i) {
+      for (var j = 0, carry = input[i]; j < digits.length; ++j) {
+        carry += digits[j] << 8;
+        digits[j] = carry % base;
+        carry = carry / base | 0;
+      }
+      while (carry > 0) {
+        digits.push(carry % base);
+        carry = carry / base | 0;
+      }
     }
-    for (n = 0; e[n] === 0 && n < e.length - 1; ++n)
-      r += i;
-    for (n = o.length - 1; n >= 0; --n)
-      r += t[o[n]];
+    for (i = 0; input[i] === 0 && i < input.length - 1; ++i) {
+      output += first;
+    }
+    for (i = digits.length - 1; i >= 0; --i) {
+      output += alphabet[digits[i]];
+    }
   }
-  if (a) {
-    var f = new RegExp(".{1," + a + "}", "g");
-    r = r.match(f).join(`\r
-`);
+  if (maxline) {
+    var regex = new RegExp(".{1," + maxline + "}", "g");
+    output = output.match(regex).join("\r\n");
   }
-  return r;
+  return output;
 };
-ya.decode = function(e, t) {
-  if (typeof e != "string")
+api.decode = function(input, alphabet) {
+  if (typeof input !== "string") {
     throw new TypeError('"input" must be a string.');
-  if (typeof t != "string")
+  }
+  if (typeof alphabet !== "string") {
     throw new TypeError('"alphabet" must be a string.');
-  var a = Pa[t];
-  if (!a) {
-    a = Pa[t] = [];
-    for (var r = 0; r < t.length; ++r)
-      a[t.charCodeAt(r)] = r;
   }
-  e = e.replace(/\s/g, "");
-  for (var n = t.length, s = t.charAt(0), i = [0], r = 0; r < e.length; r++) {
-    var o = a[e.charCodeAt(r)];
-    if (o === void 0)
+  var table = _reverseAlphabets[alphabet];
+  if (!table) {
+    table = _reverseAlphabets[alphabet] = [];
+    for (var i = 0; i < alphabet.length; ++i) {
+      table[alphabet.charCodeAt(i)] = i;
+    }
+  }
+  input = input.replace(/\s/g, "");
+  var base = alphabet.length;
+  var first = alphabet.charAt(0);
+  var bytes = [0];
+  for (var i = 0; i < input.length; i++) {
+    var value = table[input.charCodeAt(i)];
+    if (value === void 0) {
       return;
-    for (var l = 0, u = o; l < i.length; ++l)
-      u += i[l] * n, i[l] = u & 255, u >>= 8;
-    for (; u > 0; )
-      i.push(u & 255), u >>= 8;
+    }
+    for (var j = 0, carry = value; j < bytes.length; ++j) {
+      carry += bytes[j] * base;
+      bytes[j] = carry & 255;
+      carry >>= 8;
+    }
+    while (carry > 0) {
+      bytes.push(carry & 255);
+      carry >>= 8;
+    }
   }
-  for (var f = 0; e[f] === s && f < e.length - 1; ++f)
-    i.push(0);
-  return typeof Buffer < "u" ? Buffer.from(i.reverse()) : new Uint8Array(i.reverse());
+  for (var k = 0; input[k] === first && k < input.length - 1; ++k) {
+    bytes.push(0);
+  }
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(bytes.reverse());
+  }
+  return new Uint8Array(bytes.reverse());
 };
-function mi(e, t) {
-  var a = 0, r = t.length, n = t.charAt(0), s = [0];
-  for (a = 0; a < e.length(); ++a) {
-    for (var i = 0, o = e.at(a); i < s.length; ++i)
-      o += s[i] << 8, s[i] = o % r, o = o / r | 0;
-    for (; o > 0; )
-      s.push(o % r), o = o / r | 0;
+function _encodeWithByteBuffer(input, alphabet) {
+  var i = 0;
+  var base = alphabet.length;
+  var first = alphabet.charAt(0);
+  var digits = [0];
+  for (i = 0; i < input.length(); ++i) {
+    for (var j = 0, carry = input.at(i); j < digits.length; ++j) {
+      carry += digits[j] << 8;
+      digits[j] = carry % base;
+      carry = carry / base | 0;
+    }
+    while (carry > 0) {
+      digits.push(carry % base);
+      carry = carry / base | 0;
+    }
   }
-  var l = "";
-  for (a = 0; e.at(a) === 0 && a < e.length() - 1; ++a)
-    l += n;
-  for (a = s.length - 1; a >= 0; --a)
-    l += t[s[a]];
-  return l;
+  var output = "";
+  for (i = 0; input.at(i) === 0 && i < input.length() - 1; ++i) {
+    output += first;
+  }
+  for (i = digits.length - 1; i >= 0; --i) {
+    output += alphabet[digits[i]];
+  }
+  return output;
 }
-var Va = z, Oa = gi, E = Va.util = Va.util || {};
+var forge$B = forge$C;
+var baseN = baseN$1;
+var util$1 = forge$B.util = forge$B.util || {};
 (function() {
-  if (typeof process < "u" && process.nextTick && !process.browser) {
-    E.nextTick = process.nextTick, typeof setImmediate == "function" ? E.setImmediate = setImmediate : E.setImmediate = E.nextTick;
+  if (typeof process !== "undefined" && process.nextTick && !process.browser) {
+    util$1.nextTick = process.nextTick;
+    if (typeof setImmediate === "function") {
+      util$1.setImmediate = setImmediate;
+    } else {
+      util$1.setImmediate = util$1.nextTick;
+    }
     return;
   }
-  if (typeof setImmediate == "function") {
-    E.setImmediate = function() {
+  if (typeof setImmediate === "function") {
+    util$1.setImmediate = function() {
       return setImmediate.apply(void 0, arguments);
-    }, E.nextTick = function(i) {
-      return setImmediate(i);
+    };
+    util$1.nextTick = function(callback) {
+      return setImmediate(callback);
     };
     return;
   }
-  if (E.setImmediate = function(i) {
-    setTimeout(i, 0);
-  }, typeof window < "u" && typeof window.postMessage == "function") {
-    let i = function(o) {
-      if (o.source === window && o.data === e) {
-        o.stopPropagation();
-        var l = t.slice();
-        t.length = 0, l.forEach(function(u) {
-          u();
+  util$1.setImmediate = function(callback) {
+    setTimeout(callback, 0);
+  };
+  if (typeof window !== "undefined" && typeof window.postMessage === "function") {
+    let handler = function(event) {
+      if (event.source === window && event.data === msg) {
+        event.stopPropagation();
+        var copy = callbacks.slice();
+        callbacks.length = 0;
+        copy.forEach(function(callback) {
+          callback();
         });
       }
     };
-    var e = "forge.setImmediate", t = [];
-    E.setImmediate = function(o) {
-      t.push(o), t.length === 1 && window.postMessage(e, "*");
-    }, window.addEventListener("message", i, !0);
+    var msg = "forge.setImmediate";
+    var callbacks = [];
+    util$1.setImmediate = function(callback) {
+      callbacks.push(callback);
+      if (callbacks.length === 1) {
+        window.postMessage(msg, "*");
+      }
+    };
+    window.addEventListener("message", handler, true);
   }
-  if (typeof MutationObserver < "u") {
-    var a = Date.now(), r = !0, n = document.createElement("div"), t = [];
+  if (typeof MutationObserver !== "undefined") {
+    var now = Date.now();
+    var attr = true;
+    var div = document.createElement("div");
+    var callbacks = [];
     new MutationObserver(function() {
-      var o = t.slice();
-      t.length = 0, o.forEach(function(l) {
-        l();
+      var copy = callbacks.slice();
+      callbacks.length = 0;
+      copy.forEach(function(callback) {
+        callback();
       });
-    }).observe(n, { attributes: !0 });
-    var s = E.setImmediate;
-    E.setImmediate = function(o) {
-      Date.now() - a > 15 ? (a = Date.now(), s(o)) : (t.push(o), t.length === 1 && n.setAttribute("a", r = !r));
+    }).observe(div, { attributes: true });
+    var oldSetImmediate = util$1.setImmediate;
+    util$1.setImmediate = function(callback) {
+      if (Date.now() - now > 15) {
+        now = Date.now();
+        oldSetImmediate(callback);
+      } else {
+        callbacks.push(callback);
+        if (callbacks.length === 1) {
+          div.setAttribute("a", attr = !attr);
+        }
+      }
     };
   }
-  E.nextTick = E.setImmediate;
+  util$1.nextTick = util$1.setImmediate;
 })();
-E.isNodejs = typeof process < "u" && process.versions && process.versions.node;
-E.globalScope = function() {
-  return E.isNodejs ? yi : typeof self > "u" ? window : self;
+util$1.isNodejs = typeof process !== "undefined" && process.versions && process.versions.node;
+util$1.globalScope = function() {
+  if (util$1.isNodejs) {
+    return commonjsGlobal;
+  }
+  return typeof self === "undefined" ? window : self;
 }();
-E.isArray = Array.isArray || function(e) {
-  return Object.prototype.toString.call(e) === "[object Array]";
+util$1.isArray = Array.isArray || function(x) {
+  return Object.prototype.toString.call(x) === "[object Array]";
 };
-E.isArrayBuffer = function(e) {
-  return typeof ArrayBuffer < "u" && e instanceof ArrayBuffer;
+util$1.isArrayBuffer = function(x) {
+  return typeof ArrayBuffer !== "undefined" && x instanceof ArrayBuffer;
 };
-E.isArrayBufferView = function(e) {
-  return e && E.isArrayBuffer(e.buffer) && e.byteLength !== void 0;
+util$1.isArrayBufferView = function(x) {
+  return x && util$1.isArrayBuffer(x.buffer) && x.byteLength !== void 0;
 };
-function cr(e) {
-  if (!(e === 8 || e === 16 || e === 24 || e === 32))
-    throw new Error("Only 8, 16, 24, or 32 bits supported: " + e);
+function _checkBitsParam(n) {
+  if (!(n === 8 || n === 16 || n === 24 || n === 32)) {
+    throw new Error("Only 8, 16, 24, or 32 bits supported: " + n);
+  }
 }
-E.ByteBuffer = ga;
-function ga(e) {
-  if (this.data = "", this.read = 0, typeof e == "string")
-    this.data = e;
-  else if (E.isArrayBuffer(e) || E.isArrayBufferView(e))
-    if (typeof Buffer < "u" && e instanceof Buffer)
-      this.data = e.toString("binary");
-    else {
-      var t = new Uint8Array(e);
+util$1.ByteBuffer = ByteStringBuffer;
+function ByteStringBuffer(b) {
+  this.data = "";
+  this.read = 0;
+  if (typeof b === "string") {
+    this.data = b;
+  } else if (util$1.isArrayBuffer(b) || util$1.isArrayBufferView(b)) {
+    if (typeof Buffer !== "undefined" && b instanceof Buffer) {
+      this.data = b.toString("binary");
+    } else {
+      var arr = new Uint8Array(b);
       try {
-        this.data = String.fromCharCode.apply(null, t);
-      } catch {
-        for (var a = 0; a < t.length; ++a)
-          this.putByte(t[a]);
+        this.data = String.fromCharCode.apply(null, arr);
+      } catch (e) {
+        for (var i = 0; i < arr.length; ++i) {
+          this.putByte(arr[i]);
+        }
       }
     }
-  else (e instanceof ga || typeof e == "object" && typeof e.data == "string" && typeof e.read == "number") && (this.data = e.data, this.read = e.read);
+  } else if (b instanceof ByteStringBuffer || typeof b === "object" && typeof b.data === "string" && typeof b.read === "number") {
+    this.data = b.data;
+    this.read = b.read;
+  }
   this._constructedStringLength = 0;
 }
-E.ByteStringBuffer = ga;
-var Ci = 4096;
-E.ByteStringBuffer.prototype._optimizeConstructedString = function(e) {
-  this._constructedStringLength += e, this._constructedStringLength > Ci && (this.data.substr(0, 1), this._constructedStringLength = 0);
+util$1.ByteStringBuffer = ByteStringBuffer;
+var _MAX_CONSTRUCTED_STRING_LENGTH = 4096;
+util$1.ByteStringBuffer.prototype._optimizeConstructedString = function(x) {
+  this._constructedStringLength += x;
+  if (this._constructedStringLength > _MAX_CONSTRUCTED_STRING_LENGTH) {
+    this.data.substr(0, 1);
+    this._constructedStringLength = 0;
+  }
 };
-E.ByteStringBuffer.prototype.length = function() {
+util$1.ByteStringBuffer.prototype.length = function() {
   return this.data.length - this.read;
 };
-E.ByteStringBuffer.prototype.isEmpty = function() {
+util$1.ByteStringBuffer.prototype.isEmpty = function() {
   return this.length() <= 0;
 };
-E.ByteStringBuffer.prototype.putByte = function(e) {
-  return this.putBytes(String.fromCharCode(e));
+util$1.ByteStringBuffer.prototype.putByte = function(b) {
+  return this.putBytes(String.fromCharCode(b));
 };
-E.ByteStringBuffer.prototype.fillWithByte = function(e, t) {
-  e = String.fromCharCode(e);
-  for (var a = this.data; t > 0; )
-    t & 1 && (a += e), t >>>= 1, t > 0 && (e += e);
-  return this.data = a, this._optimizeConstructedString(t), this;
+util$1.ByteStringBuffer.prototype.fillWithByte = function(b, n) {
+  b = String.fromCharCode(b);
+  var d = this.data;
+  while (n > 0) {
+    if (n & 1) {
+      d += b;
+    }
+    n >>>= 1;
+    if (n > 0) {
+      b += b;
+    }
+  }
+  this.data = d;
+  this._optimizeConstructedString(n);
+  return this;
 };
-E.ByteStringBuffer.prototype.putBytes = function(e) {
-  return this.data += e, this._optimizeConstructedString(e.length), this;
+util$1.ByteStringBuffer.prototype.putBytes = function(bytes) {
+  this.data += bytes;
+  this._optimizeConstructedString(bytes.length);
+  return this;
 };
-E.ByteStringBuffer.prototype.putString = function(e) {
-  return this.putBytes(E.encodeUtf8(e));
+util$1.ByteStringBuffer.prototype.putString = function(str) {
+  return this.putBytes(util$1.encodeUtf8(str));
 };
-E.ByteStringBuffer.prototype.putInt16 = function(e) {
+util$1.ByteStringBuffer.prototype.putInt16 = function(i) {
   return this.putBytes(
-    String.fromCharCode(e >> 8 & 255) + String.fromCharCode(e & 255)
+    String.fromCharCode(i >> 8 & 255) + String.fromCharCode(i & 255)
   );
 };
-E.ByteStringBuffer.prototype.putInt24 = function(e) {
+util$1.ByteStringBuffer.prototype.putInt24 = function(i) {
   return this.putBytes(
-    String.fromCharCode(e >> 16 & 255) + String.fromCharCode(e >> 8 & 255) + String.fromCharCode(e & 255)
+    String.fromCharCode(i >> 16 & 255) + String.fromCharCode(i >> 8 & 255) + String.fromCharCode(i & 255)
   );
 };
-E.ByteStringBuffer.prototype.putInt32 = function(e) {
+util$1.ByteStringBuffer.prototype.putInt32 = function(i) {
   return this.putBytes(
-    String.fromCharCode(e >> 24 & 255) + String.fromCharCode(e >> 16 & 255) + String.fromCharCode(e >> 8 & 255) + String.fromCharCode(e & 255)
+    String.fromCharCode(i >> 24 & 255) + String.fromCharCode(i >> 16 & 255) + String.fromCharCode(i >> 8 & 255) + String.fromCharCode(i & 255)
   );
 };
-E.ByteStringBuffer.prototype.putInt16Le = function(e) {
+util$1.ByteStringBuffer.prototype.putInt16Le = function(i) {
   return this.putBytes(
-    String.fromCharCode(e & 255) + String.fromCharCode(e >> 8 & 255)
+    String.fromCharCode(i & 255) + String.fromCharCode(i >> 8 & 255)
   );
 };
-E.ByteStringBuffer.prototype.putInt24Le = function(e) {
+util$1.ByteStringBuffer.prototype.putInt24Le = function(i) {
   return this.putBytes(
-    String.fromCharCode(e & 255) + String.fromCharCode(e >> 8 & 255) + String.fromCharCode(e >> 16 & 255)
+    String.fromCharCode(i & 255) + String.fromCharCode(i >> 8 & 255) + String.fromCharCode(i >> 16 & 255)
   );
 };
-E.ByteStringBuffer.prototype.putInt32Le = function(e) {
+util$1.ByteStringBuffer.prototype.putInt32Le = function(i) {
   return this.putBytes(
-    String.fromCharCode(e & 255) + String.fromCharCode(e >> 8 & 255) + String.fromCharCode(e >> 16 & 255) + String.fromCharCode(e >> 24 & 255)
+    String.fromCharCode(i & 255) + String.fromCharCode(i >> 8 & 255) + String.fromCharCode(i >> 16 & 255) + String.fromCharCode(i >> 24 & 255)
   );
 };
-E.ByteStringBuffer.prototype.putInt = function(e, t) {
-  cr(t);
-  var a = "";
-  do
-    t -= 8, a += String.fromCharCode(e >> t & 255);
-  while (t > 0);
-  return this.putBytes(a);
+util$1.ByteStringBuffer.prototype.putInt = function(i, n) {
+  _checkBitsParam(n);
+  var bytes = "";
+  do {
+    n -= 8;
+    bytes += String.fromCharCode(i >> n & 255);
+  } while (n > 0);
+  return this.putBytes(bytes);
 };
-E.ByteStringBuffer.prototype.putSignedInt = function(e, t) {
-  return e < 0 && (e += 2 << t - 1), this.putInt(e, t);
+util$1.ByteStringBuffer.prototype.putSignedInt = function(i, n) {
+  if (i < 0) {
+    i += 2 << n - 1;
+  }
+  return this.putInt(i, n);
 };
-E.ByteStringBuffer.prototype.putBuffer = function(e) {
-  return this.putBytes(e.getBytes());
+util$1.ByteStringBuffer.prototype.putBuffer = function(buffer) {
+  return this.putBytes(buffer.getBytes());
 };
-E.ByteStringBuffer.prototype.getByte = function() {
+util$1.ByteStringBuffer.prototype.getByte = function() {
   return this.data.charCodeAt(this.read++);
 };
-E.ByteStringBuffer.prototype.getInt16 = function() {
-  var e = this.data.charCodeAt(this.read) << 8 ^ this.data.charCodeAt(this.read + 1);
-  return this.read += 2, e;
+util$1.ByteStringBuffer.prototype.getInt16 = function() {
+  var rval = this.data.charCodeAt(this.read) << 8 ^ this.data.charCodeAt(this.read + 1);
+  this.read += 2;
+  return rval;
 };
-E.ByteStringBuffer.prototype.getInt24 = function() {
-  var e = this.data.charCodeAt(this.read) << 16 ^ this.data.charCodeAt(this.read + 1) << 8 ^ this.data.charCodeAt(this.read + 2);
-  return this.read += 3, e;
+util$1.ByteStringBuffer.prototype.getInt24 = function() {
+  var rval = this.data.charCodeAt(this.read) << 16 ^ this.data.charCodeAt(this.read + 1) << 8 ^ this.data.charCodeAt(this.read + 2);
+  this.read += 3;
+  return rval;
 };
-E.ByteStringBuffer.prototype.getInt32 = function() {
-  var e = this.data.charCodeAt(this.read) << 24 ^ this.data.charCodeAt(this.read + 1) << 16 ^ this.data.charCodeAt(this.read + 2) << 8 ^ this.data.charCodeAt(this.read + 3);
-  return this.read += 4, e;
+util$1.ByteStringBuffer.prototype.getInt32 = function() {
+  var rval = this.data.charCodeAt(this.read) << 24 ^ this.data.charCodeAt(this.read + 1) << 16 ^ this.data.charCodeAt(this.read + 2) << 8 ^ this.data.charCodeAt(this.read + 3);
+  this.read += 4;
+  return rval;
 };
-E.ByteStringBuffer.prototype.getInt16Le = function() {
-  var e = this.data.charCodeAt(this.read) ^ this.data.charCodeAt(this.read + 1) << 8;
-  return this.read += 2, e;
+util$1.ByteStringBuffer.prototype.getInt16Le = function() {
+  var rval = this.data.charCodeAt(this.read) ^ this.data.charCodeAt(this.read + 1) << 8;
+  this.read += 2;
+  return rval;
 };
-E.ByteStringBuffer.prototype.getInt24Le = function() {
-  var e = this.data.charCodeAt(this.read) ^ this.data.charCodeAt(this.read + 1) << 8 ^ this.data.charCodeAt(this.read + 2) << 16;
-  return this.read += 3, e;
+util$1.ByteStringBuffer.prototype.getInt24Le = function() {
+  var rval = this.data.charCodeAt(this.read) ^ this.data.charCodeAt(this.read + 1) << 8 ^ this.data.charCodeAt(this.read + 2) << 16;
+  this.read += 3;
+  return rval;
 };
-E.ByteStringBuffer.prototype.getInt32Le = function() {
-  var e = this.data.charCodeAt(this.read) ^ this.data.charCodeAt(this.read + 1) << 8 ^ this.data.charCodeAt(this.read + 2) << 16 ^ this.data.charCodeAt(this.read + 3) << 24;
-  return this.read += 4, e;
+util$1.ByteStringBuffer.prototype.getInt32Le = function() {
+  var rval = this.data.charCodeAt(this.read) ^ this.data.charCodeAt(this.read + 1) << 8 ^ this.data.charCodeAt(this.read + 2) << 16 ^ this.data.charCodeAt(this.read + 3) << 24;
+  this.read += 4;
+  return rval;
 };
-E.ByteStringBuffer.prototype.getInt = function(e) {
-  cr(e);
-  var t = 0;
-  do
-    t = (t << 8) + this.data.charCodeAt(this.read++), e -= 8;
-  while (e > 0);
-  return t;
+util$1.ByteStringBuffer.prototype.getInt = function(n) {
+  _checkBitsParam(n);
+  var rval = 0;
+  do {
+    rval = (rval << 8) + this.data.charCodeAt(this.read++);
+    n -= 8;
+  } while (n > 0);
+  return rval;
 };
-E.ByteStringBuffer.prototype.getSignedInt = function(e) {
-  var t = this.getInt(e), a = 2 << e - 2;
-  return t >= a && (t -= a << 1), t;
+util$1.ByteStringBuffer.prototype.getSignedInt = function(n) {
+  var x = this.getInt(n);
+  var max = 2 << n - 2;
+  if (x >= max) {
+    x -= max << 1;
+  }
+  return x;
 };
-E.ByteStringBuffer.prototype.getBytes = function(e) {
-  var t;
-  return e ? (e = Math.min(this.length(), e), t = this.data.slice(this.read, this.read + e), this.read += e) : e === 0 ? t = "" : (t = this.read === 0 ? this.data : this.data.slice(this.read), this.clear()), t;
+util$1.ByteStringBuffer.prototype.getBytes = function(count) {
+  var rval;
+  if (count) {
+    count = Math.min(this.length(), count);
+    rval = this.data.slice(this.read, this.read + count);
+    this.read += count;
+  } else if (count === 0) {
+    rval = "";
+  } else {
+    rval = this.read === 0 ? this.data : this.data.slice(this.read);
+    this.clear();
+  }
+  return rval;
 };
-E.ByteStringBuffer.prototype.bytes = function(e) {
-  return typeof e > "u" ? this.data.slice(this.read) : this.data.slice(this.read, this.read + e);
+util$1.ByteStringBuffer.prototype.bytes = function(count) {
+  return typeof count === "undefined" ? this.data.slice(this.read) : this.data.slice(this.read, this.read + count);
 };
-E.ByteStringBuffer.prototype.at = function(e) {
-  return this.data.charCodeAt(this.read + e);
+util$1.ByteStringBuffer.prototype.at = function(i) {
+  return this.data.charCodeAt(this.read + i);
 };
-E.ByteStringBuffer.prototype.setAt = function(e, t) {
-  return this.data = this.data.substr(0, this.read + e) + String.fromCharCode(t) + this.data.substr(this.read + e + 1), this;
+util$1.ByteStringBuffer.prototype.setAt = function(i, b) {
+  this.data = this.data.substr(0, this.read + i) + String.fromCharCode(b) + this.data.substr(this.read + i + 1);
+  return this;
 };
-E.ByteStringBuffer.prototype.last = function() {
+util$1.ByteStringBuffer.prototype.last = function() {
   return this.data.charCodeAt(this.data.length - 1);
 };
-E.ByteStringBuffer.prototype.copy = function() {
-  var e = E.createBuffer(this.data);
-  return e.read = this.read, e;
+util$1.ByteStringBuffer.prototype.copy = function() {
+  var c = util$1.createBuffer(this.data);
+  c.read = this.read;
+  return c;
 };
-E.ByteStringBuffer.prototype.compact = function() {
-  return this.read > 0 && (this.data = this.data.slice(this.read), this.read = 0), this;
-};
-E.ByteStringBuffer.prototype.clear = function() {
-  return this.data = "", this.read = 0, this;
-};
-E.ByteStringBuffer.prototype.truncate = function(e) {
-  var t = Math.max(0, this.length() - e);
-  return this.data = this.data.substr(this.read, t), this.read = 0, this;
-};
-E.ByteStringBuffer.prototype.toHex = function() {
-  for (var e = "", t = this.read; t < this.data.length; ++t) {
-    var a = this.data.charCodeAt(t);
-    a < 16 && (e += "0"), e += a.toString(16);
+util$1.ByteStringBuffer.prototype.compact = function() {
+  if (this.read > 0) {
+    this.data = this.data.slice(this.read);
+    this.read = 0;
   }
-  return e;
+  return this;
 };
-E.ByteStringBuffer.prototype.toString = function() {
-  return E.decodeUtf8(this.bytes());
+util$1.ByteStringBuffer.prototype.clear = function() {
+  this.data = "";
+  this.read = 0;
+  return this;
 };
-function Ei(e, t) {
-  t = t || {}, this.read = t.readOffset || 0, this.growSize = t.growSize || 1024;
-  var a = E.isArrayBuffer(e), r = E.isArrayBufferView(e);
-  if (a || r) {
-    a ? this.data = new DataView(e) : this.data = new DataView(e.buffer, e.byteOffset, e.byteLength), this.write = "writeOffset" in t ? t.writeOffset : this.data.byteLength;
+util$1.ByteStringBuffer.prototype.truncate = function(count) {
+  var len = Math.max(0, this.length() - count);
+  this.data = this.data.substr(this.read, len);
+  this.read = 0;
+  return this;
+};
+util$1.ByteStringBuffer.prototype.toHex = function() {
+  var rval = "";
+  for (var i = this.read; i < this.data.length; ++i) {
+    var b = this.data.charCodeAt(i);
+    if (b < 16) {
+      rval += "0";
+    }
+    rval += b.toString(16);
+  }
+  return rval;
+};
+util$1.ByteStringBuffer.prototype.toString = function() {
+  return util$1.decodeUtf8(this.bytes());
+};
+function DataBuffer(b, options) {
+  options = options || {};
+  this.read = options.readOffset || 0;
+  this.growSize = options.growSize || 1024;
+  var isArrayBuffer = util$1.isArrayBuffer(b);
+  var isArrayBufferView = util$1.isArrayBufferView(b);
+  if (isArrayBuffer || isArrayBufferView) {
+    if (isArrayBuffer) {
+      this.data = new DataView(b);
+    } else {
+      this.data = new DataView(b.buffer, b.byteOffset, b.byteLength);
+    }
+    this.write = "writeOffset" in options ? options.writeOffset : this.data.byteLength;
     return;
   }
-  this.data = new DataView(new ArrayBuffer(0)), this.write = 0, e != null && this.putBytes(e), "writeOffset" in t && (this.write = t.writeOffset);
+  this.data = new DataView(new ArrayBuffer(0));
+  this.write = 0;
+  if (b !== null && b !== void 0) {
+    this.putBytes(b);
+  }
+  if ("writeOffset" in options) {
+    this.write = options.writeOffset;
+  }
 }
-E.DataBuffer = Ei;
-E.DataBuffer.prototype.length = function() {
+util$1.DataBuffer = DataBuffer;
+util$1.DataBuffer.prototype.length = function() {
   return this.write - this.read;
 };
-E.DataBuffer.prototype.isEmpty = function() {
+util$1.DataBuffer.prototype.isEmpty = function() {
   return this.length() <= 0;
 };
-E.DataBuffer.prototype.accommodate = function(e, t) {
-  if (this.length() >= e)
+util$1.DataBuffer.prototype.accommodate = function(amount, growSize) {
+  if (this.length() >= amount) {
     return this;
-  t = Math.max(t || this.growSize, e);
-  var a = new Uint8Array(
+  }
+  growSize = Math.max(growSize || this.growSize, amount);
+  var src = new Uint8Array(
     this.data.buffer,
     this.data.byteOffset,
     this.data.byteLength
-  ), r = new Uint8Array(this.length() + t);
-  return r.set(a), this.data = new DataView(r.buffer), this;
-};
-E.DataBuffer.prototype.putByte = function(e) {
-  return this.accommodate(1), this.data.setUint8(this.write++, e), this;
-};
-E.DataBuffer.prototype.fillWithByte = function(e, t) {
-  this.accommodate(t);
-  for (var a = 0; a < t; ++a)
-    this.data.setUint8(e);
+  );
+  var dst = new Uint8Array(this.length() + growSize);
+  dst.set(src);
+  this.data = new DataView(dst.buffer);
   return this;
 };
-E.DataBuffer.prototype.putBytes = function(e, t) {
-  if (E.isArrayBufferView(e)) {
-    var a = new Uint8Array(e.buffer, e.byteOffset, e.byteLength), r = a.byteLength - a.byteOffset;
-    this.accommodate(r);
-    var n = new Uint8Array(this.data.buffer, this.write);
-    return n.set(a), this.write += r, this;
-  }
-  if (E.isArrayBuffer(e)) {
-    var a = new Uint8Array(e);
-    this.accommodate(a.byteLength);
-    var n = new Uint8Array(this.data.buffer);
-    return n.set(a, this.write), this.write += a.byteLength, this;
-  }
-  if (e instanceof E.DataBuffer || typeof e == "object" && typeof e.read == "number" && typeof e.write == "number" && E.isArrayBufferView(e.data)) {
-    var a = new Uint8Array(e.data.byteLength, e.read, e.length());
-    this.accommodate(a.byteLength);
-    var n = new Uint8Array(e.data.byteLength, this.write);
-    return n.set(a), this.write += a.byteLength, this;
-  }
-  if (e instanceof E.ByteStringBuffer && (e = e.data, t = "binary"), t = t || "binary", typeof e == "string") {
-    var s;
-    if (t === "hex")
-      return this.accommodate(Math.ceil(e.length / 2)), s = new Uint8Array(this.data.buffer, this.write), this.write += E.binary.hex.decode(e, s, this.write), this;
-    if (t === "base64")
-      return this.accommodate(Math.ceil(e.length / 4) * 3), s = new Uint8Array(this.data.buffer, this.write), this.write += E.binary.base64.decode(e, s, this.write), this;
-    if (t === "utf8" && (e = E.encodeUtf8(e), t = "binary"), t === "binary" || t === "raw")
-      return this.accommodate(e.length), s = new Uint8Array(this.data.buffer, this.write), this.write += E.binary.raw.decode(s), this;
-    if (t === "utf16")
-      return this.accommodate(e.length * 2), s = new Uint16Array(this.data.buffer, this.write), this.write += E.text.utf16.encode(s), this;
-    throw new Error("Invalid encoding: " + t);
-  }
-  throw Error("Invalid parameter: " + e);
-};
-E.DataBuffer.prototype.putBuffer = function(e) {
-  return this.putBytes(e), e.clear(), this;
-};
-E.DataBuffer.prototype.putString = function(e) {
-  return this.putBytes(e, "utf16");
-};
-E.DataBuffer.prototype.putInt16 = function(e) {
-  return this.accommodate(2), this.data.setInt16(this.write, e), this.write += 2, this;
-};
-E.DataBuffer.prototype.putInt24 = function(e) {
-  return this.accommodate(3), this.data.setInt16(this.write, e >> 8 & 65535), this.data.setInt8(this.write, e >> 16 & 255), this.write += 3, this;
-};
-E.DataBuffer.prototype.putInt32 = function(e) {
-  return this.accommodate(4), this.data.setInt32(this.write, e), this.write += 4, this;
-};
-E.DataBuffer.prototype.putInt16Le = function(e) {
-  return this.accommodate(2), this.data.setInt16(this.write, e, !0), this.write += 2, this;
-};
-E.DataBuffer.prototype.putInt24Le = function(e) {
-  return this.accommodate(3), this.data.setInt8(this.write, e >> 16 & 255), this.data.setInt16(this.write, e >> 8 & 65535, !0), this.write += 3, this;
-};
-E.DataBuffer.prototype.putInt32Le = function(e) {
-  return this.accommodate(4), this.data.setInt32(this.write, e, !0), this.write += 4, this;
-};
-E.DataBuffer.prototype.putInt = function(e, t) {
-  cr(t), this.accommodate(t / 8);
-  do
-    t -= 8, this.data.setInt8(this.write++, e >> t & 255);
-  while (t > 0);
+util$1.DataBuffer.prototype.putByte = function(b) {
+  this.accommodate(1);
+  this.data.setUint8(this.write++, b);
   return this;
 };
-E.DataBuffer.prototype.putSignedInt = function(e, t) {
-  return cr(t), this.accommodate(t / 8), e < 0 && (e += 2 << t - 1), this.putInt(e, t);
+util$1.DataBuffer.prototype.fillWithByte = function(b, n) {
+  this.accommodate(n);
+  for (var i = 0; i < n; ++i) {
+    this.data.setUint8(b);
+  }
+  return this;
 };
-E.DataBuffer.prototype.getByte = function() {
+util$1.DataBuffer.prototype.putBytes = function(bytes, encoding) {
+  if (util$1.isArrayBufferView(bytes)) {
+    var src = new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    var len = src.byteLength - src.byteOffset;
+    this.accommodate(len);
+    var dst = new Uint8Array(this.data.buffer, this.write);
+    dst.set(src);
+    this.write += len;
+    return this;
+  }
+  if (util$1.isArrayBuffer(bytes)) {
+    var src = new Uint8Array(bytes);
+    this.accommodate(src.byteLength);
+    var dst = new Uint8Array(this.data.buffer);
+    dst.set(src, this.write);
+    this.write += src.byteLength;
+    return this;
+  }
+  if (bytes instanceof util$1.DataBuffer || typeof bytes === "object" && typeof bytes.read === "number" && typeof bytes.write === "number" && util$1.isArrayBufferView(bytes.data)) {
+    var src = new Uint8Array(bytes.data.byteLength, bytes.read, bytes.length());
+    this.accommodate(src.byteLength);
+    var dst = new Uint8Array(bytes.data.byteLength, this.write);
+    dst.set(src);
+    this.write += src.byteLength;
+    return this;
+  }
+  if (bytes instanceof util$1.ByteStringBuffer) {
+    bytes = bytes.data;
+    encoding = "binary";
+  }
+  encoding = encoding || "binary";
+  if (typeof bytes === "string") {
+    var view;
+    if (encoding === "hex") {
+      this.accommodate(Math.ceil(bytes.length / 2));
+      view = new Uint8Array(this.data.buffer, this.write);
+      this.write += util$1.binary.hex.decode(bytes, view, this.write);
+      return this;
+    }
+    if (encoding === "base64") {
+      this.accommodate(Math.ceil(bytes.length / 4) * 3);
+      view = new Uint8Array(this.data.buffer, this.write);
+      this.write += util$1.binary.base64.decode(bytes, view, this.write);
+      return this;
+    }
+    if (encoding === "utf8") {
+      bytes = util$1.encodeUtf8(bytes);
+      encoding = "binary";
+    }
+    if (encoding === "binary" || encoding === "raw") {
+      this.accommodate(bytes.length);
+      view = new Uint8Array(this.data.buffer, this.write);
+      this.write += util$1.binary.raw.decode(view);
+      return this;
+    }
+    if (encoding === "utf16") {
+      this.accommodate(bytes.length * 2);
+      view = new Uint16Array(this.data.buffer, this.write);
+      this.write += util$1.text.utf16.encode(view);
+      return this;
+    }
+    throw new Error("Invalid encoding: " + encoding);
+  }
+  throw Error("Invalid parameter: " + bytes);
+};
+util$1.DataBuffer.prototype.putBuffer = function(buffer) {
+  this.putBytes(buffer);
+  buffer.clear();
+  return this;
+};
+util$1.DataBuffer.prototype.putString = function(str) {
+  return this.putBytes(str, "utf16");
+};
+util$1.DataBuffer.prototype.putInt16 = function(i) {
+  this.accommodate(2);
+  this.data.setInt16(this.write, i);
+  this.write += 2;
+  return this;
+};
+util$1.DataBuffer.prototype.putInt24 = function(i) {
+  this.accommodate(3);
+  this.data.setInt16(this.write, i >> 8 & 65535);
+  this.data.setInt8(this.write, i >> 16 & 255);
+  this.write += 3;
+  return this;
+};
+util$1.DataBuffer.prototype.putInt32 = function(i) {
+  this.accommodate(4);
+  this.data.setInt32(this.write, i);
+  this.write += 4;
+  return this;
+};
+util$1.DataBuffer.prototype.putInt16Le = function(i) {
+  this.accommodate(2);
+  this.data.setInt16(this.write, i, true);
+  this.write += 2;
+  return this;
+};
+util$1.DataBuffer.prototype.putInt24Le = function(i) {
+  this.accommodate(3);
+  this.data.setInt8(this.write, i >> 16 & 255);
+  this.data.setInt16(this.write, i >> 8 & 65535, true);
+  this.write += 3;
+  return this;
+};
+util$1.DataBuffer.prototype.putInt32Le = function(i) {
+  this.accommodate(4);
+  this.data.setInt32(this.write, i, true);
+  this.write += 4;
+  return this;
+};
+util$1.DataBuffer.prototype.putInt = function(i, n) {
+  _checkBitsParam(n);
+  this.accommodate(n / 8);
+  do {
+    n -= 8;
+    this.data.setInt8(this.write++, i >> n & 255);
+  } while (n > 0);
+  return this;
+};
+util$1.DataBuffer.prototype.putSignedInt = function(i, n) {
+  _checkBitsParam(n);
+  this.accommodate(n / 8);
+  if (i < 0) {
+    i += 2 << n - 1;
+  }
+  return this.putInt(i, n);
+};
+util$1.DataBuffer.prototype.getByte = function() {
   return this.data.getInt8(this.read++);
 };
-E.DataBuffer.prototype.getInt16 = function() {
-  var e = this.data.getInt16(this.read);
-  return this.read += 2, e;
+util$1.DataBuffer.prototype.getInt16 = function() {
+  var rval = this.data.getInt16(this.read);
+  this.read += 2;
+  return rval;
 };
-E.DataBuffer.prototype.getInt24 = function() {
-  var e = this.data.getInt16(this.read) << 8 ^ this.data.getInt8(this.read + 2);
-  return this.read += 3, e;
+util$1.DataBuffer.prototype.getInt24 = function() {
+  var rval = this.data.getInt16(this.read) << 8 ^ this.data.getInt8(this.read + 2);
+  this.read += 3;
+  return rval;
 };
-E.DataBuffer.prototype.getInt32 = function() {
-  var e = this.data.getInt32(this.read);
-  return this.read += 4, e;
+util$1.DataBuffer.prototype.getInt32 = function() {
+  var rval = this.data.getInt32(this.read);
+  this.read += 4;
+  return rval;
 };
-E.DataBuffer.prototype.getInt16Le = function() {
-  var e = this.data.getInt16(this.read, !0);
-  return this.read += 2, e;
+util$1.DataBuffer.prototype.getInt16Le = function() {
+  var rval = this.data.getInt16(this.read, true);
+  this.read += 2;
+  return rval;
 };
-E.DataBuffer.prototype.getInt24Le = function() {
-  var e = this.data.getInt8(this.read) ^ this.data.getInt16(this.read + 1, !0) << 8;
-  return this.read += 3, e;
+util$1.DataBuffer.prototype.getInt24Le = function() {
+  var rval = this.data.getInt8(this.read) ^ this.data.getInt16(this.read + 1, true) << 8;
+  this.read += 3;
+  return rval;
 };
-E.DataBuffer.prototype.getInt32Le = function() {
-  var e = this.data.getInt32(this.read, !0);
-  return this.read += 4, e;
+util$1.DataBuffer.prototype.getInt32Le = function() {
+  var rval = this.data.getInt32(this.read, true);
+  this.read += 4;
+  return rval;
 };
-E.DataBuffer.prototype.getInt = function(e) {
-  cr(e);
-  var t = 0;
-  do
-    t = (t << 8) + this.data.getInt8(this.read++), e -= 8;
-  while (e > 0);
-  return t;
+util$1.DataBuffer.prototype.getInt = function(n) {
+  _checkBitsParam(n);
+  var rval = 0;
+  do {
+    rval = (rval << 8) + this.data.getInt8(this.read++);
+    n -= 8;
+  } while (n > 0);
+  return rval;
 };
-E.DataBuffer.prototype.getSignedInt = function(e) {
-  var t = this.getInt(e), a = 2 << e - 2;
-  return t >= a && (t -= a << 1), t;
+util$1.DataBuffer.prototype.getSignedInt = function(n) {
+  var x = this.getInt(n);
+  var max = 2 << n - 2;
+  if (x >= max) {
+    x -= max << 1;
+  }
+  return x;
 };
-E.DataBuffer.prototype.getBytes = function(e) {
-  var t;
-  return e ? (e = Math.min(this.length(), e), t = this.data.slice(this.read, this.read + e), this.read += e) : e === 0 ? t = "" : (t = this.read === 0 ? this.data : this.data.slice(this.read), this.clear()), t;
+util$1.DataBuffer.prototype.getBytes = function(count) {
+  var rval;
+  if (count) {
+    count = Math.min(this.length(), count);
+    rval = this.data.slice(this.read, this.read + count);
+    this.read += count;
+  } else if (count === 0) {
+    rval = "";
+  } else {
+    rval = this.read === 0 ? this.data : this.data.slice(this.read);
+    this.clear();
+  }
+  return rval;
 };
-E.DataBuffer.prototype.bytes = function(e) {
-  return typeof e > "u" ? this.data.slice(this.read) : this.data.slice(this.read, this.read + e);
+util$1.DataBuffer.prototype.bytes = function(count) {
+  return typeof count === "undefined" ? this.data.slice(this.read) : this.data.slice(this.read, this.read + count);
 };
-E.DataBuffer.prototype.at = function(e) {
-  return this.data.getUint8(this.read + e);
+util$1.DataBuffer.prototype.at = function(i) {
+  return this.data.getUint8(this.read + i);
 };
-E.DataBuffer.prototype.setAt = function(e, t) {
-  return this.data.setUint8(e, t), this;
+util$1.DataBuffer.prototype.setAt = function(i, b) {
+  this.data.setUint8(i, b);
+  return this;
 };
-E.DataBuffer.prototype.last = function() {
+util$1.DataBuffer.prototype.last = function() {
   return this.data.getUint8(this.write - 1);
 };
-E.DataBuffer.prototype.copy = function() {
-  return new E.DataBuffer(this);
+util$1.DataBuffer.prototype.copy = function() {
+  return new util$1.DataBuffer(this);
 };
-E.DataBuffer.prototype.compact = function() {
+util$1.DataBuffer.prototype.compact = function() {
   if (this.read > 0) {
-    var e = new Uint8Array(this.data.buffer, this.read), t = new Uint8Array(e.byteLength);
-    t.set(e), this.data = new DataView(t), this.write -= this.read, this.read = 0;
+    var src = new Uint8Array(this.data.buffer, this.read);
+    var dst = new Uint8Array(src.byteLength);
+    dst.set(src);
+    this.data = new DataView(dst);
+    this.write -= this.read;
+    this.read = 0;
   }
   return this;
 };
-E.DataBuffer.prototype.clear = function() {
-  return this.data = new DataView(new ArrayBuffer(0)), this.read = this.write = 0, this;
+util$1.DataBuffer.prototype.clear = function() {
+  this.data = new DataView(new ArrayBuffer(0));
+  this.read = this.write = 0;
+  return this;
 };
-E.DataBuffer.prototype.truncate = function(e) {
-  return this.write = Math.max(0, this.length() - e), this.read = Math.min(this.read, this.write), this;
+util$1.DataBuffer.prototype.truncate = function(count) {
+  this.write = Math.max(0, this.length() - count);
+  this.read = Math.min(this.read, this.write);
+  return this;
 };
-E.DataBuffer.prototype.toHex = function() {
-  for (var e = "", t = this.read; t < this.data.byteLength; ++t) {
-    var a = this.data.getUint8(t);
-    a < 16 && (e += "0"), e += a.toString(16);
+util$1.DataBuffer.prototype.toHex = function() {
+  var rval = "";
+  for (var i = this.read; i < this.data.byteLength; ++i) {
+    var b = this.data.getUint8(i);
+    if (b < 16) {
+      rval += "0";
+    }
+    rval += b.toString(16);
   }
-  return e;
+  return rval;
 };
-E.DataBuffer.prototype.toString = function(e) {
-  var t = new Uint8Array(this.data, this.read, this.length());
-  if (e = e || "utf8", e === "binary" || e === "raw")
-    return E.binary.raw.encode(t);
-  if (e === "hex")
-    return E.binary.hex.encode(t);
-  if (e === "base64")
-    return E.binary.base64.encode(t);
-  if (e === "utf8")
-    return E.text.utf8.decode(t);
-  if (e === "utf16")
-    return E.text.utf16.decode(t);
-  throw new Error("Invalid encoding: " + e);
+util$1.DataBuffer.prototype.toString = function(encoding) {
+  var view = new Uint8Array(this.data, this.read, this.length());
+  encoding = encoding || "utf8";
+  if (encoding === "binary" || encoding === "raw") {
+    return util$1.binary.raw.encode(view);
+  }
+  if (encoding === "hex") {
+    return util$1.binary.hex.encode(view);
+  }
+  if (encoding === "base64") {
+    return util$1.binary.base64.encode(view);
+  }
+  if (encoding === "utf8") {
+    return util$1.text.utf8.decode(view);
+  }
+  if (encoding === "utf16") {
+    return util$1.text.utf16.decode(view);
+  }
+  throw new Error("Invalid encoding: " + encoding);
 };
-E.createBuffer = function(e, t) {
-  return t = t || "raw", e !== void 0 && t === "utf8" && (e = E.encodeUtf8(e)), new E.ByteBuffer(e);
+util$1.createBuffer = function(input, encoding) {
+  encoding = encoding || "raw";
+  if (input !== void 0 && encoding === "utf8") {
+    input = util$1.encodeUtf8(input);
+  }
+  return new util$1.ByteBuffer(input);
 };
-E.fillString = function(e, t) {
-  for (var a = ""; t > 0; )
-    t & 1 && (a += e), t >>>= 1, t > 0 && (e += e);
-  return a;
+util$1.fillString = function(c, n) {
+  var s2 = "";
+  while (n > 0) {
+    if (n & 1) {
+      s2 += c;
+    }
+    n >>>= 1;
+    if (n > 0) {
+      c += c;
+    }
+  }
+  return s2;
 };
-E.xorBytes = function(e, t, a) {
-  for (var r = "", n = "", s = "", i = 0, o = 0; a > 0; --a, ++i)
-    n = e.charCodeAt(i) ^ t.charCodeAt(i), o >= 10 && (r += s, s = "", o = 0), s += String.fromCharCode(n), ++o;
-  return r += s, r;
+util$1.xorBytes = function(s1, s2, n) {
+  var s3 = "";
+  var b = "";
+  var t = "";
+  var i = 0;
+  var c = 0;
+  for (; n > 0; --n, ++i) {
+    b = s1.charCodeAt(i) ^ s2.charCodeAt(i);
+    if (c >= 10) {
+      s3 += t;
+      t = "";
+      c = 0;
+    }
+    t += String.fromCharCode(b);
+    ++c;
+  }
+  s3 += t;
+  return s3;
 };
-E.hexToBytes = function(e) {
-  var t = "", a = 0;
-  for (e.length & !0 && (a = 1, t += String.fromCharCode(parseInt(e[0], 16))); a < e.length; a += 2)
-    t += String.fromCharCode(parseInt(e.substr(a, 2), 16));
-  return t;
+util$1.hexToBytes = function(hex) {
+  var rval = "";
+  var i = 0;
+  if (hex.length & true) {
+    i = 1;
+    rval += String.fromCharCode(parseInt(hex[0], 16));
+  }
+  for (; i < hex.length; i += 2) {
+    rval += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
+  }
+  return rval;
 };
-E.bytesToHex = function(e) {
-  return E.createBuffer(e).toHex();
+util$1.bytesToHex = function(bytes) {
+  return util$1.createBuffer(bytes).toHex();
 };
-E.int32ToBytes = function(e) {
-  return String.fromCharCode(e >> 24 & 255) + String.fromCharCode(e >> 16 & 255) + String.fromCharCode(e >> 8 & 255) + String.fromCharCode(e & 255);
+util$1.int32ToBytes = function(i) {
+  return String.fromCharCode(i >> 24 & 255) + String.fromCharCode(i >> 16 & 255) + String.fromCharCode(i >> 8 & 255) + String.fromCharCode(i & 255);
 };
-var xt = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=", St = [
+var _base64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
+var _base64Idx = [
   /*43 -43 = 0*/
   /*'+',  1,  2,  3,'/' */
   62,
@@ -625,1051 +914,1751 @@ var xt = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=", St
   49,
   50,
   51
-], dn = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-E.encode64 = function(e, t) {
-  for (var a = "", r = "", n, s, i, o = 0; o < e.length; )
-    n = e.charCodeAt(o++), s = e.charCodeAt(o++), i = e.charCodeAt(o++), a += xt.charAt(n >> 2), a += xt.charAt((n & 3) << 4 | s >> 4), isNaN(s) ? a += "==" : (a += xt.charAt((s & 15) << 2 | i >> 6), a += isNaN(i) ? "=" : xt.charAt(i & 63)), t && a.length > t && (r += a.substr(0, t) + `\r
-`, a = a.substr(t));
-  return r += a, r;
+];
+var _base58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+util$1.encode64 = function(input, maxline) {
+  var line = "";
+  var output = "";
+  var chr1, chr2, chr3;
+  var i = 0;
+  while (i < input.length) {
+    chr1 = input.charCodeAt(i++);
+    chr2 = input.charCodeAt(i++);
+    chr3 = input.charCodeAt(i++);
+    line += _base64.charAt(chr1 >> 2);
+    line += _base64.charAt((chr1 & 3) << 4 | chr2 >> 4);
+    if (isNaN(chr2)) {
+      line += "==";
+    } else {
+      line += _base64.charAt((chr2 & 15) << 2 | chr3 >> 6);
+      line += isNaN(chr3) ? "=" : _base64.charAt(chr3 & 63);
+    }
+    if (maxline && line.length > maxline) {
+      output += line.substr(0, maxline) + "\r\n";
+      line = line.substr(maxline);
+    }
+  }
+  output += line;
+  return output;
 };
-E.decode64 = function(e) {
-  e = e.replace(/[^A-Za-z0-9\+\/\=]/g, "");
-  for (var t = "", a, r, n, s, i = 0; i < e.length; )
-    a = St[e.charCodeAt(i++) - 43], r = St[e.charCodeAt(i++) - 43], n = St[e.charCodeAt(i++) - 43], s = St[e.charCodeAt(i++) - 43], t += String.fromCharCode(a << 2 | r >> 4), n !== 64 && (t += String.fromCharCode((r & 15) << 4 | n >> 2), s !== 64 && (t += String.fromCharCode((n & 3) << 6 | s)));
-  return t;
+util$1.decode64 = function(input) {
+  input = input.replace(/[^A-Za-z0-9\+\/\=]/g, "");
+  var output = "";
+  var enc1, enc2, enc3, enc4;
+  var i = 0;
+  while (i < input.length) {
+    enc1 = _base64Idx[input.charCodeAt(i++) - 43];
+    enc2 = _base64Idx[input.charCodeAt(i++) - 43];
+    enc3 = _base64Idx[input.charCodeAt(i++) - 43];
+    enc4 = _base64Idx[input.charCodeAt(i++) - 43];
+    output += String.fromCharCode(enc1 << 2 | enc2 >> 4);
+    if (enc3 !== 64) {
+      output += String.fromCharCode((enc2 & 15) << 4 | enc3 >> 2);
+      if (enc4 !== 64) {
+        output += String.fromCharCode((enc3 & 3) << 6 | enc4);
+      }
+    }
+  }
+  return output;
 };
-E.encodeUtf8 = function(e) {
-  return unescape(encodeURIComponent(e));
+util$1.encodeUtf8 = function(str) {
+  return unescape(encodeURIComponent(str));
 };
-E.decodeUtf8 = function(e) {
-  return decodeURIComponent(escape(e));
+util$1.decodeUtf8 = function(str) {
+  return decodeURIComponent(escape(str));
 };
-E.binary = {
+util$1.binary = {
   raw: {},
   hex: {},
   base64: {},
   base58: {},
   baseN: {
-    encode: Oa.encode,
-    decode: Oa.decode
+    encode: baseN.encode,
+    decode: baseN.decode
   }
 };
-E.binary.raw.encode = function(e) {
-  return String.fromCharCode.apply(null, e);
+util$1.binary.raw.encode = function(bytes) {
+  return String.fromCharCode.apply(null, bytes);
 };
-E.binary.raw.decode = function(e, t, a) {
-  var r = t;
-  r || (r = new Uint8Array(e.length)), a = a || 0;
-  for (var n = a, s = 0; s < e.length; ++s)
-    r[n++] = e.charCodeAt(s);
-  return t ? n - a : r;
+util$1.binary.raw.decode = function(str, output, offset) {
+  var out = output;
+  if (!out) {
+    out = new Uint8Array(str.length);
+  }
+  offset = offset || 0;
+  var j = offset;
+  for (var i = 0; i < str.length; ++i) {
+    out[j++] = str.charCodeAt(i);
+  }
+  return output ? j - offset : out;
 };
-E.binary.hex.encode = E.bytesToHex;
-E.binary.hex.decode = function(e, t, a) {
-  var r = t;
-  r || (r = new Uint8Array(Math.ceil(e.length / 2))), a = a || 0;
-  var n = 0, s = a;
-  for (e.length & 1 && (n = 1, r[s++] = parseInt(e[0], 16)); n < e.length; n += 2)
-    r[s++] = parseInt(e.substr(n, 2), 16);
-  return t ? s - a : r;
+util$1.binary.hex.encode = util$1.bytesToHex;
+util$1.binary.hex.decode = function(hex, output, offset) {
+  var out = output;
+  if (!out) {
+    out = new Uint8Array(Math.ceil(hex.length / 2));
+  }
+  offset = offset || 0;
+  var i = 0, j = offset;
+  if (hex.length & 1) {
+    i = 1;
+    out[j++] = parseInt(hex[0], 16);
+  }
+  for (; i < hex.length; i += 2) {
+    out[j++] = parseInt(hex.substr(i, 2), 16);
+  }
+  return output ? j - offset : out;
 };
-E.binary.base64.encode = function(e, t) {
-  for (var a = "", r = "", n, s, i, o = 0; o < e.byteLength; )
-    n = e[o++], s = e[o++], i = e[o++], a += xt.charAt(n >> 2), a += xt.charAt((n & 3) << 4 | s >> 4), isNaN(s) ? a += "==" : (a += xt.charAt((s & 15) << 2 | i >> 6), a += isNaN(i) ? "=" : xt.charAt(i & 63)), t && a.length > t && (r += a.substr(0, t) + `\r
-`, a = a.substr(t));
-  return r += a, r;
+util$1.binary.base64.encode = function(input, maxline) {
+  var line = "";
+  var output = "";
+  var chr1, chr2, chr3;
+  var i = 0;
+  while (i < input.byteLength) {
+    chr1 = input[i++];
+    chr2 = input[i++];
+    chr3 = input[i++];
+    line += _base64.charAt(chr1 >> 2);
+    line += _base64.charAt((chr1 & 3) << 4 | chr2 >> 4);
+    if (isNaN(chr2)) {
+      line += "==";
+    } else {
+      line += _base64.charAt((chr2 & 15) << 2 | chr3 >> 6);
+      line += isNaN(chr3) ? "=" : _base64.charAt(chr3 & 63);
+    }
+    if (maxline && line.length > maxline) {
+      output += line.substr(0, maxline) + "\r\n";
+      line = line.substr(maxline);
+    }
+  }
+  output += line;
+  return output;
 };
-E.binary.base64.decode = function(e, t, a) {
-  var r = t;
-  r || (r = new Uint8Array(Math.ceil(e.length / 4) * 3)), e = e.replace(/[^A-Za-z0-9\+\/\=]/g, ""), a = a || 0;
-  for (var n, s, i, o, l = 0, u = a; l < e.length; )
-    n = St[e.charCodeAt(l++) - 43], s = St[e.charCodeAt(l++) - 43], i = St[e.charCodeAt(l++) - 43], o = St[e.charCodeAt(l++) - 43], r[u++] = n << 2 | s >> 4, i !== 64 && (r[u++] = (s & 15) << 4 | i >> 2, o !== 64 && (r[u++] = (i & 3) << 6 | o));
-  return t ? u - a : r.subarray(0, u);
+util$1.binary.base64.decode = function(input, output, offset) {
+  var out = output;
+  if (!out) {
+    out = new Uint8Array(Math.ceil(input.length / 4) * 3);
+  }
+  input = input.replace(/[^A-Za-z0-9\+\/\=]/g, "");
+  offset = offset || 0;
+  var enc1, enc2, enc3, enc4;
+  var i = 0, j = offset;
+  while (i < input.length) {
+    enc1 = _base64Idx[input.charCodeAt(i++) - 43];
+    enc2 = _base64Idx[input.charCodeAt(i++) - 43];
+    enc3 = _base64Idx[input.charCodeAt(i++) - 43];
+    enc4 = _base64Idx[input.charCodeAt(i++) - 43];
+    out[j++] = enc1 << 2 | enc2 >> 4;
+    if (enc3 !== 64) {
+      out[j++] = (enc2 & 15) << 4 | enc3 >> 2;
+      if (enc4 !== 64) {
+        out[j++] = (enc3 & 3) << 6 | enc4;
+      }
+    }
+  }
+  return output ? j - offset : out.subarray(0, j);
 };
-E.binary.base58.encode = function(e, t) {
-  return E.binary.baseN.encode(e, dn, t);
+util$1.binary.base58.encode = function(input, maxline) {
+  return util$1.binary.baseN.encode(input, _base58, maxline);
 };
-E.binary.base58.decode = function(e, t) {
-  return E.binary.baseN.decode(e, dn, t);
+util$1.binary.base58.decode = function(input, maxline) {
+  return util$1.binary.baseN.decode(input, _base58, maxline);
 };
-E.text = {
+util$1.text = {
   utf8: {},
   utf16: {}
 };
-E.text.utf8.encode = function(e, t, a) {
-  e = E.encodeUtf8(e);
-  var r = t;
-  r || (r = new Uint8Array(e.length)), a = a || 0;
-  for (var n = a, s = 0; s < e.length; ++s)
-    r[n++] = e.charCodeAt(s);
-  return t ? n - a : r;
-};
-E.text.utf8.decode = function(e) {
-  return E.decodeUtf8(String.fromCharCode.apply(null, e));
-};
-E.text.utf16.encode = function(e, t, a) {
-  var r = t;
-  r || (r = new Uint8Array(e.length * 2));
-  var n = new Uint16Array(r.buffer);
-  a = a || 0;
-  for (var s = a, i = a, o = 0; o < e.length; ++o)
-    n[i++] = e.charCodeAt(o), s += 2;
-  return t ? s - a : r;
-};
-E.text.utf16.decode = function(e) {
-  return String.fromCharCode.apply(null, new Uint16Array(e.buffer));
-};
-E.deflate = function(e, t, a) {
-  if (t = E.decode64(e.deflate(E.encode64(t)).rval), a) {
-    var r = 2, n = t.charCodeAt(1);
-    n & 32 && (r = 6), t = t.substring(r, t.length - 4);
+util$1.text.utf8.encode = function(str, output, offset) {
+  str = util$1.encodeUtf8(str);
+  var out = output;
+  if (!out) {
+    out = new Uint8Array(str.length);
   }
-  return t;
-};
-E.inflate = function(e, t, a) {
-  var r = e.inflate(E.encode64(t)).rval;
-  return r === null ? null : E.decode64(r);
-};
-var ma = function(e, t, a) {
-  if (!e)
-    throw new Error("WebStorage not available.");
-  var r;
-  if (a === null ? r = e.removeItem(t) : (a = E.encode64(JSON.stringify(a)), r = e.setItem(t, a)), typeof r < "u" && r.rval !== !0) {
-    var n = new Error(r.error.message);
-    throw n.id = r.error.id, n.name = r.error.name, n;
+  offset = offset || 0;
+  var j = offset;
+  for (var i = 0; i < str.length; ++i) {
+    out[j++] = str.charCodeAt(i);
   }
-}, Ca = function(e, t) {
-  if (!e)
+  return output ? j - offset : out;
+};
+util$1.text.utf8.decode = function(bytes) {
+  return util$1.decodeUtf8(String.fromCharCode.apply(null, bytes));
+};
+util$1.text.utf16.encode = function(str, output, offset) {
+  var out = output;
+  if (!out) {
+    out = new Uint8Array(str.length * 2);
+  }
+  var view = new Uint16Array(out.buffer);
+  offset = offset || 0;
+  var j = offset;
+  var k = offset;
+  for (var i = 0; i < str.length; ++i) {
+    view[k++] = str.charCodeAt(i);
+    j += 2;
+  }
+  return output ? j - offset : out;
+};
+util$1.text.utf16.decode = function(bytes) {
+  return String.fromCharCode.apply(null, new Uint16Array(bytes.buffer));
+};
+util$1.deflate = function(api2, bytes, raw) {
+  bytes = util$1.decode64(api2.deflate(util$1.encode64(bytes)).rval);
+  if (raw) {
+    var start = 2;
+    var flg = bytes.charCodeAt(1);
+    if (flg & 32) {
+      start = 6;
+    }
+    bytes = bytes.substring(start, bytes.length - 4);
+  }
+  return bytes;
+};
+util$1.inflate = function(api2, bytes, raw) {
+  var rval = api2.inflate(util$1.encode64(bytes)).rval;
+  return rval === null ? null : util$1.decode64(rval);
+};
+var _setStorageObject = function(api2, id, obj) {
+  if (!api2) {
     throw new Error("WebStorage not available.");
-  var a = e.getItem(t);
-  if (e.init)
-    if (a.rval === null) {
-      if (a.error) {
-        var r = new Error(a.error.message);
-        throw r.id = a.error.id, r.name = a.error.name, r;
+  }
+  var rval;
+  if (obj === null) {
+    rval = api2.removeItem(id);
+  } else {
+    obj = util$1.encode64(JSON.stringify(obj));
+    rval = api2.setItem(id, obj);
+  }
+  if (typeof rval !== "undefined" && rval.rval !== true) {
+    var error = new Error(rval.error.message);
+    error.id = rval.error.id;
+    error.name = rval.error.name;
+    throw error;
+  }
+};
+var _getStorageObject = function(api2, id) {
+  if (!api2) {
+    throw new Error("WebStorage not available.");
+  }
+  var rval = api2.getItem(id);
+  if (api2.init) {
+    if (rval.rval === null) {
+      if (rval.error) {
+        var error = new Error(rval.error.message);
+        error.id = rval.error.id;
+        error.name = rval.error.name;
+        throw error;
       }
-      a = null;
-    } else
-      a = a.rval;
-  return a !== null && (a = JSON.parse(E.decode64(a))), a;
-}, xi = function(e, t, a, r) {
-  var n = Ca(e, t);
-  n === null && (n = {}), n[a] = r, ma(e, t, n);
-}, Si = function(e, t, a) {
-  var r = Ca(e, t);
-  return r !== null && (r = a in r ? r[a] : null), r;
-}, Ti = function(e, t, a) {
-  var r = Ca(e, t);
-  if (r !== null && a in r) {
-    delete r[a];
-    var n = !0;
-    for (var s in r) {
-      n = !1;
+      rval = null;
+    } else {
+      rval = rval.rval;
+    }
+  }
+  if (rval !== null) {
+    rval = JSON.parse(util$1.decode64(rval));
+  }
+  return rval;
+};
+var _setItem = function(api2, id, key, data) {
+  var obj = _getStorageObject(api2, id);
+  if (obj === null) {
+    obj = {};
+  }
+  obj[key] = data;
+  _setStorageObject(api2, id, obj);
+};
+var _getItem = function(api2, id, key) {
+  var rval = _getStorageObject(api2, id);
+  if (rval !== null) {
+    rval = key in rval ? rval[key] : null;
+  }
+  return rval;
+};
+var _removeItem = function(api2, id, key) {
+  var obj = _getStorageObject(api2, id);
+  if (obj !== null && key in obj) {
+    delete obj[key];
+    var empty = true;
+    for (var prop in obj) {
+      empty = false;
       break;
     }
-    n && (r = null), ma(e, t, r);
+    if (empty) {
+      obj = null;
+    }
+    _setStorageObject(api2, id, obj);
   }
-}, Ii = function(e, t) {
-  ma(e, t, null);
-}, kr = function(e, t, a) {
-  var r = null;
-  typeof a > "u" && (a = ["web", "flash"]);
-  var n, s = !1, i = null;
-  for (var o in a) {
-    n = a[o];
+};
+var _clearItems = function(api2, id) {
+  _setStorageObject(api2, id, null);
+};
+var _callStorageFunction = function(func, args, location) {
+  var rval = null;
+  if (typeof location === "undefined") {
+    location = ["web", "flash"];
+  }
+  var type;
+  var done = false;
+  var exception = null;
+  for (var idx in location) {
+    type = location[idx];
     try {
-      if (n === "flash" || n === "both") {
-        if (t[0] === null)
+      if (type === "flash" || type === "both") {
+        if (args[0] === null) {
           throw new Error("Flash local storage not available.");
-        r = e.apply(this, t), s = n === "flash";
+        }
+        rval = func.apply(this, args);
+        done = type === "flash";
       }
-      (n === "web" || n === "both") && (t[0] = localStorage, r = e.apply(this, t), s = !0);
-    } catch (l) {
-      i = l;
+      if (type === "web" || type === "both") {
+        args[0] = localStorage;
+        rval = func.apply(this, args);
+        done = true;
+      }
+    } catch (ex) {
+      exception = ex;
     }
-    if (s)
+    if (done) {
       break;
+    }
   }
-  if (!s)
-    throw i;
-  return r;
+  if (!done) {
+    throw exception;
+  }
+  return rval;
 };
-E.setItem = function(e, t, a, r, n) {
-  kr(xi, arguments, n);
+util$1.setItem = function(api2, id, key, data, location) {
+  _callStorageFunction(_setItem, arguments, location);
 };
-E.getItem = function(e, t, a, r) {
-  return kr(Si, arguments, r);
+util$1.getItem = function(api2, id, key, location) {
+  return _callStorageFunction(_getItem, arguments, location);
 };
-E.removeItem = function(e, t, a, r) {
-  kr(Ti, arguments, r);
+util$1.removeItem = function(api2, id, key, location) {
+  _callStorageFunction(_removeItem, arguments, location);
 };
-E.clearItems = function(e, t, a) {
-  kr(Ii, arguments, a);
+util$1.clearItems = function(api2, id, location) {
+  _callStorageFunction(_clearItems, arguments, location);
 };
-E.isEmpty = function(e) {
-  for (var t in e)
-    if (e.hasOwnProperty(t))
-      return !1;
-  return !0;
+util$1.isEmpty = function(obj) {
+  for (var prop in obj) {
+    if (obj.hasOwnProperty(prop)) {
+      return false;
+    }
+  }
+  return true;
 };
-E.format = function(e) {
-  for (var t = /%./g, a, r, n = 0, s = [], i = 0; a = t.exec(e); ) {
-    r = e.substring(i, t.lastIndex - 2), r.length > 0 && s.push(r), i = t.lastIndex;
-    var o = a[0][1];
-    switch (o) {
+util$1.format = function(format) {
+  var re = /%./g;
+  var match;
+  var part;
+  var argi = 0;
+  var parts = [];
+  var last = 0;
+  while (match = re.exec(format)) {
+    part = format.substring(last, re.lastIndex - 2);
+    if (part.length > 0) {
+      parts.push(part);
+    }
+    last = re.lastIndex;
+    var code = match[0][1];
+    switch (code) {
       case "s":
       case "o":
-        n < arguments.length ? s.push(arguments[n++ + 1]) : s.push("<?>");
+        if (argi < arguments.length) {
+          parts.push(arguments[argi++ + 1]);
+        } else {
+          parts.push("<?>");
+        }
         break;
       case "%":
-        s.push("%");
+        parts.push("%");
         break;
       default:
-        s.push("<%" + o + "?>");
+        parts.push("<%" + code + "?>");
     }
   }
-  return s.push(e.substring(i)), s.join("");
+  parts.push(format.substring(last));
+  return parts.join("");
 };
-E.formatNumber = function(e, t, a, r) {
-  var n = e, s = isNaN(t = Math.abs(t)) ? 2 : t, i = a === void 0 ? "," : a, o = r === void 0 ? "." : r, l = n < 0 ? "-" : "", u = parseInt(n = Math.abs(+n || 0).toFixed(s), 10) + "", f = u.length > 3 ? u.length % 3 : 0;
-  return l + (f ? u.substr(0, f) + o : "") + u.substr(f).replace(/(\d{3})(?=\d)/g, "$1" + o) + (s ? i + Math.abs(n - u).toFixed(s).slice(2) : "");
+util$1.formatNumber = function(number, decimals, dec_point, thousands_sep) {
+  var n = number, c = isNaN(decimals = Math.abs(decimals)) ? 2 : decimals;
+  var d = dec_point === void 0 ? "," : dec_point;
+  var t = thousands_sep === void 0 ? "." : thousands_sep, s2 = n < 0 ? "-" : "";
+  var i = parseInt(n = Math.abs(+n || 0).toFixed(c), 10) + "";
+  var j = i.length > 3 ? i.length % 3 : 0;
+  return s2 + (j ? i.substr(0, j) + t : "") + i.substr(j).replace(/(\d{3})(?=\d)/g, "$1" + t) + (c ? d + Math.abs(n - i).toFixed(c).slice(2) : "");
 };
-E.formatSize = function(e) {
-  return e >= 1073741824 ? e = E.formatNumber(e / 1073741824, 2, ".", "") + " GiB" : e >= 1048576 ? e = E.formatNumber(e / 1048576, 2, ".", "") + " MiB" : e >= 1024 ? e = E.formatNumber(e / 1024, 0) + " KiB" : e = E.formatNumber(e, 0) + " bytes", e;
-};
-E.bytesFromIP = function(e) {
-  return e.indexOf(".") !== -1 ? E.bytesFromIPv4(e) : e.indexOf(":") !== -1 ? E.bytesFromIPv6(e) : null;
-};
-E.bytesFromIPv4 = function(e) {
-  if (e = e.split("."), e.length !== 4)
-    return null;
-  for (var t = E.createBuffer(), a = 0; a < e.length; ++a) {
-    var r = parseInt(e[a], 10);
-    if (isNaN(r))
-      return null;
-    t.putByte(r);
+util$1.formatSize = function(size) {
+  if (size >= 1073741824) {
+    size = util$1.formatNumber(size / 1073741824, 2, ".", "") + " GiB";
+  } else if (size >= 1048576) {
+    size = util$1.formatNumber(size / 1048576, 2, ".", "") + " MiB";
+  } else if (size >= 1024) {
+    size = util$1.formatNumber(size / 1024, 0) + " KiB";
+  } else {
+    size = util$1.formatNumber(size, 0) + " bytes";
   }
-  return t.getBytes();
+  return size;
 };
-E.bytesFromIPv6 = function(e) {
-  var t = 0;
-  e = e.split(":").filter(function(i) {
-    return i.length === 0 && ++t, !0;
+util$1.bytesFromIP = function(ip) {
+  if (ip.indexOf(".") !== -1) {
+    return util$1.bytesFromIPv4(ip);
+  }
+  if (ip.indexOf(":") !== -1) {
+    return util$1.bytesFromIPv6(ip);
+  }
+  return null;
+};
+util$1.bytesFromIPv4 = function(ip) {
+  ip = ip.split(".");
+  if (ip.length !== 4) {
+    return null;
+  }
+  var b = util$1.createBuffer();
+  for (var i = 0; i < ip.length; ++i) {
+    var num = parseInt(ip[i], 10);
+    if (isNaN(num)) {
+      return null;
+    }
+    b.putByte(num);
+  }
+  return b.getBytes();
+};
+util$1.bytesFromIPv6 = function(ip) {
+  var blanks = 0;
+  ip = ip.split(":").filter(function(e) {
+    if (e.length === 0) ++blanks;
+    return true;
   });
-  for (var a = (8 - e.length + t) * 2, r = E.createBuffer(), n = 0; n < 8; ++n) {
-    if (!e[n] || e[n].length === 0) {
-      r.fillWithByte(0, a), a = 0;
+  var zeros = (8 - ip.length + blanks) * 2;
+  var b = util$1.createBuffer();
+  for (var i = 0; i < 8; ++i) {
+    if (!ip[i] || ip[i].length === 0) {
+      b.fillWithByte(0, zeros);
+      zeros = 0;
       continue;
     }
-    var s = E.hexToBytes(e[n]);
-    s.length < 2 && r.putByte(0), r.putBytes(s);
-  }
-  return r.getBytes();
-};
-E.bytesToIP = function(e) {
-  return e.length === 4 ? E.bytesToIPv4(e) : e.length === 16 ? E.bytesToIPv6(e) : null;
-};
-E.bytesToIPv4 = function(e) {
-  if (e.length !== 4)
-    return null;
-  for (var t = [], a = 0; a < e.length; ++a)
-    t.push(e.charCodeAt(a));
-  return t.join(".");
-};
-E.bytesToIPv6 = function(e) {
-  if (e.length !== 16)
-    return null;
-  for (var t = [], a = [], r = 0, n = 0; n < e.length; n += 2) {
-    for (var s = E.bytesToHex(e[n] + e[n + 1]); s[0] === "0" && s !== "0"; )
-      s = s.substr(1);
-    if (s === "0") {
-      var i = a[a.length - 1], o = t.length;
-      !i || o !== i.end + 1 ? a.push({ start: o, end: o }) : (i.end = o, i.end - i.start > a[r].end - a[r].start && (r = a.length - 1));
+    var bytes = util$1.hexToBytes(ip[i]);
+    if (bytes.length < 2) {
+      b.putByte(0);
     }
-    t.push(s);
+    b.putBytes(bytes);
   }
-  if (a.length > 0) {
-    var l = a[r];
-    l.end - l.start > 0 && (t.splice(l.start, l.end - l.start + 1, ""), l.start === 0 && t.unshift(""), l.end === 7 && t.push(""));
-  }
-  return t.join(":");
+  return b.getBytes();
 };
-E.estimateCores = function(e, t) {
-  if (typeof e == "function" && (t = e, e = {}), e = e || {}, "cores" in E && !e.update)
-    return t(null, E.cores);
-  if (typeof navigator < "u" && "hardwareConcurrency" in navigator && navigator.hardwareConcurrency > 0)
-    return E.cores = navigator.hardwareConcurrency, t(null, E.cores);
-  if (typeof Worker > "u")
-    return E.cores = 1, t(null, E.cores);
-  if (typeof Blob > "u")
-    return E.cores = 2, t(null, E.cores);
-  var a = URL.createObjectURL(new Blob([
+util$1.bytesToIP = function(bytes) {
+  if (bytes.length === 4) {
+    return util$1.bytesToIPv4(bytes);
+  }
+  if (bytes.length === 16) {
+    return util$1.bytesToIPv6(bytes);
+  }
+  return null;
+};
+util$1.bytesToIPv4 = function(bytes) {
+  if (bytes.length !== 4) {
+    return null;
+  }
+  var ip = [];
+  for (var i = 0; i < bytes.length; ++i) {
+    ip.push(bytes.charCodeAt(i));
+  }
+  return ip.join(".");
+};
+util$1.bytesToIPv6 = function(bytes) {
+  if (bytes.length !== 16) {
+    return null;
+  }
+  var ip = [];
+  var zeroGroups = [];
+  var zeroMaxGroup = 0;
+  for (var i = 0; i < bytes.length; i += 2) {
+    var hex = util$1.bytesToHex(bytes[i] + bytes[i + 1]);
+    while (hex[0] === "0" && hex !== "0") {
+      hex = hex.substr(1);
+    }
+    if (hex === "0") {
+      var last = zeroGroups[zeroGroups.length - 1];
+      var idx = ip.length;
+      if (!last || idx !== last.end + 1) {
+        zeroGroups.push({ start: idx, end: idx });
+      } else {
+        last.end = idx;
+        if (last.end - last.start > zeroGroups[zeroMaxGroup].end - zeroGroups[zeroMaxGroup].start) {
+          zeroMaxGroup = zeroGroups.length - 1;
+        }
+      }
+    }
+    ip.push(hex);
+  }
+  if (zeroGroups.length > 0) {
+    var group = zeroGroups[zeroMaxGroup];
+    if (group.end - group.start > 0) {
+      ip.splice(group.start, group.end - group.start + 1, "");
+      if (group.start === 0) {
+        ip.unshift("");
+      }
+      if (group.end === 7) {
+        ip.push("");
+      }
+    }
+  }
+  return ip.join(":");
+};
+util$1.estimateCores = function(options, callback) {
+  if (typeof options === "function") {
+    callback = options;
+    options = {};
+  }
+  options = options || {};
+  if ("cores" in util$1 && !options.update) {
+    return callback(null, util$1.cores);
+  }
+  if (typeof navigator !== "undefined" && "hardwareConcurrency" in navigator && navigator.hardwareConcurrency > 0) {
+    util$1.cores = navigator.hardwareConcurrency;
+    return callback(null, util$1.cores);
+  }
+  if (typeof Worker === "undefined") {
+    util$1.cores = 1;
+    return callback(null, util$1.cores);
+  }
+  if (typeof Blob === "undefined") {
+    util$1.cores = 2;
+    return callback(null, util$1.cores);
+  }
+  var blobUrl = URL.createObjectURL(new Blob([
     "(",
     (function() {
-      self.addEventListener("message", function(i) {
-        var o = Date.now(), l = o + 4;
-        self.postMessage({ st: o, et: l });
+      self.addEventListener("message", function(e) {
+        var st = Date.now();
+        var et = st + 4;
+        self.postMessage({ st, et });
       });
     }).toString(),
     ")()"
   ], { type: "application/javascript" }));
-  r([], 5, 16);
-  function r(i, o, l) {
-    if (o === 0) {
-      var u = Math.floor(i.reduce(function(f, c) {
-        return f + c;
-      }, 0) / i.length);
-      return E.cores = Math.max(1, u), URL.revokeObjectURL(a), t(null, E.cores);
+  sample([], 5, 16);
+  function sample(max, samples, numWorkers) {
+    if (samples === 0) {
+      var avg = Math.floor(max.reduce(function(avg2, x) {
+        return avg2 + x;
+      }, 0) / max.length);
+      util$1.cores = Math.max(1, avg);
+      URL.revokeObjectURL(blobUrl);
+      return callback(null, util$1.cores);
     }
-    n(l, function(f, c) {
-      i.push(s(l, c)), r(i, o - 1, l);
+    map(numWorkers, function(err, results) {
+      max.push(reduce2(numWorkers, results));
+      sample(max, samples - 1, numWorkers);
     });
   }
-  function n(i, o) {
-    for (var l = [], u = [], f = 0; f < i; ++f) {
-      var c = new Worker(a);
-      c.addEventListener("message", function(v) {
-        if (u.push(v.data), u.length === i) {
-          for (var m = 0; m < i; ++m)
-            l[m].terminate();
-          o(null, u);
+  function map(numWorkers, callback2) {
+    var workers = [];
+    var results = [];
+    for (var i = 0; i < numWorkers; ++i) {
+      var worker = new Worker(blobUrl);
+      worker.addEventListener("message", function(e) {
+        results.push(e.data);
+        if (results.length === numWorkers) {
+          for (var i2 = 0; i2 < numWorkers; ++i2) {
+            workers[i2].terminate();
+          }
+          callback2(null, results);
         }
-      }), l.push(c);
+      });
+      workers.push(worker);
     }
-    for (var f = 0; f < i; ++f)
-      l[f].postMessage(f);
+    for (var i = 0; i < numWorkers; ++i) {
+      workers[i].postMessage(i);
+    }
   }
-  function s(i, o) {
-    for (var l = [], u = 0; u < i; ++u)
-      for (var f = o[u], c = l[u] = [], v = 0; v < i; ++v)
-        if (u !== v) {
-          var m = o[v];
-          (f.st > m.st && f.st < m.et || m.st > f.st && m.st < f.et) && c.push(v);
+  function reduce2(numWorkers, results) {
+    var overlaps = [];
+    for (var n = 0; n < numWorkers; ++n) {
+      var r1 = results[n];
+      var overlap = overlaps[n] = [];
+      for (var i = 0; i < numWorkers; ++i) {
+        if (n === i) {
+          continue;
         }
-    return l.reduce(function(y, x) {
-      return Math.max(y, x.length);
+        var r2 = results[i];
+        if (r1.st > r2.st && r1.st < r2.et || r2.st > r1.st && r2.st < r1.et) {
+          overlap.push(i);
+        }
+      }
+    }
+    return overlaps.reduce(function(max, overlap2) {
+      return Math.max(max, overlap2.length);
     }, 0);
   }
 };
-var Te = z;
-Te.cipher = Te.cipher || {};
-Te.cipher.algorithms = Te.cipher.algorithms || {};
-Te.cipher.createCipher = function(e, t) {
-  var a = e;
-  if (typeof a == "string" && (a = Te.cipher.getAlgorithm(a), a && (a = a())), !a)
-    throw new Error("Unsupported algorithm: " + e);
-  return new Te.cipher.BlockCipher({
-    algorithm: a,
-    key: t,
-    decrypt: !1
+var forge$A = forge$C;
+forge$A.cipher = forge$A.cipher || {};
+forge$A.cipher.algorithms = forge$A.cipher.algorithms || {};
+forge$A.cipher.createCipher = function(algorithm, key) {
+  var api2 = algorithm;
+  if (typeof api2 === "string") {
+    api2 = forge$A.cipher.getAlgorithm(api2);
+    if (api2) {
+      api2 = api2();
+    }
+  }
+  if (!api2) {
+    throw new Error("Unsupported algorithm: " + algorithm);
+  }
+  return new forge$A.cipher.BlockCipher({
+    algorithm: api2,
+    key,
+    decrypt: false
   });
 };
-Te.cipher.createDecipher = function(e, t) {
-  var a = e;
-  if (typeof a == "string" && (a = Te.cipher.getAlgorithm(a), a && (a = a())), !a)
-    throw new Error("Unsupported algorithm: " + e);
-  return new Te.cipher.BlockCipher({
-    algorithm: a,
-    key: t,
-    decrypt: !0
+forge$A.cipher.createDecipher = function(algorithm, key) {
+  var api2 = algorithm;
+  if (typeof api2 === "string") {
+    api2 = forge$A.cipher.getAlgorithm(api2);
+    if (api2) {
+      api2 = api2();
+    }
+  }
+  if (!api2) {
+    throw new Error("Unsupported algorithm: " + algorithm);
+  }
+  return new forge$A.cipher.BlockCipher({
+    algorithm: api2,
+    key,
+    decrypt: true
   });
 };
-Te.cipher.registerAlgorithm = function(e, t) {
-  e = e.toUpperCase(), Te.cipher.algorithms[e] = t;
+forge$A.cipher.registerAlgorithm = function(name, algorithm) {
+  name = name.toUpperCase();
+  forge$A.cipher.algorithms[name] = algorithm;
 };
-Te.cipher.getAlgorithm = function(e) {
-  return e = e.toUpperCase(), e in Te.cipher.algorithms ? Te.cipher.algorithms[e] : null;
+forge$A.cipher.getAlgorithm = function(name) {
+  name = name.toUpperCase();
+  if (name in forge$A.cipher.algorithms) {
+    return forge$A.cipher.algorithms[name];
+  }
+  return null;
 };
-var Ea = Te.cipher.BlockCipher = function(e) {
-  this.algorithm = e.algorithm, this.mode = this.algorithm.mode, this.blockSize = this.mode.blockSize, this._finish = !1, this._input = null, this.output = null, this._op = e.decrypt ? this.mode.decrypt : this.mode.encrypt, this._decrypt = e.decrypt, this.algorithm.initialize(e);
+var BlockCipher = forge$A.cipher.BlockCipher = function(options) {
+  this.algorithm = options.algorithm;
+  this.mode = this.algorithm.mode;
+  this.blockSize = this.mode.blockSize;
+  this._finish = false;
+  this._input = null;
+  this.output = null;
+  this._op = options.decrypt ? this.mode.decrypt : this.mode.encrypt;
+  this._decrypt = options.decrypt;
+  this.algorithm.initialize(options);
 };
-Ea.prototype.start = function(e) {
-  e = e || {};
-  var t = {};
-  for (var a in e)
-    t[a] = e[a];
-  t.decrypt = this._decrypt, this._finish = !1, this._input = Te.util.createBuffer(), this.output = e.output || Te.util.createBuffer(), this.mode.start(t);
+BlockCipher.prototype.start = function(options) {
+  options = options || {};
+  var opts = {};
+  for (var key in options) {
+    opts[key] = options[key];
+  }
+  opts.decrypt = this._decrypt;
+  this._finish = false;
+  this._input = forge$A.util.createBuffer();
+  this.output = options.output || forge$A.util.createBuffer();
+  this.mode.start(opts);
 };
-Ea.prototype.update = function(e) {
-  for (e && this._input.putBuffer(e); !this._op.call(this.mode, this._input, this.output, this._finish) && !this._finish; )
-    ;
+BlockCipher.prototype.update = function(input) {
+  if (input) {
+    this._input.putBuffer(input);
+  }
+  while (!this._op.call(this.mode, this._input, this.output, this._finish) && !this._finish) {
+  }
   this._input.compact();
 };
-Ea.prototype.finish = function(e) {
-  e && (this.mode.name === "ECB" || this.mode.name === "CBC") && (this.mode.pad = function(a) {
-    return e(this.blockSize, a, !1);
-  }, this.mode.unpad = function(a) {
-    return e(this.blockSize, a, !0);
-  });
-  var t = {};
-  return t.decrypt = this._decrypt, t.overflow = this._input.length() % this.blockSize, !(!this._decrypt && this.mode.pad && !this.mode.pad(this._input, t) || (this._finish = !0, this.update(), this._decrypt && this.mode.unpad && !this.mode.unpad(this.output, t)) || this.mode.afterFinish && !this.mode.afterFinish(this.output, t));
+BlockCipher.prototype.finish = function(pad) {
+  if (pad && (this.mode.name === "ECB" || this.mode.name === "CBC")) {
+    this.mode.pad = function(input) {
+      return pad(this.blockSize, input, false);
+    };
+    this.mode.unpad = function(output) {
+      return pad(this.blockSize, output, true);
+    };
+  }
+  var options = {};
+  options.decrypt = this._decrypt;
+  options.overflow = this._input.length() % this.blockSize;
+  if (!this._decrypt && this.mode.pad) {
+    if (!this.mode.pad(this._input, options)) {
+      return false;
+    }
+  }
+  this._finish = true;
+  this.update();
+  if (this._decrypt && this.mode.unpad) {
+    if (!this.mode.unpad(this.output, options)) {
+      return false;
+    }
+  }
+  if (this.mode.afterFinish) {
+    if (!this.mode.afterFinish(this.output, options)) {
+      return false;
+    }
+  }
+  return true;
 };
-var Se = z;
-Se.cipher = Se.cipher || {};
-var X = Se.cipher.modes = Se.cipher.modes || {};
-X.ecb = function(e) {
-  e = e || {}, this.name = "ECB", this.cipher = e.cipher, this.blockSize = e.blockSize || 16, this._ints = this.blockSize / 4, this._inBlock = new Array(this._ints), this._outBlock = new Array(this._ints);
+var forge$z = forge$C;
+forge$z.cipher = forge$z.cipher || {};
+var modes = forge$z.cipher.modes = forge$z.cipher.modes || {};
+modes.ecb = function(options) {
+  options = options || {};
+  this.name = "ECB";
+  this.cipher = options.cipher;
+  this.blockSize = options.blockSize || 16;
+  this._ints = this.blockSize / 4;
+  this._inBlock = new Array(this._ints);
+  this._outBlock = new Array(this._ints);
 };
-X.ecb.prototype.start = function(e) {
+modes.ecb.prototype.start = function(options) {
 };
-X.ecb.prototype.encrypt = function(e, t, a) {
-  if (e.length() < this.blockSize && !(a && e.length() > 0))
-    return !0;
-  for (var r = 0; r < this._ints; ++r)
-    this._inBlock[r] = e.getInt32();
+modes.ecb.prototype.encrypt = function(input, output, finish) {
+  if (input.length() < this.blockSize && !(finish && input.length() > 0)) {
+    return true;
+  }
+  for (var i = 0; i < this._ints; ++i) {
+    this._inBlock[i] = input.getInt32();
+  }
   this.cipher.encrypt(this._inBlock, this._outBlock);
-  for (var r = 0; r < this._ints; ++r)
-    t.putInt32(this._outBlock[r]);
+  for (var i = 0; i < this._ints; ++i) {
+    output.putInt32(this._outBlock[i]);
+  }
 };
-X.ecb.prototype.decrypt = function(e, t, a) {
-  if (e.length() < this.blockSize && !(a && e.length() > 0))
-    return !0;
-  for (var r = 0; r < this._ints; ++r)
-    this._inBlock[r] = e.getInt32();
+modes.ecb.prototype.decrypt = function(input, output, finish) {
+  if (input.length() < this.blockSize && !(finish && input.length() > 0)) {
+    return true;
+  }
+  for (var i = 0; i < this._ints; ++i) {
+    this._inBlock[i] = input.getInt32();
+  }
   this.cipher.decrypt(this._inBlock, this._outBlock);
-  for (var r = 0; r < this._ints; ++r)
-    t.putInt32(this._outBlock[r]);
+  for (var i = 0; i < this._ints; ++i) {
+    output.putInt32(this._outBlock[i]);
+  }
 };
-X.ecb.prototype.pad = function(e, t) {
-  var a = e.length() === this.blockSize ? this.blockSize : this.blockSize - e.length();
-  return e.fillWithByte(a, a), !0;
+modes.ecb.prototype.pad = function(input, options) {
+  var padding = input.length() === this.blockSize ? this.blockSize : this.blockSize - input.length();
+  input.fillWithByte(padding, padding);
+  return true;
 };
-X.ecb.prototype.unpad = function(e, t) {
-  if (t.overflow > 0)
-    return !1;
-  var a = e.length(), r = e.at(a - 1);
-  return r > this.blockSize << 2 ? !1 : (e.truncate(r), !0);
+modes.ecb.prototype.unpad = function(output, options) {
+  if (options.overflow > 0) {
+    return false;
+  }
+  var len = output.length();
+  var count = output.at(len - 1);
+  if (count > this.blockSize << 2) {
+    return false;
+  }
+  output.truncate(count);
+  return true;
 };
-X.cbc = function(e) {
-  e = e || {}, this.name = "CBC", this.cipher = e.cipher, this.blockSize = e.blockSize || 16, this._ints = this.blockSize / 4, this._inBlock = new Array(this._ints), this._outBlock = new Array(this._ints);
+modes.cbc = function(options) {
+  options = options || {};
+  this.name = "CBC";
+  this.cipher = options.cipher;
+  this.blockSize = options.blockSize || 16;
+  this._ints = this.blockSize / 4;
+  this._inBlock = new Array(this._ints);
+  this._outBlock = new Array(this._ints);
 };
-X.cbc.prototype.start = function(e) {
-  if (e.iv === null) {
-    if (!this._prev)
+modes.cbc.prototype.start = function(options) {
+  if (options.iv === null) {
+    if (!this._prev) {
       throw new Error("Invalid IV parameter.");
+    }
     this._iv = this._prev.slice(0);
-  } else if ("iv" in e)
-    this._iv = Dr(e.iv, this.blockSize), this._prev = this._iv.slice(0);
-  else
+  } else if (!("iv" in options)) {
     throw new Error("Invalid IV parameter.");
+  } else {
+    this._iv = transformIV(options.iv, this.blockSize);
+    this._prev = this._iv.slice(0);
+  }
 };
-X.cbc.prototype.encrypt = function(e, t, a) {
-  if (e.length() < this.blockSize && !(a && e.length() > 0))
-    return !0;
-  for (var r = 0; r < this._ints; ++r)
-    this._inBlock[r] = this._prev[r] ^ e.getInt32();
+modes.cbc.prototype.encrypt = function(input, output, finish) {
+  if (input.length() < this.blockSize && !(finish && input.length() > 0)) {
+    return true;
+  }
+  for (var i = 0; i < this._ints; ++i) {
+    this._inBlock[i] = this._prev[i] ^ input.getInt32();
+  }
   this.cipher.encrypt(this._inBlock, this._outBlock);
-  for (var r = 0; r < this._ints; ++r)
-    t.putInt32(this._outBlock[r]);
+  for (var i = 0; i < this._ints; ++i) {
+    output.putInt32(this._outBlock[i]);
+  }
   this._prev = this._outBlock;
 };
-X.cbc.prototype.decrypt = function(e, t, a) {
-  if (e.length() < this.blockSize && !(a && e.length() > 0))
-    return !0;
-  for (var r = 0; r < this._ints; ++r)
-    this._inBlock[r] = e.getInt32();
+modes.cbc.prototype.decrypt = function(input, output, finish) {
+  if (input.length() < this.blockSize && !(finish && input.length() > 0)) {
+    return true;
+  }
+  for (var i = 0; i < this._ints; ++i) {
+    this._inBlock[i] = input.getInt32();
+  }
   this.cipher.decrypt(this._inBlock, this._outBlock);
-  for (var r = 0; r < this._ints; ++r)
-    t.putInt32(this._prev[r] ^ this._outBlock[r]);
+  for (var i = 0; i < this._ints; ++i) {
+    output.putInt32(this._prev[i] ^ this._outBlock[i]);
+  }
   this._prev = this._inBlock.slice(0);
 };
-X.cbc.prototype.pad = function(e, t) {
-  var a = e.length() === this.blockSize ? this.blockSize : this.blockSize - e.length();
-  return e.fillWithByte(a, a), !0;
+modes.cbc.prototype.pad = function(input, options) {
+  var padding = input.length() === this.blockSize ? this.blockSize : this.blockSize - input.length();
+  input.fillWithByte(padding, padding);
+  return true;
 };
-X.cbc.prototype.unpad = function(e, t) {
-  if (t.overflow > 0)
-    return !1;
-  var a = e.length(), r = e.at(a - 1);
-  return r > this.blockSize << 2 ? !1 : (e.truncate(r), !0);
+modes.cbc.prototype.unpad = function(output, options) {
+  if (options.overflow > 0) {
+    return false;
+  }
+  var len = output.length();
+  var count = output.at(len - 1);
+  if (count > this.blockSize << 2) {
+    return false;
+  }
+  output.truncate(count);
+  return true;
 };
-X.cfb = function(e) {
-  e = e || {}, this.name = "CFB", this.cipher = e.cipher, this.blockSize = e.blockSize || 16, this._ints = this.blockSize / 4, this._inBlock = null, this._outBlock = new Array(this._ints), this._partialBlock = new Array(this._ints), this._partialOutput = Se.util.createBuffer(), this._partialBytes = 0;
+modes.cfb = function(options) {
+  options = options || {};
+  this.name = "CFB";
+  this.cipher = options.cipher;
+  this.blockSize = options.blockSize || 16;
+  this._ints = this.blockSize / 4;
+  this._inBlock = null;
+  this._outBlock = new Array(this._ints);
+  this._partialBlock = new Array(this._ints);
+  this._partialOutput = forge$z.util.createBuffer();
+  this._partialBytes = 0;
 };
-X.cfb.prototype.start = function(e) {
-  if (!("iv" in e))
+modes.cfb.prototype.start = function(options) {
+  if (!("iv" in options)) {
     throw new Error("Invalid IV parameter.");
-  this._iv = Dr(e.iv, this.blockSize), this._inBlock = this._iv.slice(0), this._partialBytes = 0;
+  }
+  this._iv = transformIV(options.iv, this.blockSize);
+  this._inBlock = this._iv.slice(0);
+  this._partialBytes = 0;
 };
-X.cfb.prototype.encrypt = function(e, t, a) {
-  var r = e.length();
-  if (r === 0)
-    return !0;
-  if (this.cipher.encrypt(this._inBlock, this._outBlock), this._partialBytes === 0 && r >= this.blockSize) {
-    for (var n = 0; n < this._ints; ++n)
-      this._inBlock[n] = e.getInt32() ^ this._outBlock[n], t.putInt32(this._inBlock[n]);
+modes.cfb.prototype.encrypt = function(input, output, finish) {
+  var inputLength = input.length();
+  if (inputLength === 0) {
+    return true;
+  }
+  this.cipher.encrypt(this._inBlock, this._outBlock);
+  if (this._partialBytes === 0 && inputLength >= this.blockSize) {
+    for (var i = 0; i < this._ints; ++i) {
+      this._inBlock[i] = input.getInt32() ^ this._outBlock[i];
+      output.putInt32(this._inBlock[i]);
+    }
     return;
   }
-  var s = (this.blockSize - r) % this.blockSize;
-  s > 0 && (s = this.blockSize - s), this._partialOutput.clear();
-  for (var n = 0; n < this._ints; ++n)
-    this._partialBlock[n] = e.getInt32() ^ this._outBlock[n], this._partialOutput.putInt32(this._partialBlock[n]);
-  if (s > 0)
-    e.read -= this.blockSize;
-  else
-    for (var n = 0; n < this._ints; ++n)
-      this._inBlock[n] = this._partialBlock[n];
-  if (this._partialBytes > 0 && this._partialOutput.getBytes(this._partialBytes), s > 0 && !a)
-    return t.putBytes(this._partialOutput.getBytes(
-      s - this._partialBytes
-    )), this._partialBytes = s, !0;
-  t.putBytes(this._partialOutput.getBytes(
-    r - this._partialBytes
-  )), this._partialBytes = 0;
+  var partialBytes = (this.blockSize - inputLength) % this.blockSize;
+  if (partialBytes > 0) {
+    partialBytes = this.blockSize - partialBytes;
+  }
+  this._partialOutput.clear();
+  for (var i = 0; i < this._ints; ++i) {
+    this._partialBlock[i] = input.getInt32() ^ this._outBlock[i];
+    this._partialOutput.putInt32(this._partialBlock[i]);
+  }
+  if (partialBytes > 0) {
+    input.read -= this.blockSize;
+  } else {
+    for (var i = 0; i < this._ints; ++i) {
+      this._inBlock[i] = this._partialBlock[i];
+    }
+  }
+  if (this._partialBytes > 0) {
+    this._partialOutput.getBytes(this._partialBytes);
+  }
+  if (partialBytes > 0 && !finish) {
+    output.putBytes(this._partialOutput.getBytes(
+      partialBytes - this._partialBytes
+    ));
+    this._partialBytes = partialBytes;
+    return true;
+  }
+  output.putBytes(this._partialOutput.getBytes(
+    inputLength - this._partialBytes
+  ));
+  this._partialBytes = 0;
 };
-X.cfb.prototype.decrypt = function(e, t, a) {
-  var r = e.length();
-  if (r === 0)
-    return !0;
-  if (this.cipher.encrypt(this._inBlock, this._outBlock), this._partialBytes === 0 && r >= this.blockSize) {
-    for (var n = 0; n < this._ints; ++n)
-      this._inBlock[n] = e.getInt32(), t.putInt32(this._inBlock[n] ^ this._outBlock[n]);
+modes.cfb.prototype.decrypt = function(input, output, finish) {
+  var inputLength = input.length();
+  if (inputLength === 0) {
+    return true;
+  }
+  this.cipher.encrypt(this._inBlock, this._outBlock);
+  if (this._partialBytes === 0 && inputLength >= this.blockSize) {
+    for (var i = 0; i < this._ints; ++i) {
+      this._inBlock[i] = input.getInt32();
+      output.putInt32(this._inBlock[i] ^ this._outBlock[i]);
+    }
     return;
   }
-  var s = (this.blockSize - r) % this.blockSize;
-  s > 0 && (s = this.blockSize - s), this._partialOutput.clear();
-  for (var n = 0; n < this._ints; ++n)
-    this._partialBlock[n] = e.getInt32(), this._partialOutput.putInt32(this._partialBlock[n] ^ this._outBlock[n]);
-  if (s > 0)
-    e.read -= this.blockSize;
-  else
-    for (var n = 0; n < this._ints; ++n)
-      this._inBlock[n] = this._partialBlock[n];
-  if (this._partialBytes > 0 && this._partialOutput.getBytes(this._partialBytes), s > 0 && !a)
-    return t.putBytes(this._partialOutput.getBytes(
-      s - this._partialBytes
-    )), this._partialBytes = s, !0;
-  t.putBytes(this._partialOutput.getBytes(
-    r - this._partialBytes
-  )), this._partialBytes = 0;
+  var partialBytes = (this.blockSize - inputLength) % this.blockSize;
+  if (partialBytes > 0) {
+    partialBytes = this.blockSize - partialBytes;
+  }
+  this._partialOutput.clear();
+  for (var i = 0; i < this._ints; ++i) {
+    this._partialBlock[i] = input.getInt32();
+    this._partialOutput.putInt32(this._partialBlock[i] ^ this._outBlock[i]);
+  }
+  if (partialBytes > 0) {
+    input.read -= this.blockSize;
+  } else {
+    for (var i = 0; i < this._ints; ++i) {
+      this._inBlock[i] = this._partialBlock[i];
+    }
+  }
+  if (this._partialBytes > 0) {
+    this._partialOutput.getBytes(this._partialBytes);
+  }
+  if (partialBytes > 0 && !finish) {
+    output.putBytes(this._partialOutput.getBytes(
+      partialBytes - this._partialBytes
+    ));
+    this._partialBytes = partialBytes;
+    return true;
+  }
+  output.putBytes(this._partialOutput.getBytes(
+    inputLength - this._partialBytes
+  ));
+  this._partialBytes = 0;
 };
-X.ofb = function(e) {
-  e = e || {}, this.name = "OFB", this.cipher = e.cipher, this.blockSize = e.blockSize || 16, this._ints = this.blockSize / 4, this._inBlock = null, this._outBlock = new Array(this._ints), this._partialOutput = Se.util.createBuffer(), this._partialBytes = 0;
+modes.ofb = function(options) {
+  options = options || {};
+  this.name = "OFB";
+  this.cipher = options.cipher;
+  this.blockSize = options.blockSize || 16;
+  this._ints = this.blockSize / 4;
+  this._inBlock = null;
+  this._outBlock = new Array(this._ints);
+  this._partialOutput = forge$z.util.createBuffer();
+  this._partialBytes = 0;
 };
-X.ofb.prototype.start = function(e) {
-  if (!("iv" in e))
+modes.ofb.prototype.start = function(options) {
+  if (!("iv" in options)) {
     throw new Error("Invalid IV parameter.");
-  this._iv = Dr(e.iv, this.blockSize), this._inBlock = this._iv.slice(0), this._partialBytes = 0;
+  }
+  this._iv = transformIV(options.iv, this.blockSize);
+  this._inBlock = this._iv.slice(0);
+  this._partialBytes = 0;
 };
-X.ofb.prototype.encrypt = function(e, t, a) {
-  var r = e.length();
-  if (e.length() === 0)
-    return !0;
-  if (this.cipher.encrypt(this._inBlock, this._outBlock), this._partialBytes === 0 && r >= this.blockSize) {
-    for (var n = 0; n < this._ints; ++n)
-      t.putInt32(e.getInt32() ^ this._outBlock[n]), this._inBlock[n] = this._outBlock[n];
+modes.ofb.prototype.encrypt = function(input, output, finish) {
+  var inputLength = input.length();
+  if (input.length() === 0) {
+    return true;
+  }
+  this.cipher.encrypt(this._inBlock, this._outBlock);
+  if (this._partialBytes === 0 && inputLength >= this.blockSize) {
+    for (var i = 0; i < this._ints; ++i) {
+      output.putInt32(input.getInt32() ^ this._outBlock[i]);
+      this._inBlock[i] = this._outBlock[i];
+    }
     return;
   }
-  var s = (this.blockSize - r) % this.blockSize;
-  s > 0 && (s = this.blockSize - s), this._partialOutput.clear();
-  for (var n = 0; n < this._ints; ++n)
-    this._partialOutput.putInt32(e.getInt32() ^ this._outBlock[n]);
-  if (s > 0)
-    e.read -= this.blockSize;
-  else
-    for (var n = 0; n < this._ints; ++n)
-      this._inBlock[n] = this._outBlock[n];
-  if (this._partialBytes > 0 && this._partialOutput.getBytes(this._partialBytes), s > 0 && !a)
-    return t.putBytes(this._partialOutput.getBytes(
-      s - this._partialBytes
-    )), this._partialBytes = s, !0;
-  t.putBytes(this._partialOutput.getBytes(
-    r - this._partialBytes
-  )), this._partialBytes = 0;
-};
-X.ofb.prototype.decrypt = X.ofb.prototype.encrypt;
-X.ctr = function(e) {
-  e = e || {}, this.name = "CTR", this.cipher = e.cipher, this.blockSize = e.blockSize || 16, this._ints = this.blockSize / 4, this._inBlock = null, this._outBlock = new Array(this._ints), this._partialOutput = Se.util.createBuffer(), this._partialBytes = 0;
-};
-X.ctr.prototype.start = function(e) {
-  if (!("iv" in e))
-    throw new Error("Invalid IV parameter.");
-  this._iv = Dr(e.iv, this.blockSize), this._inBlock = this._iv.slice(0), this._partialBytes = 0;
-};
-X.ctr.prototype.encrypt = function(e, t, a) {
-  var r = e.length();
-  if (r === 0)
-    return !0;
-  if (this.cipher.encrypt(this._inBlock, this._outBlock), this._partialBytes === 0 && r >= this.blockSize)
-    for (var n = 0; n < this._ints; ++n)
-      t.putInt32(e.getInt32() ^ this._outBlock[n]);
-  else {
-    var s = (this.blockSize - r) % this.blockSize;
-    s > 0 && (s = this.blockSize - s), this._partialOutput.clear();
-    for (var n = 0; n < this._ints; ++n)
-      this._partialOutput.putInt32(e.getInt32() ^ this._outBlock[n]);
-    if (s > 0 && (e.read -= this.blockSize), this._partialBytes > 0 && this._partialOutput.getBytes(this._partialBytes), s > 0 && !a)
-      return t.putBytes(this._partialOutput.getBytes(
-        s - this._partialBytes
-      )), this._partialBytes = s, !0;
-    t.putBytes(this._partialOutput.getBytes(
-      r - this._partialBytes
-    )), this._partialBytes = 0;
+  var partialBytes = (this.blockSize - inputLength) % this.blockSize;
+  if (partialBytes > 0) {
+    partialBytes = this.blockSize - partialBytes;
   }
-  Ur(this._inBlock);
+  this._partialOutput.clear();
+  for (var i = 0; i < this._ints; ++i) {
+    this._partialOutput.putInt32(input.getInt32() ^ this._outBlock[i]);
+  }
+  if (partialBytes > 0) {
+    input.read -= this.blockSize;
+  } else {
+    for (var i = 0; i < this._ints; ++i) {
+      this._inBlock[i] = this._outBlock[i];
+    }
+  }
+  if (this._partialBytes > 0) {
+    this._partialOutput.getBytes(this._partialBytes);
+  }
+  if (partialBytes > 0 && !finish) {
+    output.putBytes(this._partialOutput.getBytes(
+      partialBytes - this._partialBytes
+    ));
+    this._partialBytes = partialBytes;
+    return true;
+  }
+  output.putBytes(this._partialOutput.getBytes(
+    inputLength - this._partialBytes
+  ));
+  this._partialBytes = 0;
 };
-X.ctr.prototype.decrypt = X.ctr.prototype.encrypt;
-X.gcm = function(e) {
-  e = e || {}, this.name = "GCM", this.cipher = e.cipher, this.blockSize = e.blockSize || 16, this._ints = this.blockSize / 4, this._inBlock = new Array(this._ints), this._outBlock = new Array(this._ints), this._partialOutput = Se.util.createBuffer(), this._partialBytes = 0, this._R = 3774873600;
+modes.ofb.prototype.decrypt = modes.ofb.prototype.encrypt;
+modes.ctr = function(options) {
+  options = options || {};
+  this.name = "CTR";
+  this.cipher = options.cipher;
+  this.blockSize = options.blockSize || 16;
+  this._ints = this.blockSize / 4;
+  this._inBlock = null;
+  this._outBlock = new Array(this._ints);
+  this._partialOutput = forge$z.util.createBuffer();
+  this._partialBytes = 0;
 };
-X.gcm.prototype.start = function(e) {
-  if (!("iv" in e))
+modes.ctr.prototype.start = function(options) {
+  if (!("iv" in options)) {
     throw new Error("Invalid IV parameter.");
-  var t = Se.util.createBuffer(e.iv);
+  }
+  this._iv = transformIV(options.iv, this.blockSize);
+  this._inBlock = this._iv.slice(0);
+  this._partialBytes = 0;
+};
+modes.ctr.prototype.encrypt = function(input, output, finish) {
+  var inputLength = input.length();
+  if (inputLength === 0) {
+    return true;
+  }
+  this.cipher.encrypt(this._inBlock, this._outBlock);
+  if (this._partialBytes === 0 && inputLength >= this.blockSize) {
+    for (var i = 0; i < this._ints; ++i) {
+      output.putInt32(input.getInt32() ^ this._outBlock[i]);
+    }
+  } else {
+    var partialBytes = (this.blockSize - inputLength) % this.blockSize;
+    if (partialBytes > 0) {
+      partialBytes = this.blockSize - partialBytes;
+    }
+    this._partialOutput.clear();
+    for (var i = 0; i < this._ints; ++i) {
+      this._partialOutput.putInt32(input.getInt32() ^ this._outBlock[i]);
+    }
+    if (partialBytes > 0) {
+      input.read -= this.blockSize;
+    }
+    if (this._partialBytes > 0) {
+      this._partialOutput.getBytes(this._partialBytes);
+    }
+    if (partialBytes > 0 && !finish) {
+      output.putBytes(this._partialOutput.getBytes(
+        partialBytes - this._partialBytes
+      ));
+      this._partialBytes = partialBytes;
+      return true;
+    }
+    output.putBytes(this._partialOutput.getBytes(
+      inputLength - this._partialBytes
+    ));
+    this._partialBytes = 0;
+  }
+  inc32(this._inBlock);
+};
+modes.ctr.prototype.decrypt = modes.ctr.prototype.encrypt;
+modes.gcm = function(options) {
+  options = options || {};
+  this.name = "GCM";
+  this.cipher = options.cipher;
+  this.blockSize = options.blockSize || 16;
+  this._ints = this.blockSize / 4;
+  this._inBlock = new Array(this._ints);
+  this._outBlock = new Array(this._ints);
+  this._partialOutput = forge$z.util.createBuffer();
+  this._partialBytes = 0;
+  this._R = 3774873600;
+};
+modes.gcm.prototype.start = function(options) {
+  if (!("iv" in options)) {
+    throw new Error("Invalid IV parameter.");
+  }
+  var iv = forge$z.util.createBuffer(options.iv);
   this._cipherLength = 0;
-  var a;
-  if ("additionalData" in e ? a = Se.util.createBuffer(e.additionalData) : a = Se.util.createBuffer(), "tagLength" in e ? this._tagLength = e.tagLength : this._tagLength = 128, this._tag = null, e.decrypt && (this._tag = Se.util.createBuffer(e.tag).getBytes(), this._tag.length !== this._tagLength / 8))
-    throw new Error("Authentication tag does not match tag length.");
-  this._hashBlock = new Array(this._ints), this.tag = null, this._hashSubkey = new Array(this._ints), this.cipher.encrypt([0, 0, 0, 0], this._hashSubkey), this.componentBits = 4, this._m = this.generateHashTable(this._hashSubkey, this.componentBits);
-  var r = t.length();
-  if (r === 12)
-    this._j0 = [t.getInt32(), t.getInt32(), t.getInt32(), 1];
-  else {
-    for (this._j0 = [0, 0, 0, 0]; t.length() > 0; )
+  var additionalData;
+  if ("additionalData" in options) {
+    additionalData = forge$z.util.createBuffer(options.additionalData);
+  } else {
+    additionalData = forge$z.util.createBuffer();
+  }
+  if ("tagLength" in options) {
+    this._tagLength = options.tagLength;
+  } else {
+    this._tagLength = 128;
+  }
+  this._tag = null;
+  if (options.decrypt) {
+    this._tag = forge$z.util.createBuffer(options.tag).getBytes();
+    if (this._tag.length !== this._tagLength / 8) {
+      throw new Error("Authentication tag does not match tag length.");
+    }
+  }
+  this._hashBlock = new Array(this._ints);
+  this.tag = null;
+  this._hashSubkey = new Array(this._ints);
+  this.cipher.encrypt([0, 0, 0, 0], this._hashSubkey);
+  this.componentBits = 4;
+  this._m = this.generateHashTable(this._hashSubkey, this.componentBits);
+  var ivLength = iv.length();
+  if (ivLength === 12) {
+    this._j0 = [iv.getInt32(), iv.getInt32(), iv.getInt32(), 1];
+  } else {
+    this._j0 = [0, 0, 0, 0];
+    while (iv.length() > 0) {
       this._j0 = this.ghash(
         this._hashSubkey,
         this._j0,
-        [t.getInt32(), t.getInt32(), t.getInt32(), t.getInt32()]
+        [iv.getInt32(), iv.getInt32(), iv.getInt32(), iv.getInt32()]
       );
+    }
     this._j0 = this.ghash(
       this._hashSubkey,
       this._j0,
-      [0, 0].concat(Xr(r * 8))
+      [0, 0].concat(from64To32(ivLength * 8))
     );
   }
-  this._inBlock = this._j0.slice(0), Ur(this._inBlock), this._partialBytes = 0, a = Se.util.createBuffer(a), this._aDataLength = Xr(a.length() * 8);
-  var n = a.length() % this.blockSize;
-  for (n && a.fillWithByte(0, this.blockSize - n), this._s = [0, 0, 0, 0]; a.length() > 0; )
+  this._inBlock = this._j0.slice(0);
+  inc32(this._inBlock);
+  this._partialBytes = 0;
+  additionalData = forge$z.util.createBuffer(additionalData);
+  this._aDataLength = from64To32(additionalData.length() * 8);
+  var overflow = additionalData.length() % this.blockSize;
+  if (overflow) {
+    additionalData.fillWithByte(0, this.blockSize - overflow);
+  }
+  this._s = [0, 0, 0, 0];
+  while (additionalData.length() > 0) {
     this._s = this.ghash(this._hashSubkey, this._s, [
-      a.getInt32(),
-      a.getInt32(),
-      a.getInt32(),
-      a.getInt32()
+      additionalData.getInt32(),
+      additionalData.getInt32(),
+      additionalData.getInt32(),
+      additionalData.getInt32()
     ]);
+  }
 };
-X.gcm.prototype.encrypt = function(e, t, a) {
-  var r = e.length();
-  if (r === 0)
-    return !0;
-  if (this.cipher.encrypt(this._inBlock, this._outBlock), this._partialBytes === 0 && r >= this.blockSize) {
-    for (var n = 0; n < this._ints; ++n)
-      t.putInt32(this._outBlock[n] ^= e.getInt32());
+modes.gcm.prototype.encrypt = function(input, output, finish) {
+  var inputLength = input.length();
+  if (inputLength === 0) {
+    return true;
+  }
+  this.cipher.encrypt(this._inBlock, this._outBlock);
+  if (this._partialBytes === 0 && inputLength >= this.blockSize) {
+    for (var i = 0; i < this._ints; ++i) {
+      output.putInt32(this._outBlock[i] ^= input.getInt32());
+    }
     this._cipherLength += this.blockSize;
   } else {
-    var s = (this.blockSize - r) % this.blockSize;
-    s > 0 && (s = this.blockSize - s), this._partialOutput.clear();
-    for (var n = 0; n < this._ints; ++n)
-      this._partialOutput.putInt32(e.getInt32() ^ this._outBlock[n]);
-    if (s <= 0 || a) {
-      if (a) {
-        var i = r % this.blockSize;
-        this._cipherLength += i, this._partialOutput.truncate(this.blockSize - i);
-      } else
+    var partialBytes = (this.blockSize - inputLength) % this.blockSize;
+    if (partialBytes > 0) {
+      partialBytes = this.blockSize - partialBytes;
+    }
+    this._partialOutput.clear();
+    for (var i = 0; i < this._ints; ++i) {
+      this._partialOutput.putInt32(input.getInt32() ^ this._outBlock[i]);
+    }
+    if (partialBytes <= 0 || finish) {
+      if (finish) {
+        var overflow = inputLength % this.blockSize;
+        this._cipherLength += overflow;
+        this._partialOutput.truncate(this.blockSize - overflow);
+      } else {
         this._cipherLength += this.blockSize;
-      for (var n = 0; n < this._ints; ++n)
-        this._outBlock[n] = this._partialOutput.getInt32();
+      }
+      for (var i = 0; i < this._ints; ++i) {
+        this._outBlock[i] = this._partialOutput.getInt32();
+      }
       this._partialOutput.read -= this.blockSize;
     }
-    if (this._partialBytes > 0 && this._partialOutput.getBytes(this._partialBytes), s > 0 && !a)
-      return e.read -= this.blockSize, t.putBytes(this._partialOutput.getBytes(
-        s - this._partialBytes
-      )), this._partialBytes = s, !0;
-    t.putBytes(this._partialOutput.getBytes(
-      r - this._partialBytes
-    )), this._partialBytes = 0;
+    if (this._partialBytes > 0) {
+      this._partialOutput.getBytes(this._partialBytes);
+    }
+    if (partialBytes > 0 && !finish) {
+      input.read -= this.blockSize;
+      output.putBytes(this._partialOutput.getBytes(
+        partialBytes - this._partialBytes
+      ));
+      this._partialBytes = partialBytes;
+      return true;
+    }
+    output.putBytes(this._partialOutput.getBytes(
+      inputLength - this._partialBytes
+    ));
+    this._partialBytes = 0;
   }
-  this._s = this.ghash(this._hashSubkey, this._s, this._outBlock), Ur(this._inBlock);
+  this._s = this.ghash(this._hashSubkey, this._s, this._outBlock);
+  inc32(this._inBlock);
 };
-X.gcm.prototype.decrypt = function(e, t, a) {
-  var r = e.length();
-  if (r < this.blockSize && !(a && r > 0))
-    return !0;
-  this.cipher.encrypt(this._inBlock, this._outBlock), Ur(this._inBlock), this._hashBlock[0] = e.getInt32(), this._hashBlock[1] = e.getInt32(), this._hashBlock[2] = e.getInt32(), this._hashBlock[3] = e.getInt32(), this._s = this.ghash(this._hashSubkey, this._s, this._hashBlock);
-  for (var n = 0; n < this._ints; ++n)
-    t.putInt32(this._outBlock[n] ^ this._hashBlock[n]);
-  r < this.blockSize ? this._cipherLength += r % this.blockSize : this._cipherLength += this.blockSize;
-};
-X.gcm.prototype.afterFinish = function(e, t) {
-  var a = !0;
-  t.decrypt && t.overflow && e.truncate(this.blockSize - t.overflow), this.tag = Se.util.createBuffer();
-  var r = this._aDataLength.concat(Xr(this._cipherLength * 8));
-  this._s = this.ghash(this._hashSubkey, this._s, r);
-  var n = [];
-  this.cipher.encrypt(this._j0, n);
-  for (var s = 0; s < this._ints; ++s)
-    this.tag.putInt32(this._s[s] ^ n[s]);
-  return this.tag.truncate(this.tag.length() % (this._tagLength / 8)), t.decrypt && this.tag.bytes() !== this._tag && (a = !1), a;
-};
-X.gcm.prototype.multiply = function(e, t) {
-  for (var a = [0, 0, 0, 0], r = t.slice(0), n = 0; n < 128; ++n) {
-    var s = e[n / 32 | 0] & 1 << 31 - n % 32;
-    s && (a[0] ^= r[0], a[1] ^= r[1], a[2] ^= r[2], a[3] ^= r[3]), this.pow(r, r);
+modes.gcm.prototype.decrypt = function(input, output, finish) {
+  var inputLength = input.length();
+  if (inputLength < this.blockSize && !(finish && inputLength > 0)) {
+    return true;
   }
-  return a;
-};
-X.gcm.prototype.pow = function(e, t) {
-  for (var a = e[3] & 1, r = 3; r > 0; --r)
-    t[r] = e[r] >>> 1 | (e[r - 1] & 1) << 31;
-  t[0] = e[0] >>> 1, a && (t[0] ^= this._R);
-};
-X.gcm.prototype.tableMultiply = function(e) {
-  for (var t = [0, 0, 0, 0], a = 0; a < 32; ++a) {
-    var r = a / 8 | 0, n = e[r] >>> (7 - a % 8) * 4 & 15, s = this._m[a][n];
-    t[0] ^= s[0], t[1] ^= s[1], t[2] ^= s[2], t[3] ^= s[3];
+  this.cipher.encrypt(this._inBlock, this._outBlock);
+  inc32(this._inBlock);
+  this._hashBlock[0] = input.getInt32();
+  this._hashBlock[1] = input.getInt32();
+  this._hashBlock[2] = input.getInt32();
+  this._hashBlock[3] = input.getInt32();
+  this._s = this.ghash(this._hashSubkey, this._s, this._hashBlock);
+  for (var i = 0; i < this._ints; ++i) {
+    output.putInt32(this._outBlock[i] ^ this._hashBlock[i]);
   }
-  return t;
-};
-X.gcm.prototype.ghash = function(e, t, a) {
-  return t[0] ^= a[0], t[1] ^= a[1], t[2] ^= a[2], t[3] ^= a[3], this.tableMultiply(t);
-};
-X.gcm.prototype.generateHashTable = function(e, t) {
-  for (var a = 8 / t, r = 4 * a, n = 16 * a, s = new Array(n), i = 0; i < n; ++i) {
-    var o = [0, 0, 0, 0], l = i / r | 0, u = (r - 1 - i % r) * t;
-    o[l] = 1 << t - 1 << u, s[i] = this.generateSubHashTable(this.multiply(o, e), t);
+  if (inputLength < this.blockSize) {
+    this._cipherLength += inputLength % this.blockSize;
+  } else {
+    this._cipherLength += this.blockSize;
   }
-  return s;
 };
-X.gcm.prototype.generateSubHashTable = function(e, t) {
-  var a = 1 << t, r = a >>> 1, n = new Array(a);
-  n[r] = e.slice(0);
-  for (var s = r >>> 1; s > 0; )
-    this.pow(n[2 * s], n[s] = []), s >>= 1;
-  for (s = 2; s < r; ) {
-    for (var i = 1; i < s; ++i) {
-      var o = n[s], l = n[i];
-      n[s + i] = [
-        o[0] ^ l[0],
-        o[1] ^ l[1],
-        o[2] ^ l[2],
-        o[3] ^ l[3]
+modes.gcm.prototype.afterFinish = function(output, options) {
+  var rval = true;
+  if (options.decrypt && options.overflow) {
+    output.truncate(this.blockSize - options.overflow);
+  }
+  this.tag = forge$z.util.createBuffer();
+  var lengths = this._aDataLength.concat(from64To32(this._cipherLength * 8));
+  this._s = this.ghash(this._hashSubkey, this._s, lengths);
+  var tag = [];
+  this.cipher.encrypt(this._j0, tag);
+  for (var i = 0; i < this._ints; ++i) {
+    this.tag.putInt32(this._s[i] ^ tag[i]);
+  }
+  this.tag.truncate(this.tag.length() % (this._tagLength / 8));
+  if (options.decrypt && this.tag.bytes() !== this._tag) {
+    rval = false;
+  }
+  return rval;
+};
+modes.gcm.prototype.multiply = function(x, y) {
+  var z_i = [0, 0, 0, 0];
+  var v_i = y.slice(0);
+  for (var i = 0; i < 128; ++i) {
+    var x_i = x[i / 32 | 0] & 1 << 31 - i % 32;
+    if (x_i) {
+      z_i[0] ^= v_i[0];
+      z_i[1] ^= v_i[1];
+      z_i[2] ^= v_i[2];
+      z_i[3] ^= v_i[3];
+    }
+    this.pow(v_i, v_i);
+  }
+  return z_i;
+};
+modes.gcm.prototype.pow = function(x, out) {
+  var lsb = x[3] & 1;
+  for (var i = 3; i > 0; --i) {
+    out[i] = x[i] >>> 1 | (x[i - 1] & 1) << 31;
+  }
+  out[0] = x[0] >>> 1;
+  if (lsb) {
+    out[0] ^= this._R;
+  }
+};
+modes.gcm.prototype.tableMultiply = function(x) {
+  var z = [0, 0, 0, 0];
+  for (var i = 0; i < 32; ++i) {
+    var idx = i / 8 | 0;
+    var x_i = x[idx] >>> (7 - i % 8) * 4 & 15;
+    var ah = this._m[i][x_i];
+    z[0] ^= ah[0];
+    z[1] ^= ah[1];
+    z[2] ^= ah[2];
+    z[3] ^= ah[3];
+  }
+  return z;
+};
+modes.gcm.prototype.ghash = function(h, y, x) {
+  y[0] ^= x[0];
+  y[1] ^= x[1];
+  y[2] ^= x[2];
+  y[3] ^= x[3];
+  return this.tableMultiply(y);
+};
+modes.gcm.prototype.generateHashTable = function(h, bits) {
+  var multiplier = 8 / bits;
+  var perInt = 4 * multiplier;
+  var size = 16 * multiplier;
+  var m = new Array(size);
+  for (var i = 0; i < size; ++i) {
+    var tmp = [0, 0, 0, 0];
+    var idx = i / perInt | 0;
+    var shft = (perInt - 1 - i % perInt) * bits;
+    tmp[idx] = 1 << bits - 1 << shft;
+    m[i] = this.generateSubHashTable(this.multiply(tmp, h), bits);
+  }
+  return m;
+};
+modes.gcm.prototype.generateSubHashTable = function(mid, bits) {
+  var size = 1 << bits;
+  var half = size >>> 1;
+  var m = new Array(size);
+  m[half] = mid.slice(0);
+  var i = half >>> 1;
+  while (i > 0) {
+    this.pow(m[2 * i], m[i] = []);
+    i >>= 1;
+  }
+  i = 2;
+  while (i < half) {
+    for (var j = 1; j < i; ++j) {
+      var m_i = m[i];
+      var m_j = m[j];
+      m[i + j] = [
+        m_i[0] ^ m_j[0],
+        m_i[1] ^ m_j[1],
+        m_i[2] ^ m_j[2],
+        m_i[3] ^ m_j[3]
       ];
     }
-    s *= 2;
+    i *= 2;
   }
-  for (n[0] = [0, 0, 0, 0], s = r + 1; s < a; ++s) {
-    var u = n[s ^ r];
-    n[s] = [e[0] ^ u[0], e[1] ^ u[1], e[2] ^ u[2], e[3] ^ u[3]];
+  m[0] = [0, 0, 0, 0];
+  for (i = half + 1; i < size; ++i) {
+    var c = m[i ^ half];
+    m[i] = [mid[0] ^ c[0], mid[1] ^ c[1], mid[2] ^ c[2], mid[3] ^ c[3]];
   }
-  return n;
+  return m;
 };
-function Dr(e, t) {
-  if (typeof e == "string" && (e = Se.util.createBuffer(e)), Se.util.isArray(e) && e.length > 4) {
-    var a = e;
-    e = Se.util.createBuffer();
-    for (var r = 0; r < a.length; ++r)
-      e.putByte(a[r]);
+function transformIV(iv, blockSize) {
+  if (typeof iv === "string") {
+    iv = forge$z.util.createBuffer(iv);
   }
-  if (e.length() < t)
+  if (forge$z.util.isArray(iv) && iv.length > 4) {
+    var tmp = iv;
+    iv = forge$z.util.createBuffer();
+    for (var i = 0; i < tmp.length; ++i) {
+      iv.putByte(tmp[i]);
+    }
+  }
+  if (iv.length() < blockSize) {
     throw new Error(
-      "Invalid IV length; got " + e.length() + " bytes and expected " + t + " bytes."
+      "Invalid IV length; got " + iv.length() + " bytes and expected " + blockSize + " bytes."
     );
-  if (!Se.util.isArray(e)) {
-    for (var n = [], s = t / 4, r = 0; r < s; ++r)
-      n.push(e.getInt32());
-    e = n;
   }
-  return e;
+  if (!forge$z.util.isArray(iv)) {
+    var ints = [];
+    var blocks = blockSize / 4;
+    for (var i = 0; i < blocks; ++i) {
+      ints.push(iv.getInt32());
+    }
+    iv = ints;
+  }
+  return iv;
 }
-function Ur(e) {
-  e[e.length - 1] = e[e.length - 1] + 1 & 4294967295;
+function inc32(block) {
+  block[block.length - 1] = block[block.length - 1] + 1 & 4294967295;
 }
-function Xr(e) {
-  return [e / 4294967296 | 0, e & 4294967295];
+function from64To32(num) {
+  return [num / 4294967296 | 0, num & 4294967295];
 }
-var ue = z;
-ue.aes = ue.aes || {};
-ue.aes.startEncrypting = function(e, t, a, r) {
-  var n = Pr({
-    key: e,
-    output: a,
-    decrypt: !1,
-    mode: r
+var forge$y = forge$C;
+forge$y.aes = forge$y.aes || {};
+forge$y.aes.startEncrypting = function(key, iv, output, mode) {
+  var cipher = _createCipher$1({
+    key,
+    output,
+    decrypt: false,
+    mode
   });
-  return n.start(t), n;
+  cipher.start(iv);
+  return cipher;
 };
-ue.aes.createEncryptionCipher = function(e, t) {
-  return Pr({
-    key: e,
+forge$y.aes.createEncryptionCipher = function(key, mode) {
+  return _createCipher$1({
+    key,
     output: null,
-    decrypt: !1,
-    mode: t
+    decrypt: false,
+    mode
   });
 };
-ue.aes.startDecrypting = function(e, t, a, r) {
-  var n = Pr({
-    key: e,
-    output: a,
-    decrypt: !0,
-    mode: r
+forge$y.aes.startDecrypting = function(key, iv, output, mode) {
+  var cipher = _createCipher$1({
+    key,
+    output,
+    decrypt: true,
+    mode
   });
-  return n.start(t), n;
+  cipher.start(iv);
+  return cipher;
 };
-ue.aes.createDecryptionCipher = function(e, t) {
-  return Pr({
-    key: e,
+forge$y.aes.createDecryptionCipher = function(key, mode) {
+  return _createCipher$1({
+    key,
     output: null,
-    decrypt: !0,
-    mode: t
+    decrypt: true,
+    mode
   });
 };
-ue.aes.Algorithm = function(e, t) {
-  xa || vn();
-  var a = this;
-  a.name = e, a.mode = new t({
+forge$y.aes.Algorithm = function(name, mode) {
+  if (!init) {
+    initialize();
+  }
+  var self2 = this;
+  self2.name = name;
+  self2.mode = new mode({
     blockSize: 16,
     cipher: {
-      encrypt: function(r, n) {
-        return Zr(a._w, r, n, !1);
+      encrypt: function(inBlock, outBlock) {
+        return _updateBlock$1(self2._w, inBlock, outBlock, false);
       },
-      decrypt: function(r, n) {
-        return Zr(a._w, r, n, !0);
+      decrypt: function(inBlock, outBlock) {
+        return _updateBlock$1(self2._w, inBlock, outBlock, true);
       }
     }
-  }), a._init = !1;
+  });
+  self2._init = false;
 };
-ue.aes.Algorithm.prototype.initialize = function(e) {
-  if (!this._init) {
-    var t = e.key, a;
-    if (typeof t == "string" && (t.length === 16 || t.length === 24 || t.length === 32))
-      t = ue.util.createBuffer(t);
-    else if (ue.util.isArray(t) && (t.length === 16 || t.length === 24 || t.length === 32)) {
-      a = t, t = ue.util.createBuffer();
-      for (var r = 0; r < a.length; ++r)
-        t.putByte(a[r]);
-    }
-    if (!ue.util.isArray(t)) {
-      a = t, t = [];
-      var n = a.length();
-      if (n === 16 || n === 24 || n === 32) {
-        n = n >>> 2;
-        for (var r = 0; r < n; ++r)
-          t.push(a.getInt32());
-      }
-    }
-    if (!ue.util.isArray(t) || !(t.length === 4 || t.length === 6 || t.length === 8))
-      throw new Error("Invalid key parameter.");
-    var s = this.mode.name, i = ["CFB", "OFB", "CTR", "GCM"].indexOf(s) !== -1;
-    this._w = yn(t, e.decrypt && !i), this._init = !0;
+forge$y.aes.Algorithm.prototype.initialize = function(options) {
+  if (this._init) {
+    return;
   }
+  var key = options.key;
+  var tmp;
+  if (typeof key === "string" && (key.length === 16 || key.length === 24 || key.length === 32)) {
+    key = forge$y.util.createBuffer(key);
+  } else if (forge$y.util.isArray(key) && (key.length === 16 || key.length === 24 || key.length === 32)) {
+    tmp = key;
+    key = forge$y.util.createBuffer();
+    for (var i = 0; i < tmp.length; ++i) {
+      key.putByte(tmp[i]);
+    }
+  }
+  if (!forge$y.util.isArray(key)) {
+    tmp = key;
+    key = [];
+    var len = tmp.length();
+    if (len === 16 || len === 24 || len === 32) {
+      len = len >>> 2;
+      for (var i = 0; i < len; ++i) {
+        key.push(tmp.getInt32());
+      }
+    }
+  }
+  if (!forge$y.util.isArray(key) || !(key.length === 4 || key.length === 6 || key.length === 8)) {
+    throw new Error("Invalid key parameter.");
+  }
+  var mode = this.mode.name;
+  var encryptOp = ["CFB", "OFB", "CTR", "GCM"].indexOf(mode) !== -1;
+  this._w = _expandKey(key, options.decrypt && !encryptOp);
+  this._init = true;
 };
-ue.aes._expandKey = function(e, t) {
-  return xa || vn(), yn(e, t);
+forge$y.aes._expandKey = function(key, decrypt) {
+  if (!init) {
+    initialize();
+  }
+  return _expandKey(key, decrypt);
 };
-ue.aes._updateBlock = Zr;
-Zt("AES-ECB", ue.cipher.modes.ecb);
-Zt("AES-CBC", ue.cipher.modes.cbc);
-Zt("AES-CFB", ue.cipher.modes.cfb);
-Zt("AES-OFB", ue.cipher.modes.ofb);
-Zt("AES-CTR", ue.cipher.modes.ctr);
-Zt("AES-GCM", ue.cipher.modes.gcm);
-function Zt(e, t) {
-  var a = function() {
-    return new ue.aes.Algorithm(e, t);
+forge$y.aes._updateBlock = _updateBlock$1;
+registerAlgorithm$1("AES-ECB", forge$y.cipher.modes.ecb);
+registerAlgorithm$1("AES-CBC", forge$y.cipher.modes.cbc);
+registerAlgorithm$1("AES-CFB", forge$y.cipher.modes.cfb);
+registerAlgorithm$1("AES-OFB", forge$y.cipher.modes.ofb);
+registerAlgorithm$1("AES-CTR", forge$y.cipher.modes.ctr);
+registerAlgorithm$1("AES-GCM", forge$y.cipher.modes.gcm);
+function registerAlgorithm$1(name, mode) {
+  var factory = function() {
+    return new forge$y.aes.Algorithm(name, mode);
   };
-  ue.cipher.registerAlgorithm(e, a);
+  forge$y.cipher.registerAlgorithm(name, factory);
 }
-var xa = !1, Ht = 4, Me, jr, pn, Vt, nt;
-function vn() {
-  xa = !0, pn = [0, 1, 2, 4, 8, 16, 32, 64, 128, 27, 54];
-  for (var e = new Array(256), t = 0; t < 128; ++t)
-    e[t] = t << 1, e[t + 128] = t + 128 << 1 ^ 283;
-  Me = new Array(256), jr = new Array(256), Vt = new Array(4), nt = new Array(4);
-  for (var t = 0; t < 4; ++t)
-    Vt[t] = new Array(256), nt[t] = new Array(256);
-  for (var a = 0, r = 0, n, s, i, o, l, u, f, t = 0; t < 256; ++t) {
-    o = r ^ r << 1 ^ r << 2 ^ r << 3 ^ r << 4, o = o >> 8 ^ o & 255 ^ 99, Me[a] = o, jr[o] = a, l = e[o], n = e[a], s = e[n], i = e[s], u = l << 24 ^ // 2
-    o << 16 ^ // 1
-    o << 8 ^ // 1
-    (o ^ l), f = (n ^ s ^ i) << 24 ^ // E (14)
-    (a ^ i) << 16 ^ // 9
-    (a ^ s ^ i) << 8 ^ // D (13)
-    (a ^ n ^ i);
-    for (var c = 0; c < 4; ++c)
-      Vt[c][a] = u, nt[c][o] = f, u = u << 24 | u >>> 8, f = f << 24 | f >>> 8;
-    a === 0 ? a = r = 1 : (a = n ^ e[e[e[n ^ i]]], r ^= e[e[r]]);
+var init = false;
+var Nb = 4;
+var sbox;
+var isbox;
+var rcon;
+var mix;
+var imix;
+function initialize() {
+  init = true;
+  rcon = [0, 1, 2, 4, 8, 16, 32, 64, 128, 27, 54];
+  var xtime = new Array(256);
+  for (var i = 0; i < 128; ++i) {
+    xtime[i] = i << 1;
+    xtime[i + 128] = i + 128 << 1 ^ 283;
+  }
+  sbox = new Array(256);
+  isbox = new Array(256);
+  mix = new Array(4);
+  imix = new Array(4);
+  for (var i = 0; i < 4; ++i) {
+    mix[i] = new Array(256);
+    imix[i] = new Array(256);
+  }
+  var e = 0, ei = 0, e2, e4, e8, sx, sx2, me, ime;
+  for (var i = 0; i < 256; ++i) {
+    sx = ei ^ ei << 1 ^ ei << 2 ^ ei << 3 ^ ei << 4;
+    sx = sx >> 8 ^ sx & 255 ^ 99;
+    sbox[e] = sx;
+    isbox[sx] = e;
+    sx2 = xtime[sx];
+    e2 = xtime[e];
+    e4 = xtime[e2];
+    e8 = xtime[e4];
+    me = sx2 << 24 ^ // 2
+    sx << 16 ^ // 1
+    sx << 8 ^ // 1
+    (sx ^ sx2);
+    ime = (e2 ^ e4 ^ e8) << 24 ^ // E (14)
+    (e ^ e8) << 16 ^ // 9
+    (e ^ e4 ^ e8) << 8 ^ // D (13)
+    (e ^ e2 ^ e8);
+    for (var n = 0; n < 4; ++n) {
+      mix[n][e] = me;
+      imix[n][sx] = ime;
+      me = me << 24 | me >>> 8;
+      ime = ime << 24 | ime >>> 8;
+    }
+    if (e === 0) {
+      e = ei = 1;
+    } else {
+      e = e2 ^ xtime[xtime[xtime[e2 ^ e8]]];
+      ei ^= xtime[xtime[ei]];
+    }
   }
 }
-function yn(e, t) {
-  for (var a = e.slice(0), r, n = 1, s = a.length, i = s + 6 + 1, o = Ht * i, l = s; l < o; ++l)
-    r = a[l - 1], l % s === 0 ? (r = Me[r >>> 16 & 255] << 24 ^ Me[r >>> 8 & 255] << 16 ^ Me[r & 255] << 8 ^ Me[r >>> 24] ^ pn[n] << 24, n++) : s > 6 && l % s === 4 && (r = Me[r >>> 24] << 24 ^ Me[r >>> 16 & 255] << 16 ^ Me[r >>> 8 & 255] << 8 ^ Me[r & 255]), a[l] = a[l - s] ^ r;
-  if (t) {
-    var u, f = nt[0], c = nt[1], v = nt[2], m = nt[3], y = a.slice(0);
-    o = a.length;
-    for (var l = 0, x = o - Ht; l < o; l += Ht, x -= Ht)
-      if (l === 0 || l === o - Ht)
-        y[l] = a[x], y[l + 1] = a[x + 3], y[l + 2] = a[x + 2], y[l + 3] = a[x + 1];
-      else
-        for (var S = 0; S < Ht; ++S)
-          u = a[x + S], y[l + (3 & -S)] = f[Me[u >>> 24]] ^ c[Me[u >>> 16 & 255]] ^ v[Me[u >>> 8 & 255]] ^ m[Me[u & 255]];
-    a = y;
+function _expandKey(key, decrypt) {
+  var w = key.slice(0);
+  var temp, iNk = 1;
+  var Nk = w.length;
+  var Nr1 = Nk + 6 + 1;
+  var end = Nb * Nr1;
+  for (var i = Nk; i < end; ++i) {
+    temp = w[i - 1];
+    if (i % Nk === 0) {
+      temp = sbox[temp >>> 16 & 255] << 24 ^ sbox[temp >>> 8 & 255] << 16 ^ sbox[temp & 255] << 8 ^ sbox[temp >>> 24] ^ rcon[iNk] << 24;
+      iNk++;
+    } else if (Nk > 6 && i % Nk === 4) {
+      temp = sbox[temp >>> 24] << 24 ^ sbox[temp >>> 16 & 255] << 16 ^ sbox[temp >>> 8 & 255] << 8 ^ sbox[temp & 255];
+    }
+    w[i] = w[i - Nk] ^ temp;
   }
-  return a;
+  if (decrypt) {
+    var tmp;
+    var m0 = imix[0];
+    var m1 = imix[1];
+    var m2 = imix[2];
+    var m3 = imix[3];
+    var wnew = w.slice(0);
+    end = w.length;
+    for (var i = 0, wi = end - Nb; i < end; i += Nb, wi -= Nb) {
+      if (i === 0 || i === end - Nb) {
+        wnew[i] = w[wi];
+        wnew[i + 1] = w[wi + 3];
+        wnew[i + 2] = w[wi + 2];
+        wnew[i + 3] = w[wi + 1];
+      } else {
+        for (var n = 0; n < Nb; ++n) {
+          tmp = w[wi + n];
+          wnew[i + (3 & -n)] = m0[sbox[tmp >>> 24]] ^ m1[sbox[tmp >>> 16 & 255]] ^ m2[sbox[tmp >>> 8 & 255]] ^ m3[sbox[tmp & 255]];
+        }
+      }
+    }
+    w = wnew;
+  }
+  return w;
 }
-function Zr(e, t, a, r) {
-  var n = e.length / 4 - 1, s, i, o, l, u;
-  r ? (s = nt[0], i = nt[1], o = nt[2], l = nt[3], u = jr) : (s = Vt[0], i = Vt[1], o = Vt[2], l = Vt[3], u = Me);
-  var f, c, v, m, y, x, S;
-  f = t[0] ^ e[0], c = t[r ? 3 : 1] ^ e[1], v = t[2] ^ e[2], m = t[r ? 1 : 3] ^ e[3];
-  for (var I = 3, b = 1; b < n; ++b)
-    y = s[f >>> 24] ^ i[c >>> 16 & 255] ^ o[v >>> 8 & 255] ^ l[m & 255] ^ e[++I], x = s[c >>> 24] ^ i[v >>> 16 & 255] ^ o[m >>> 8 & 255] ^ l[f & 255] ^ e[++I], S = s[v >>> 24] ^ i[m >>> 16 & 255] ^ o[f >>> 8 & 255] ^ l[c & 255] ^ e[++I], m = s[m >>> 24] ^ i[f >>> 16 & 255] ^ o[c >>> 8 & 255] ^ l[v & 255] ^ e[++I], f = y, c = x, v = S;
-  a[0] = u[f >>> 24] << 24 ^ u[c >>> 16 & 255] << 16 ^ u[v >>> 8 & 255] << 8 ^ u[m & 255] ^ e[++I], a[r ? 3 : 1] = u[c >>> 24] << 24 ^ u[v >>> 16 & 255] << 16 ^ u[m >>> 8 & 255] << 8 ^ u[f & 255] ^ e[++I], a[2] = u[v >>> 24] << 24 ^ u[m >>> 16 & 255] << 16 ^ u[f >>> 8 & 255] << 8 ^ u[c & 255] ^ e[++I], a[r ? 1 : 3] = u[m >>> 24] << 24 ^ u[f >>> 16 & 255] << 16 ^ u[c >>> 8 & 255] << 8 ^ u[v & 255] ^ e[++I];
+function _updateBlock$1(w, input, output, decrypt) {
+  var Nr = w.length / 4 - 1;
+  var m0, m1, m2, m3, sub;
+  if (decrypt) {
+    m0 = imix[0];
+    m1 = imix[1];
+    m2 = imix[2];
+    m3 = imix[3];
+    sub = isbox;
+  } else {
+    m0 = mix[0];
+    m1 = mix[1];
+    m2 = mix[2];
+    m3 = mix[3];
+    sub = sbox;
+  }
+  var a, b, c, d, a2, b2, c2;
+  a = input[0] ^ w[0];
+  b = input[decrypt ? 3 : 1] ^ w[1];
+  c = input[2] ^ w[2];
+  d = input[decrypt ? 1 : 3] ^ w[3];
+  var i = 3;
+  for (var round = 1; round < Nr; ++round) {
+    a2 = m0[a >>> 24] ^ m1[b >>> 16 & 255] ^ m2[c >>> 8 & 255] ^ m3[d & 255] ^ w[++i];
+    b2 = m0[b >>> 24] ^ m1[c >>> 16 & 255] ^ m2[d >>> 8 & 255] ^ m3[a & 255] ^ w[++i];
+    c2 = m0[c >>> 24] ^ m1[d >>> 16 & 255] ^ m2[a >>> 8 & 255] ^ m3[b & 255] ^ w[++i];
+    d = m0[d >>> 24] ^ m1[a >>> 16 & 255] ^ m2[b >>> 8 & 255] ^ m3[c & 255] ^ w[++i];
+    a = a2;
+    b = b2;
+    c = c2;
+  }
+  output[0] = sub[a >>> 24] << 24 ^ sub[b >>> 16 & 255] << 16 ^ sub[c >>> 8 & 255] << 8 ^ sub[d & 255] ^ w[++i];
+  output[decrypt ? 3 : 1] = sub[b >>> 24] << 24 ^ sub[c >>> 16 & 255] << 16 ^ sub[d >>> 8 & 255] << 8 ^ sub[a & 255] ^ w[++i];
+  output[2] = sub[c >>> 24] << 24 ^ sub[d >>> 16 & 255] << 16 ^ sub[a >>> 8 & 255] << 8 ^ sub[b & 255] ^ w[++i];
+  output[decrypt ? 1 : 3] = sub[d >>> 24] << 24 ^ sub[a >>> 16 & 255] << 16 ^ sub[b >>> 8 & 255] << 8 ^ sub[c & 255] ^ w[++i];
 }
-function Pr(e) {
-  e = e || {};
-  var t = (e.mode || "CBC").toUpperCase(), a = "AES-" + t, r;
-  e.decrypt ? r = ue.cipher.createDecipher(a, e.key) : r = ue.cipher.createCipher(a, e.key);
-  var n = r.start;
-  return r.start = function(s, i) {
-    var o = null;
-    i instanceof ue.util.ByteBuffer && (o = i, i = {}), i = i || {}, i.output = o, i.iv = s, n.call(r, i);
-  }, r;
+function _createCipher$1(options) {
+  options = options || {};
+  var mode = (options.mode || "CBC").toUpperCase();
+  var algorithm = "AES-" + mode;
+  var cipher;
+  if (options.decrypt) {
+    cipher = forge$y.cipher.createDecipher(algorithm, options.key);
+  } else {
+    cipher = forge$y.cipher.createCipher(algorithm, options.key);
+  }
+  var start = cipher.start;
+  cipher.start = function(iv, options2) {
+    var output = null;
+    if (options2 instanceof forge$y.util.ByteBuffer) {
+      output = options2;
+      options2 = {};
+    }
+    options2 = options2 || {};
+    options2.output = output;
+    options2.iv = iv;
+    start.call(cipher, options2);
+  };
+  return cipher;
 }
-var sr = z;
-sr.pki = sr.pki || {};
-var Jr = sr.pki.oids = sr.oids = sr.oids || {};
-function R(e, t) {
-  Jr[e] = t, Jr[t] = e;
+var forge$x = forge$C;
+forge$x.pki = forge$x.pki || {};
+var oids$2 = forge$x.pki.oids = forge$x.oids = forge$x.oids || {};
+function _IN(id, name) {
+  oids$2[id] = name;
+  oids$2[name] = id;
 }
-function te(e, t) {
-  Jr[e] = t;
+function _I_(id, name) {
+  oids$2[id] = name;
 }
-R("1.2.840.113549.1.1.1", "rsaEncryption");
-R("1.2.840.113549.1.1.4", "md5WithRSAEncryption");
-R("1.2.840.113549.1.1.5", "sha1WithRSAEncryption");
-R("1.2.840.113549.1.1.7", "RSAES-OAEP");
-R("1.2.840.113549.1.1.8", "mgf1");
-R("1.2.840.113549.1.1.9", "pSpecified");
-R("1.2.840.113549.1.1.10", "RSASSA-PSS");
-R("1.2.840.113549.1.1.11", "sha256WithRSAEncryption");
-R("1.2.840.113549.1.1.12", "sha384WithRSAEncryption");
-R("1.2.840.113549.1.1.13", "sha512WithRSAEncryption");
-R("1.3.101.112", "EdDSA25519");
-R("1.2.840.10040.4.3", "dsa-with-sha1");
-R("1.3.14.3.2.7", "desCBC");
-R("1.3.14.3.2.26", "sha1");
-R("1.3.14.3.2.29", "sha1WithRSASignature");
-R("2.16.840.1.101.3.4.2.1", "sha256");
-R("2.16.840.1.101.3.4.2.2", "sha384");
-R("2.16.840.1.101.3.4.2.3", "sha512");
-R("2.16.840.1.101.3.4.2.4", "sha224");
-R("2.16.840.1.101.3.4.2.5", "sha512-224");
-R("2.16.840.1.101.3.4.2.6", "sha512-256");
-R("1.2.840.113549.2.2", "md2");
-R("1.2.840.113549.2.5", "md5");
-R("1.2.840.113549.1.7.1", "data");
-R("1.2.840.113549.1.7.2", "signedData");
-R("1.2.840.113549.1.7.3", "envelopedData");
-R("1.2.840.113549.1.7.4", "signedAndEnvelopedData");
-R("1.2.840.113549.1.7.5", "digestedData");
-R("1.2.840.113549.1.7.6", "encryptedData");
-R("1.2.840.113549.1.9.1", "emailAddress");
-R("1.2.840.113549.1.9.2", "unstructuredName");
-R("1.2.840.113549.1.9.3", "contentType");
-R("1.2.840.113549.1.9.4", "messageDigest");
-R("1.2.840.113549.1.9.5", "signingTime");
-R("1.2.840.113549.1.9.6", "counterSignature");
-R("1.2.840.113549.1.9.7", "challengePassword");
-R("1.2.840.113549.1.9.8", "unstructuredAddress");
-R("1.2.840.113549.1.9.14", "extensionRequest");
-R("1.2.840.113549.1.9.20", "friendlyName");
-R("1.2.840.113549.1.9.21", "localKeyId");
-R("1.2.840.113549.1.9.22.1", "x509Certificate");
-R("1.2.840.113549.1.12.10.1.1", "keyBag");
-R("1.2.840.113549.1.12.10.1.2", "pkcs8ShroudedKeyBag");
-R("1.2.840.113549.1.12.10.1.3", "certBag");
-R("1.2.840.113549.1.12.10.1.4", "crlBag");
-R("1.2.840.113549.1.12.10.1.5", "secretBag");
-R("1.2.840.113549.1.12.10.1.6", "safeContentsBag");
-R("1.2.840.113549.1.5.13", "pkcs5PBES2");
-R("1.2.840.113549.1.5.12", "pkcs5PBKDF2");
-R("1.2.840.113549.1.12.1.1", "pbeWithSHAAnd128BitRC4");
-R("1.2.840.113549.1.12.1.2", "pbeWithSHAAnd40BitRC4");
-R("1.2.840.113549.1.12.1.3", "pbeWithSHAAnd3-KeyTripleDES-CBC");
-R("1.2.840.113549.1.12.1.4", "pbeWithSHAAnd2-KeyTripleDES-CBC");
-R("1.2.840.113549.1.12.1.5", "pbeWithSHAAnd128BitRC2-CBC");
-R("1.2.840.113549.1.12.1.6", "pbewithSHAAnd40BitRC2-CBC");
-R("1.2.840.113549.2.7", "hmacWithSHA1");
-R("1.2.840.113549.2.8", "hmacWithSHA224");
-R("1.2.840.113549.2.9", "hmacWithSHA256");
-R("1.2.840.113549.2.10", "hmacWithSHA384");
-R("1.2.840.113549.2.11", "hmacWithSHA512");
-R("1.2.840.113549.3.7", "des-EDE3-CBC");
-R("2.16.840.1.101.3.4.1.2", "aes128-CBC");
-R("2.16.840.1.101.3.4.1.22", "aes192-CBC");
-R("2.16.840.1.101.3.4.1.42", "aes256-CBC");
-R("2.5.4.3", "commonName");
-R("2.5.4.4", "surname");
-R("2.5.4.5", "serialNumber");
-R("2.5.4.6", "countryName");
-R("2.5.4.7", "localityName");
-R("2.5.4.8", "stateOrProvinceName");
-R("2.5.4.9", "streetAddress");
-R("2.5.4.10", "organizationName");
-R("2.5.4.11", "organizationalUnitName");
-R("2.5.4.12", "title");
-R("2.5.4.13", "description");
-R("2.5.4.15", "businessCategory");
-R("2.5.4.17", "postalCode");
-R("2.5.4.42", "givenName");
-R("2.5.4.65", "pseudonym");
-R("1.3.6.1.4.1.311.60.2.1.2", "jurisdictionOfIncorporationStateOrProvinceName");
-R("1.3.6.1.4.1.311.60.2.1.3", "jurisdictionOfIncorporationCountryName");
-R("2.16.840.1.113730.1.1", "nsCertType");
-R("2.16.840.1.113730.1.13", "nsComment");
-te("2.5.29.1", "authorityKeyIdentifier");
-te("2.5.29.2", "keyAttributes");
-te("2.5.29.3", "certificatePolicies");
-te("2.5.29.4", "keyUsageRestriction");
-te("2.5.29.5", "policyMapping");
-te("2.5.29.6", "subtreesConstraint");
-te("2.5.29.7", "subjectAltName");
-te("2.5.29.8", "issuerAltName");
-te("2.5.29.9", "subjectDirectoryAttributes");
-te("2.5.29.10", "basicConstraints");
-te("2.5.29.11", "nameConstraints");
-te("2.5.29.12", "policyConstraints");
-te("2.5.29.13", "basicConstraints");
-R("2.5.29.14", "subjectKeyIdentifier");
-R("2.5.29.15", "keyUsage");
-te("2.5.29.16", "privateKeyUsagePeriod");
-R("2.5.29.17", "subjectAltName");
-R("2.5.29.18", "issuerAltName");
-R("2.5.29.19", "basicConstraints");
-te("2.5.29.20", "cRLNumber");
-te("2.5.29.21", "cRLReason");
-te("2.5.29.22", "expirationDate");
-te("2.5.29.23", "instructionCode");
-te("2.5.29.24", "invalidityDate");
-te("2.5.29.25", "cRLDistributionPoints");
-te("2.5.29.26", "issuingDistributionPoint");
-te("2.5.29.27", "deltaCRLIndicator");
-te("2.5.29.28", "issuingDistributionPoint");
-te("2.5.29.29", "certificateIssuer");
-te("2.5.29.30", "nameConstraints");
-R("2.5.29.31", "cRLDistributionPoints");
-R("2.5.29.32", "certificatePolicies");
-te("2.5.29.33", "policyMappings");
-te("2.5.29.34", "policyConstraints");
-R("2.5.29.35", "authorityKeyIdentifier");
-te("2.5.29.36", "policyConstraints");
-R("2.5.29.37", "extKeyUsage");
-te("2.5.29.46", "freshestCRL");
-te("2.5.29.54", "inhibitAnyPolicy");
-R("1.3.6.1.4.1.11129.2.4.2", "timestampList");
-R("1.3.6.1.5.5.7.1.1", "authorityInfoAccess");
-R("1.3.6.1.5.5.7.3.1", "serverAuth");
-R("1.3.6.1.5.5.7.3.2", "clientAuth");
-R("1.3.6.1.5.5.7.3.3", "codeSigning");
-R("1.3.6.1.5.5.7.3.4", "emailProtection");
-R("1.3.6.1.5.5.7.3.8", "timeStamping");
-var le = z, U = le.asn1 = le.asn1 || {};
-U.Class = {
+_IN("1.2.840.113549.1.1.1", "rsaEncryption");
+_IN("1.2.840.113549.1.1.4", "md5WithRSAEncryption");
+_IN("1.2.840.113549.1.1.5", "sha1WithRSAEncryption");
+_IN("1.2.840.113549.1.1.7", "RSAES-OAEP");
+_IN("1.2.840.113549.1.1.8", "mgf1");
+_IN("1.2.840.113549.1.1.9", "pSpecified");
+_IN("1.2.840.113549.1.1.10", "RSASSA-PSS");
+_IN("1.2.840.113549.1.1.11", "sha256WithRSAEncryption");
+_IN("1.2.840.113549.1.1.12", "sha384WithRSAEncryption");
+_IN("1.2.840.113549.1.1.13", "sha512WithRSAEncryption");
+_IN("1.3.101.112", "EdDSA25519");
+_IN("1.2.840.10040.4.3", "dsa-with-sha1");
+_IN("1.3.14.3.2.7", "desCBC");
+_IN("1.3.14.3.2.26", "sha1");
+_IN("1.3.14.3.2.29", "sha1WithRSASignature");
+_IN("2.16.840.1.101.3.4.2.1", "sha256");
+_IN("2.16.840.1.101.3.4.2.2", "sha384");
+_IN("2.16.840.1.101.3.4.2.3", "sha512");
+_IN("2.16.840.1.101.3.4.2.4", "sha224");
+_IN("2.16.840.1.101.3.4.2.5", "sha512-224");
+_IN("2.16.840.1.101.3.4.2.6", "sha512-256");
+_IN("1.2.840.113549.2.2", "md2");
+_IN("1.2.840.113549.2.5", "md5");
+_IN("1.2.840.113549.1.7.1", "data");
+_IN("1.2.840.113549.1.7.2", "signedData");
+_IN("1.2.840.113549.1.7.3", "envelopedData");
+_IN("1.2.840.113549.1.7.4", "signedAndEnvelopedData");
+_IN("1.2.840.113549.1.7.5", "digestedData");
+_IN("1.2.840.113549.1.7.6", "encryptedData");
+_IN("1.2.840.113549.1.9.1", "emailAddress");
+_IN("1.2.840.113549.1.9.2", "unstructuredName");
+_IN("1.2.840.113549.1.9.3", "contentType");
+_IN("1.2.840.113549.1.9.4", "messageDigest");
+_IN("1.2.840.113549.1.9.5", "signingTime");
+_IN("1.2.840.113549.1.9.6", "counterSignature");
+_IN("1.2.840.113549.1.9.7", "challengePassword");
+_IN("1.2.840.113549.1.9.8", "unstructuredAddress");
+_IN("1.2.840.113549.1.9.14", "extensionRequest");
+_IN("1.2.840.113549.1.9.20", "friendlyName");
+_IN("1.2.840.113549.1.9.21", "localKeyId");
+_IN("1.2.840.113549.1.9.22.1", "x509Certificate");
+_IN("1.2.840.113549.1.12.10.1.1", "keyBag");
+_IN("1.2.840.113549.1.12.10.1.2", "pkcs8ShroudedKeyBag");
+_IN("1.2.840.113549.1.12.10.1.3", "certBag");
+_IN("1.2.840.113549.1.12.10.1.4", "crlBag");
+_IN("1.2.840.113549.1.12.10.1.5", "secretBag");
+_IN("1.2.840.113549.1.12.10.1.6", "safeContentsBag");
+_IN("1.2.840.113549.1.5.13", "pkcs5PBES2");
+_IN("1.2.840.113549.1.5.12", "pkcs5PBKDF2");
+_IN("1.2.840.113549.1.12.1.1", "pbeWithSHAAnd128BitRC4");
+_IN("1.2.840.113549.1.12.1.2", "pbeWithSHAAnd40BitRC4");
+_IN("1.2.840.113549.1.12.1.3", "pbeWithSHAAnd3-KeyTripleDES-CBC");
+_IN("1.2.840.113549.1.12.1.4", "pbeWithSHAAnd2-KeyTripleDES-CBC");
+_IN("1.2.840.113549.1.12.1.5", "pbeWithSHAAnd128BitRC2-CBC");
+_IN("1.2.840.113549.1.12.1.6", "pbewithSHAAnd40BitRC2-CBC");
+_IN("1.2.840.113549.2.7", "hmacWithSHA1");
+_IN("1.2.840.113549.2.8", "hmacWithSHA224");
+_IN("1.2.840.113549.2.9", "hmacWithSHA256");
+_IN("1.2.840.113549.2.10", "hmacWithSHA384");
+_IN("1.2.840.113549.2.11", "hmacWithSHA512");
+_IN("1.2.840.113549.3.7", "des-EDE3-CBC");
+_IN("2.16.840.1.101.3.4.1.2", "aes128-CBC");
+_IN("2.16.840.1.101.3.4.1.22", "aes192-CBC");
+_IN("2.16.840.1.101.3.4.1.42", "aes256-CBC");
+_IN("2.5.4.3", "commonName");
+_IN("2.5.4.4", "surname");
+_IN("2.5.4.5", "serialNumber");
+_IN("2.5.4.6", "countryName");
+_IN("2.5.4.7", "localityName");
+_IN("2.5.4.8", "stateOrProvinceName");
+_IN("2.5.4.9", "streetAddress");
+_IN("2.5.4.10", "organizationName");
+_IN("2.5.4.11", "organizationalUnitName");
+_IN("2.5.4.12", "title");
+_IN("2.5.4.13", "description");
+_IN("2.5.4.15", "businessCategory");
+_IN("2.5.4.17", "postalCode");
+_IN("2.5.4.42", "givenName");
+_IN("2.5.4.65", "pseudonym");
+_IN("1.3.6.1.4.1.311.60.2.1.2", "jurisdictionOfIncorporationStateOrProvinceName");
+_IN("1.3.6.1.4.1.311.60.2.1.3", "jurisdictionOfIncorporationCountryName");
+_IN("2.16.840.1.113730.1.1", "nsCertType");
+_IN("2.16.840.1.113730.1.13", "nsComment");
+_I_("2.5.29.1", "authorityKeyIdentifier");
+_I_("2.5.29.2", "keyAttributes");
+_I_("2.5.29.3", "certificatePolicies");
+_I_("2.5.29.4", "keyUsageRestriction");
+_I_("2.5.29.5", "policyMapping");
+_I_("2.5.29.6", "subtreesConstraint");
+_I_("2.5.29.7", "subjectAltName");
+_I_("2.5.29.8", "issuerAltName");
+_I_("2.5.29.9", "subjectDirectoryAttributes");
+_I_("2.5.29.10", "basicConstraints");
+_I_("2.5.29.11", "nameConstraints");
+_I_("2.5.29.12", "policyConstraints");
+_I_("2.5.29.13", "basicConstraints");
+_IN("2.5.29.14", "subjectKeyIdentifier");
+_IN("2.5.29.15", "keyUsage");
+_I_("2.5.29.16", "privateKeyUsagePeriod");
+_IN("2.5.29.17", "subjectAltName");
+_IN("2.5.29.18", "issuerAltName");
+_IN("2.5.29.19", "basicConstraints");
+_I_("2.5.29.20", "cRLNumber");
+_I_("2.5.29.21", "cRLReason");
+_I_("2.5.29.22", "expirationDate");
+_I_("2.5.29.23", "instructionCode");
+_I_("2.5.29.24", "invalidityDate");
+_I_("2.5.29.25", "cRLDistributionPoints");
+_I_("2.5.29.26", "issuingDistributionPoint");
+_I_("2.5.29.27", "deltaCRLIndicator");
+_I_("2.5.29.28", "issuingDistributionPoint");
+_I_("2.5.29.29", "certificateIssuer");
+_I_("2.5.29.30", "nameConstraints");
+_IN("2.5.29.31", "cRLDistributionPoints");
+_IN("2.5.29.32", "certificatePolicies");
+_I_("2.5.29.33", "policyMappings");
+_I_("2.5.29.34", "policyConstraints");
+_IN("2.5.29.35", "authorityKeyIdentifier");
+_I_("2.5.29.36", "policyConstraints");
+_IN("2.5.29.37", "extKeyUsage");
+_I_("2.5.29.46", "freshestCRL");
+_I_("2.5.29.54", "inhibitAnyPolicy");
+_IN("1.3.6.1.4.1.11129.2.4.2", "timestampList");
+_IN("1.3.6.1.5.5.7.1.1", "authorityInfoAccess");
+_IN("1.3.6.1.5.5.7.3.1", "serverAuth");
+_IN("1.3.6.1.5.5.7.3.2", "clientAuth");
+_IN("1.3.6.1.5.5.7.3.3", "codeSigning");
+_IN("1.3.6.1.5.5.7.3.4", "emailProtection");
+_IN("1.3.6.1.5.5.7.3.8", "timeStamping");
+var forge$w = forge$C;
+var asn1$8 = forge$w.asn1 = forge$w.asn1 || {};
+asn1$8.Class = {
   UNIVERSAL: 0,
   APPLICATION: 64,
   CONTEXT_SPECIFIC: 128,
   PRIVATE: 192
 };
-U.Type = {
+asn1$8.Type = {
   NONE: 0,
   BOOLEAN: 1,
   INTEGER: 2,
@@ -1692,510 +2681,873 @@ U.Type = {
   GENERALIZEDTIME: 24,
   BMPSTRING: 30
 };
-U.maxDepth = 256;
-U.create = function(e, t, a, r, n) {
-  if (le.util.isArray(r)) {
-    for (var s = [], i = 0; i < r.length; ++i)
-      r[i] !== void 0 && s.push(r[i]);
-    r = s;
+asn1$8.maxDepth = 256;
+asn1$8.create = function(tagClass, type, constructed, value, options) {
+  if (forge$w.util.isArray(value)) {
+    var tmp = [];
+    for (var i = 0; i < value.length; ++i) {
+      if (value[i] !== void 0) {
+        tmp.push(value[i]);
+      }
+    }
+    value = tmp;
   }
-  var o = {
-    tagClass: e,
-    type: t,
-    constructed: a,
-    composed: a || le.util.isArray(r),
-    value: r
+  var obj = {
+    tagClass,
+    type,
+    constructed,
+    composed: constructed || forge$w.util.isArray(value),
+    value
   };
-  return n && "bitStringContents" in n && (o.bitStringContents = n.bitStringContents, o.original = U.copy(o)), o;
-};
-U.copy = function(e, t) {
-  var a;
-  if (le.util.isArray(e)) {
-    a = [];
-    for (var r = 0; r < e.length; ++r)
-      a.push(U.copy(e[r], t));
-    return a;
+  if (options && "bitStringContents" in options) {
+    obj.bitStringContents = options.bitStringContents;
+    obj.original = asn1$8.copy(obj);
   }
-  return typeof e == "string" ? e : (a = {
-    tagClass: e.tagClass,
-    type: e.type,
-    constructed: e.constructed,
-    composed: e.composed,
-    value: U.copy(e.value, t)
-  }, t && !t.excludeBitStringContents && (a.bitStringContents = e.bitStringContents), a);
+  return obj;
 };
-U.equals = function(e, t, a) {
-  if (le.util.isArray(e)) {
-    if (!le.util.isArray(t) || e.length !== t.length)
-      return !1;
-    for (var r = 0; r < e.length; ++r)
-      if (!U.equals(e[r], t[r]))
-        return !1;
-    return !0;
+asn1$8.copy = function(obj, options) {
+  var copy;
+  if (forge$w.util.isArray(obj)) {
+    copy = [];
+    for (var i = 0; i < obj.length; ++i) {
+      copy.push(asn1$8.copy(obj[i], options));
+    }
+    return copy;
   }
-  if (typeof e != typeof t)
-    return !1;
-  if (typeof e == "string")
-    return e === t;
-  var n = e.tagClass === t.tagClass && e.type === t.type && e.constructed === t.constructed && e.composed === t.composed && U.equals(e.value, t.value);
-  return a && a.includeBitStringContents && (n = n && e.bitStringContents === t.bitStringContents), n;
-};
-U.getBerValueLength = function(e) {
-  var t = e.getByte();
-  if (t !== 128) {
-    var a, r = t & 128;
-    return r ? a = e.getInt((t & 127) << 3) : a = t, a;
+  if (typeof obj === "string") {
+    return obj;
   }
+  copy = {
+    tagClass: obj.tagClass,
+    type: obj.type,
+    constructed: obj.constructed,
+    composed: obj.composed,
+    value: asn1$8.copy(obj.value, options)
+  };
+  if (options && !options.excludeBitStringContents) {
+    copy.bitStringContents = obj.bitStringContents;
+  }
+  return copy;
 };
-function nr(e, t, a) {
-  if (a > t) {
-    var r = new Error("Too few bytes to parse DER.");
-    throw r.available = e.length(), r.remaining = t, r.requested = a, r;
+asn1$8.equals = function(obj1, obj2, options) {
+  if (forge$w.util.isArray(obj1)) {
+    if (!forge$w.util.isArray(obj2)) {
+      return false;
+    }
+    if (obj1.length !== obj2.length) {
+      return false;
+    }
+    for (var i = 0; i < obj1.length; ++i) {
+      if (!asn1$8.equals(obj1[i], obj2[i])) {
+        return false;
+      }
+    }
+    return true;
+  }
+  if (typeof obj1 !== typeof obj2) {
+    return false;
+  }
+  if (typeof obj1 === "string") {
+    return obj1 === obj2;
+  }
+  var equal = obj1.tagClass === obj2.tagClass && obj1.type === obj2.type && obj1.constructed === obj2.constructed && obj1.composed === obj2.composed && asn1$8.equals(obj1.value, obj2.value);
+  if (options && options.includeBitStringContents) {
+    equal = equal && obj1.bitStringContents === obj2.bitStringContents;
+  }
+  return equal;
+};
+asn1$8.getBerValueLength = function(b) {
+  var b2 = b.getByte();
+  if (b2 === 128) {
+    return void 0;
+  }
+  var length;
+  var longForm = b2 & 128;
+  if (!longForm) {
+    length = b2;
+  } else {
+    length = b.getInt((b2 & 127) << 3);
+  }
+  return length;
+};
+function _checkBufferLength(bytes, remaining, n) {
+  if (n > remaining) {
+    var error = new Error("Too few bytes to parse DER.");
+    error.available = bytes.length();
+    error.remaining = remaining;
+    error.requested = n;
+    throw error;
   }
 }
-var Ai = function(e, t) {
-  var a = e.getByte();
-  if (t--, a !== 128) {
-    var r, n = a & 128;
-    if (!n)
-      r = a;
-    else {
-      var s = a & 127;
-      nr(e, t, s), r = e.getInt(s << 3);
-    }
-    if (r < 0)
-      throw new Error("Negative length: " + r);
-    return r;
+var _getValueLength = function(bytes, remaining) {
+  var b2 = bytes.getByte();
+  remaining--;
+  if (b2 === 128) {
+    return void 0;
   }
-};
-U.fromDer = function(e, t) {
-  t === void 0 && (t = {
-    strict: !0,
-    parseAllBytes: !0,
-    decodeBitStrings: !0
-  }), typeof t == "boolean" && (t = {
-    strict: t,
-    parseAllBytes: !0,
-    decodeBitStrings: !0
-  }), "strict" in t || (t.strict = !0), "parseAllBytes" in t || (t.parseAllBytes = !0), "decodeBitStrings" in t || (t.decodeBitStrings = !0), "maxDepth" in t || (t.maxDepth = U.maxDepth), typeof e == "string" && (e = le.util.createBuffer(e));
-  var a = e.length(), r = Cr(e, e.length(), 0, t);
-  if (t.parseAllBytes && e.length() !== 0) {
-    var n = new Error("Unparsed DER bytes remain after ASN.1 parsing.");
-    throw n.byteCount = a, n.remaining = e.length(), n;
+  var length;
+  var longForm = b2 & 128;
+  if (!longForm) {
+    length = b2;
+  } else {
+    var longFormBytes = b2 & 127;
+    _checkBufferLength(bytes, remaining, longFormBytes);
+    length = bytes.getInt(longFormBytes << 3);
   }
-  return r;
+  if (length < 0) {
+    throw new Error("Negative length: " + length);
+  }
+  return length;
 };
-function Cr(e, t, a, r) {
-  if (a >= r.maxDepth)
+asn1$8.fromDer = function(bytes, options) {
+  if (options === void 0) {
+    options = {
+      strict: true,
+      parseAllBytes: true,
+      decodeBitStrings: true
+    };
+  }
+  if (typeof options === "boolean") {
+    options = {
+      strict: options,
+      parseAllBytes: true,
+      decodeBitStrings: true
+    };
+  }
+  if (!("strict" in options)) {
+    options.strict = true;
+  }
+  if (!("parseAllBytes" in options)) {
+    options.parseAllBytes = true;
+  }
+  if (!("decodeBitStrings" in options)) {
+    options.decodeBitStrings = true;
+  }
+  if (!("maxDepth" in options)) {
+    options.maxDepth = asn1$8.maxDepth;
+  }
+  if (typeof bytes === "string") {
+    bytes = forge$w.util.createBuffer(bytes);
+  }
+  var byteCount = bytes.length();
+  var value = _fromDer(bytes, bytes.length(), 0, options);
+  if (options.parseAllBytes && bytes.length() !== 0) {
+    var error = new Error("Unparsed DER bytes remain after ASN.1 parsing.");
+    error.byteCount = byteCount;
+    error.remaining = bytes.length();
+    throw error;
+  }
+  return value;
+};
+function _fromDer(bytes, remaining, depth, options) {
+  if (depth >= options.maxDepth) {
     throw new Error("ASN.1 parsing error: Max depth exceeded.");
-  var n;
-  nr(e, t, 2);
-  var s = e.getByte();
-  t--;
-  var i = s & 192, o = s & 31;
-  n = e.length();
-  var l = Ai(e, t);
-  if (t -= n - e.length(), l !== void 0 && l > t) {
-    if (r.strict) {
-      var u = new Error("Too few bytes to read ASN.1 value.");
-      throw u.available = e.length(), u.remaining = t, u.requested = l, u;
-    }
-    l = t;
   }
-  var f, c, v = (s & 32) === 32;
-  if (v)
-    if (f = [], l === void 0)
+  var start;
+  _checkBufferLength(bytes, remaining, 2);
+  var b1 = bytes.getByte();
+  remaining--;
+  var tagClass = b1 & 192;
+  var type = b1 & 31;
+  start = bytes.length();
+  var length = _getValueLength(bytes, remaining);
+  remaining -= start - bytes.length();
+  if (length !== void 0 && length > remaining) {
+    if (options.strict) {
+      var error = new Error("Too few bytes to read ASN.1 value.");
+      error.available = bytes.length();
+      error.remaining = remaining;
+      error.requested = length;
+      throw error;
+    }
+    length = remaining;
+  }
+  var value;
+  var bitStringContents;
+  var constructed = (b1 & 32) === 32;
+  if (constructed) {
+    value = [];
+    if (length === void 0) {
       for (; ; ) {
-        if (nr(e, t, 2), e.bytes(2) === "\0\0") {
-          e.getBytes(2), t -= 2;
+        _checkBufferLength(bytes, remaining, 2);
+        if (bytes.bytes(2) === String.fromCharCode(0, 0)) {
+          bytes.getBytes(2);
+          remaining -= 2;
           break;
         }
-        n = e.length(), f.push(Cr(e, t, a + 1, r)), t -= n - e.length();
+        start = bytes.length();
+        value.push(_fromDer(bytes, remaining, depth + 1, options));
+        remaining -= start - bytes.length();
       }
-    else
-      for (; l > 0; )
-        n = e.length(), f.push(Cr(e, l, a + 1, r)), t -= n - e.length(), l -= n - e.length();
-  if (f === void 0 && i === U.Class.UNIVERSAL && o === U.Type.BITSTRING && (c = e.bytes(l)), f === void 0 && r.decodeBitStrings && i === U.Class.UNIVERSAL && // FIXME: OCTET STRINGs not yet supported here
-  // .. other parts of forge expect to decode OCTET STRINGs manually
-  o === U.Type.BITSTRING && l > 1) {
-    var m = e.read, y = t, x = 0;
-    if (o === U.Type.BITSTRING && (nr(e, t, 1), x = e.getByte(), t--), x === 0)
-      try {
-        n = e.length();
-        var S = {
-          // enforce strict mode to avoid parsing ASN.1 from plain data
-          strict: !0,
-          decodeBitStrings: !0
-        }, I = Cr(e, t, a + 1, S), b = n - e.length();
-        t -= b, o == U.Type.BITSTRING && b++;
-        var _ = I.tagClass;
-        b === l && (_ === U.Class.UNIVERSAL || _ === U.Class.CONTEXT_SPECIFIC) && (f = [I]);
-      } catch {
+    } else {
+      while (length > 0) {
+        start = bytes.length();
+        value.push(_fromDer(bytes, length, depth + 1, options));
+        remaining -= start - bytes.length();
+        length -= start - bytes.length();
       }
-    f === void 0 && (e.read = m, t = y);
-  }
-  if (f === void 0) {
-    if (l === void 0) {
-      if (r.strict)
-        throw new Error("Non-constructed ASN.1 object of indefinite length.");
-      l = t;
     }
-    if (o === U.Type.BMPSTRING)
-      for (f = ""; l > 0; l -= 2)
-        nr(e, t, 2), f += String.fromCharCode(e.getInt16()), t -= 2;
-    else
-      f = e.getBytes(l), t -= l;
   }
-  var V = c === void 0 ? null : {
-    bitStringContents: c
+  if (value === void 0 && tagClass === asn1$8.Class.UNIVERSAL && type === asn1$8.Type.BITSTRING) {
+    bitStringContents = bytes.bytes(length);
+  }
+  if (value === void 0 && options.decodeBitStrings && tagClass === asn1$8.Class.UNIVERSAL && // FIXME: OCTET STRINGs not yet supported here
+  // .. other parts of forge expect to decode OCTET STRINGs manually
+  type === asn1$8.Type.BITSTRING && length > 1) {
+    var savedRead = bytes.read;
+    var savedRemaining = remaining;
+    var unused = 0;
+    if (type === asn1$8.Type.BITSTRING) {
+      _checkBufferLength(bytes, remaining, 1);
+      unused = bytes.getByte();
+      remaining--;
+    }
+    if (unused === 0) {
+      try {
+        start = bytes.length();
+        var subOptions = {
+          // enforce strict mode to avoid parsing ASN.1 from plain data
+          strict: true,
+          decodeBitStrings: true
+        };
+        var composed = _fromDer(bytes, remaining, depth + 1, subOptions);
+        var used = start - bytes.length();
+        remaining -= used;
+        if (type == asn1$8.Type.BITSTRING) {
+          used++;
+        }
+        var tc = composed.tagClass;
+        if (used === length && (tc === asn1$8.Class.UNIVERSAL || tc === asn1$8.Class.CONTEXT_SPECIFIC)) {
+          value = [composed];
+        }
+      } catch (ex) {
+      }
+    }
+    if (value === void 0) {
+      bytes.read = savedRead;
+      remaining = savedRemaining;
+    }
+  }
+  if (value === void 0) {
+    if (length === void 0) {
+      if (options.strict) {
+        throw new Error("Non-constructed ASN.1 object of indefinite length.");
+      }
+      length = remaining;
+    }
+    if (type === asn1$8.Type.BMPSTRING) {
+      value = "";
+      for (; length > 0; length -= 2) {
+        _checkBufferLength(bytes, remaining, 2);
+        value += String.fromCharCode(bytes.getInt16());
+        remaining -= 2;
+      }
+    } else {
+      value = bytes.getBytes(length);
+      remaining -= length;
+    }
+  }
+  var asn1Options = bitStringContents === void 0 ? null : {
+    bitStringContents
   };
-  return U.create(i, o, v, f, V);
+  return asn1$8.create(tagClass, type, constructed, value, asn1Options);
 }
-U.toDer = function(e) {
-  var t = le.util.createBuffer(), a = e.tagClass | e.type, r = le.util.createBuffer(), n = !1;
-  if ("bitStringContents" in e && (n = !0, e.original && (n = U.equals(e, e.original))), n)
-    r.putBytes(e.bitStringContents);
-  else if (e.composed) {
-    e.constructed ? a |= 32 : r.putByte(0);
-    for (var s = 0; s < e.value.length; ++s)
-      e.value[s] !== void 0 && r.putBuffer(U.toDer(e.value[s]));
-  } else if (e.type === U.Type.BMPSTRING)
-    for (var s = 0; s < e.value.length; ++s)
-      r.putInt16(e.value.charCodeAt(s));
-  else
-    e.type === U.Type.INTEGER && e.value.length > 1 && // leading 0x00 for positive integer
-    (e.value.charCodeAt(0) === 0 && !(e.value.charCodeAt(1) & 128) || // leading 0xFF for negative integer
-    e.value.charCodeAt(0) === 255 && (e.value.charCodeAt(1) & 128) === 128) ? r.putBytes(e.value.substr(1)) : r.putBytes(e.value);
-  if (t.putByte(a), r.length() <= 127)
-    t.putByte(r.length() & 127);
-  else {
-    var i = r.length(), o = "";
-    do
-      o += String.fromCharCode(i & 255), i = i >>> 8;
-    while (i > 0);
-    t.putByte(o.length | 128);
-    for (var s = o.length - 1; s >= 0; --s)
-      t.putByte(o.charCodeAt(s));
+asn1$8.toDer = function(obj) {
+  var bytes = forge$w.util.createBuffer();
+  var b1 = obj.tagClass | obj.type;
+  var value = forge$w.util.createBuffer();
+  var useBitStringContents = false;
+  if ("bitStringContents" in obj) {
+    useBitStringContents = true;
+    if (obj.original) {
+      useBitStringContents = asn1$8.equals(obj, obj.original);
+    }
   }
-  return t.putBuffer(r), t;
+  if (useBitStringContents) {
+    value.putBytes(obj.bitStringContents);
+  } else if (obj.composed) {
+    if (obj.constructed) {
+      b1 |= 32;
+    } else {
+      value.putByte(0);
+    }
+    for (var i = 0; i < obj.value.length; ++i) {
+      if (obj.value[i] !== void 0) {
+        value.putBuffer(asn1$8.toDer(obj.value[i]));
+      }
+    }
+  } else {
+    if (obj.type === asn1$8.Type.BMPSTRING) {
+      for (var i = 0; i < obj.value.length; ++i) {
+        value.putInt16(obj.value.charCodeAt(i));
+      }
+    } else {
+      if (obj.type === asn1$8.Type.INTEGER && obj.value.length > 1 && // leading 0x00 for positive integer
+      (obj.value.charCodeAt(0) === 0 && (obj.value.charCodeAt(1) & 128) === 0 || // leading 0xFF for negative integer
+      obj.value.charCodeAt(0) === 255 && (obj.value.charCodeAt(1) & 128) === 128)) {
+        value.putBytes(obj.value.substr(1));
+      } else {
+        value.putBytes(obj.value);
+      }
+    }
+  }
+  bytes.putByte(b1);
+  if (value.length() <= 127) {
+    bytes.putByte(value.length() & 127);
+  } else {
+    var len = value.length();
+    var lenBytes = "";
+    do {
+      lenBytes += String.fromCharCode(len & 255);
+      len = len >>> 8;
+    } while (len > 0);
+    bytes.putByte(lenBytes.length | 128);
+    for (var i = lenBytes.length - 1; i >= 0; --i) {
+      bytes.putByte(lenBytes.charCodeAt(i));
+    }
+  }
+  bytes.putBuffer(value);
+  return bytes;
 };
-U.oidToDer = function(e) {
-  var t = e.split("."), a = le.util.createBuffer();
-  a.putByte(40 * parseInt(t[0], 10) + parseInt(t[1], 10));
-  for (var r, n, s, i, o = 2; o < t.length; ++o) {
-    if (r = !0, n = [], s = parseInt(t[o], 10), s > 4294967295)
+asn1$8.oidToDer = function(oid) {
+  var values = oid.split(".");
+  var bytes = forge$w.util.createBuffer();
+  bytes.putByte(40 * parseInt(values[0], 10) + parseInt(values[1], 10));
+  var last, valueBytes, value, b;
+  for (var i = 2; i < values.length; ++i) {
+    last = true;
+    valueBytes = [];
+    value = parseInt(values[i], 10);
+    if (value > 4294967295) {
       throw new Error("OID value too large; max is 32-bits.");
-    do
-      i = s & 127, s = s >>> 7, r || (i |= 128), n.push(i), r = !1;
-    while (s > 0);
-    for (var l = n.length - 1; l >= 0; --l)
-      a.putByte(n[l]);
+    }
+    do {
+      b = value & 127;
+      value = value >>> 7;
+      if (!last) {
+        b |= 128;
+      }
+      valueBytes.push(b);
+      last = false;
+    } while (value > 0);
+    for (var n = valueBytes.length - 1; n >= 0; --n) {
+      bytes.putByte(valueBytes[n]);
+    }
   }
-  return a;
+  return bytes;
 };
-U.derToOid = function(e) {
-  var t;
-  typeof e == "string" && (e = le.util.createBuffer(e));
-  var a = e.getByte();
-  t = Math.floor(a / 40) + "." + a % 40;
-  for (var r = 0; e.length() > 0; ) {
-    if (r > 70368744177663)
+asn1$8.derToOid = function(bytes) {
+  var oid;
+  if (typeof bytes === "string") {
+    bytes = forge$w.util.createBuffer(bytes);
+  }
+  var b = bytes.getByte();
+  oid = Math.floor(b / 40) + "." + b % 40;
+  var value = 0;
+  while (bytes.length() > 0) {
+    if (value > 70368744177663) {
       throw new Error("OID value too large; max is 53-bits.");
-    a = e.getByte(), r = r * 128, a & 128 ? r += a & 127 : (t += "." + (r + a), r = 0);
+    }
+    b = bytes.getByte();
+    value = value * 128;
+    if (b & 128) {
+      value += b & 127;
+    } else {
+      oid += "." + (value + b);
+      value = 0;
+    }
   }
-  return t;
+  return oid;
 };
-U.utcTimeToDate = function(e) {
-  var t = /* @__PURE__ */ new Date(), a = parseInt(e.substr(0, 2), 10);
-  a = a >= 50 ? 1900 + a : 2e3 + a;
-  var r = parseInt(e.substr(2, 2), 10) - 1, n = parseInt(e.substr(4, 2), 10), s = parseInt(e.substr(6, 2), 10), i = parseInt(e.substr(8, 2), 10), o = 0;
-  if (e.length > 11) {
-    var l = e.charAt(10), u = 10;
-    l !== "+" && l !== "-" && (o = parseInt(e.substr(10, 2), 10), u += 2);
+asn1$8.utcTimeToDate = function(utc) {
+  var date = /* @__PURE__ */ new Date();
+  var year = parseInt(utc.substr(0, 2), 10);
+  year = year >= 50 ? 1900 + year : 2e3 + year;
+  var MM = parseInt(utc.substr(2, 2), 10) - 1;
+  var DD = parseInt(utc.substr(4, 2), 10);
+  var hh = parseInt(utc.substr(6, 2), 10);
+  var mm = parseInt(utc.substr(8, 2), 10);
+  var ss = 0;
+  if (utc.length > 11) {
+    var c = utc.charAt(10);
+    var end = 10;
+    if (c !== "+" && c !== "-") {
+      ss = parseInt(utc.substr(10, 2), 10);
+      end += 2;
+    }
   }
-  if (t.setUTCFullYear(a, r, n), t.setUTCHours(s, i, o, 0), u && (l = e.charAt(u), l === "+" || l === "-")) {
-    var f = parseInt(e.substr(u + 1, 2), 10), c = parseInt(e.substr(u + 4, 2), 10), v = f * 60 + c;
-    v *= 6e4, l === "+" ? t.setTime(+t - v) : t.setTime(+t + v);
+  date.setUTCFullYear(year, MM, DD);
+  date.setUTCHours(hh, mm, ss, 0);
+  if (end) {
+    c = utc.charAt(end);
+    if (c === "+" || c === "-") {
+      var hhoffset = parseInt(utc.substr(end + 1, 2), 10);
+      var mmoffset = parseInt(utc.substr(end + 4, 2), 10);
+      var offset = hhoffset * 60 + mmoffset;
+      offset *= 6e4;
+      if (c === "+") {
+        date.setTime(+date - offset);
+      } else {
+        date.setTime(+date + offset);
+      }
+    }
   }
-  return t;
+  return date;
 };
-U.generalizedTimeToDate = function(e) {
-  var t = /* @__PURE__ */ new Date(), a = parseInt(e.substr(0, 4), 10), r = parseInt(e.substr(4, 2), 10) - 1, n = parseInt(e.substr(6, 2), 10), s = parseInt(e.substr(8, 2), 10), i = parseInt(e.substr(10, 2), 10), o = parseInt(e.substr(12, 2), 10), l = 0, u = 0, f = !1;
-  e.charAt(e.length - 1) === "Z" && (f = !0);
-  var c = e.length - 5, v = e.charAt(c);
-  if (v === "+" || v === "-") {
-    var m = parseInt(e.substr(c + 1, 2), 10), y = parseInt(e.substr(c + 4, 2), 10);
-    u = m * 60 + y, u *= 6e4, v === "+" && (u *= -1), f = !0;
+asn1$8.generalizedTimeToDate = function(gentime) {
+  var date = /* @__PURE__ */ new Date();
+  var YYYY = parseInt(gentime.substr(0, 4), 10);
+  var MM = parseInt(gentime.substr(4, 2), 10) - 1;
+  var DD = parseInt(gentime.substr(6, 2), 10);
+  var hh = parseInt(gentime.substr(8, 2), 10);
+  var mm = parseInt(gentime.substr(10, 2), 10);
+  var ss = parseInt(gentime.substr(12, 2), 10);
+  var fff = 0;
+  var offset = 0;
+  var isUTC = false;
+  if (gentime.charAt(gentime.length - 1) === "Z") {
+    isUTC = true;
   }
-  return e.charAt(14) === "." && (l = parseFloat(e.substr(14), 10) * 1e3), f ? (t.setUTCFullYear(a, r, n), t.setUTCHours(s, i, o, l), t.setTime(+t + u)) : (t.setFullYear(a, r, n), t.setHours(s, i, o, l)), t;
+  var end = gentime.length - 5, c = gentime.charAt(end);
+  if (c === "+" || c === "-") {
+    var hhoffset = parseInt(gentime.substr(end + 1, 2), 10);
+    var mmoffset = parseInt(gentime.substr(end + 4, 2), 10);
+    offset = hhoffset * 60 + mmoffset;
+    offset *= 6e4;
+    if (c === "+") {
+      offset *= -1;
+    }
+    isUTC = true;
+  }
+  if (gentime.charAt(14) === ".") {
+    fff = parseFloat(gentime.substr(14), 10) * 1e3;
+  }
+  if (isUTC) {
+    date.setUTCFullYear(YYYY, MM, DD);
+    date.setUTCHours(hh, mm, ss, fff);
+    date.setTime(+date + offset);
+  } else {
+    date.setFullYear(YYYY, MM, DD);
+    date.setHours(hh, mm, ss, fff);
+  }
+  return date;
 };
-U.dateToUtcTime = function(e) {
-  if (typeof e == "string")
-    return e;
-  var t = "", a = [];
-  a.push(("" + e.getUTCFullYear()).substr(2)), a.push("" + (e.getUTCMonth() + 1)), a.push("" + e.getUTCDate()), a.push("" + e.getUTCHours()), a.push("" + e.getUTCMinutes()), a.push("" + e.getUTCSeconds());
-  for (var r = 0; r < a.length; ++r)
-    a[r].length < 2 && (t += "0"), t += a[r];
-  return t += "Z", t;
+asn1$8.dateToUtcTime = function(date) {
+  if (typeof date === "string") {
+    return date;
+  }
+  var rval = "";
+  var format = [];
+  format.push(("" + date.getUTCFullYear()).substr(2));
+  format.push("" + (date.getUTCMonth() + 1));
+  format.push("" + date.getUTCDate());
+  format.push("" + date.getUTCHours());
+  format.push("" + date.getUTCMinutes());
+  format.push("" + date.getUTCSeconds());
+  for (var i = 0; i < format.length; ++i) {
+    if (format[i].length < 2) {
+      rval += "0";
+    }
+    rval += format[i];
+  }
+  rval += "Z";
+  return rval;
 };
-U.dateToGeneralizedTime = function(e) {
-  if (typeof e == "string")
-    return e;
-  var t = "", a = [];
-  a.push("" + e.getUTCFullYear()), a.push("" + (e.getUTCMonth() + 1)), a.push("" + e.getUTCDate()), a.push("" + e.getUTCHours()), a.push("" + e.getUTCMinutes()), a.push("" + e.getUTCSeconds());
-  for (var r = 0; r < a.length; ++r)
-    a[r].length < 2 && (t += "0"), t += a[r];
-  return t += "Z", t;
+asn1$8.dateToGeneralizedTime = function(date) {
+  if (typeof date === "string") {
+    return date;
+  }
+  var rval = "";
+  var format = [];
+  format.push("" + date.getUTCFullYear());
+  format.push("" + (date.getUTCMonth() + 1));
+  format.push("" + date.getUTCDate());
+  format.push("" + date.getUTCHours());
+  format.push("" + date.getUTCMinutes());
+  format.push("" + date.getUTCSeconds());
+  for (var i = 0; i < format.length; ++i) {
+    if (format[i].length < 2) {
+      rval += "0";
+    }
+    rval += format[i];
+  }
+  rval += "Z";
+  return rval;
 };
-U.integerToDer = function(e) {
-  var t = le.util.createBuffer();
-  if (e >= -128 && e < 128)
-    return t.putSignedInt(e, 8);
-  if (e >= -32768 && e < 32768)
-    return t.putSignedInt(e, 16);
-  if (e >= -8388608 && e < 8388608)
-    return t.putSignedInt(e, 24);
-  if (e >= -2147483648 && e < 2147483648)
-    return t.putSignedInt(e, 32);
-  var a = new Error("Integer too large; max is 32-bits.");
-  throw a.integer = e, a;
+asn1$8.integerToDer = function(x) {
+  var rval = forge$w.util.createBuffer();
+  if (x >= -128 && x < 128) {
+    return rval.putSignedInt(x, 8);
+  }
+  if (x >= -32768 && x < 32768) {
+    return rval.putSignedInt(x, 16);
+  }
+  if (x >= -8388608 && x < 8388608) {
+    return rval.putSignedInt(x, 24);
+  }
+  if (x >= -2147483648 && x < 2147483648) {
+    return rval.putSignedInt(x, 32);
+  }
+  var error = new Error("Integer too large; max is 32-bits.");
+  error.integer = x;
+  throw error;
 };
-U.derToInteger = function(e) {
-  typeof e == "string" && (e = le.util.createBuffer(e));
-  var t = e.length() * 8;
-  if (t > 32)
+asn1$8.derToInteger = function(bytes) {
+  if (typeof bytes === "string") {
+    bytes = forge$w.util.createBuffer(bytes);
+  }
+  var n = bytes.length() * 8;
+  if (n > 32) {
     throw new Error("Integer too large; max is 32-bits.");
-  return e.getSignedInt(t);
+  }
+  return bytes.getSignedInt(n);
 };
-U.validate = function(e, t, a, r) {
-  var n = !1;
-  if ((e.tagClass === t.tagClass || typeof t.tagClass > "u") && (e.type === t.type || typeof t.type > "u"))
-    if (e.constructed === t.constructed || typeof t.constructed > "u") {
-      if (n = !0, t.value && le.util.isArray(t.value))
-        for (var s = 0, i = 0; n && i < t.value.length; ++i) {
-          var o = t.value[i];
-          n = !!o.optional;
-          var l = e.value[s];
-          if (!l) {
-            o.optional || (n = !1, r && r.push("[" + t.name + '] Missing required element. Expected tag class "' + o.tagClass + '", type "' + o.type + '"'));
+asn1$8.validate = function(obj, v, capture, errors) {
+  var rval = false;
+  if ((obj.tagClass === v.tagClass || typeof v.tagClass === "undefined") && (obj.type === v.type || typeof v.type === "undefined")) {
+    if (obj.constructed === v.constructed || typeof v.constructed === "undefined") {
+      rval = true;
+      if (v.value && forge$w.util.isArray(v.value)) {
+        var j = 0;
+        for (var i = 0; rval && i < v.value.length; ++i) {
+          var schemaItem = v.value[i];
+          rval = !!schemaItem.optional;
+          var objChild = obj.value[j];
+          if (!objChild) {
+            if (!schemaItem.optional) {
+              rval = false;
+              if (errors) {
+                errors.push("[" + v.name + '] Missing required element. Expected tag class "' + schemaItem.tagClass + '", type "' + schemaItem.type + '"');
+              }
+            }
             continue;
           }
-          var u = typeof o.tagClass < "u" && typeof o.type < "u";
-          if (u && (l.tagClass !== o.tagClass || l.type !== o.type))
-            if (o.optional) {
-              n = !0;
+          var schemaHasTag = typeof schemaItem.tagClass !== "undefined" && typeof schemaItem.type !== "undefined";
+          if (schemaHasTag && (objChild.tagClass !== schemaItem.tagClass || objChild.type !== schemaItem.type)) {
+            if (schemaItem.optional) {
+              rval = true;
               continue;
             } else {
-              n = !1, r && r.push("[" + t.name + "] Tag mismatch. Expected (" + o.tagClass + "," + o.type + "), got (" + l.tagClass + "," + l.type + ")");
+              rval = false;
+              if (errors) {
+                errors.push("[" + v.name + "] Tag mismatch. Expected (" + schemaItem.tagClass + "," + schemaItem.type + "), got (" + objChild.tagClass + "," + objChild.type + ")");
+              }
               break;
             }
-          var f = U.validate(l, o, a, r);
-          if (f)
-            ++s, n = !0;
-          else if (o.optional)
-            n = !0;
-          else {
-            n = !1;
+          }
+          var childRval = asn1$8.validate(objChild, schemaItem, capture, errors);
+          if (childRval) {
+            ++j;
+            rval = true;
+          } else if (schemaItem.optional) {
+            rval = true;
+          } else {
+            rval = false;
             break;
           }
         }
-      if (n && a && (t.capture && (a[t.capture] = e.value), t.captureAsn1 && (a[t.captureAsn1] = e), t.captureBitStringContents && "bitStringContents" in e && (a[t.captureBitStringContents] = e.bitStringContents), t.captureBitStringValue && "bitStringContents" in e))
-        if (e.bitStringContents.length < 2)
-          a[t.captureBitStringValue] = "";
-        else {
-          var c = e.bitStringContents.charCodeAt(0);
-          if (c !== 0)
-            throw new Error(
-              "captureBitStringValue only supported for zero unused bits"
-            );
-          a[t.captureBitStringValue] = e.bitStringContents.slice(1);
+      }
+      if (rval && capture) {
+        if (v.capture) {
+          capture[v.capture] = obj.value;
         }
-    } else r && r.push(
-      "[" + t.name + '] Expected constructed "' + t.constructed + '", got "' + e.constructed + '"'
-    );
-  else r && (e.tagClass !== t.tagClass && r.push(
-    "[" + t.name + '] Expected tag class "' + t.tagClass + '", got "' + e.tagClass + '"'
-  ), e.type !== t.type && r.push(
-    "[" + t.name + '] Expected type "' + t.type + '", got "' + e.type + '"'
-  ));
-  return n;
+        if (v.captureAsn1) {
+          capture[v.captureAsn1] = obj;
+        }
+        if (v.captureBitStringContents && "bitStringContents" in obj) {
+          capture[v.captureBitStringContents] = obj.bitStringContents;
+        }
+        if (v.captureBitStringValue && "bitStringContents" in obj) {
+          if (obj.bitStringContents.length < 2) {
+            capture[v.captureBitStringValue] = "";
+          } else {
+            var unused = obj.bitStringContents.charCodeAt(0);
+            if (unused !== 0) {
+              throw new Error(
+                "captureBitStringValue only supported for zero unused bits"
+              );
+            }
+            capture[v.captureBitStringValue] = obj.bitStringContents.slice(1);
+          }
+        }
+      }
+    } else if (errors) {
+      errors.push(
+        "[" + v.name + '] Expected constructed "' + v.constructed + '", got "' + obj.constructed + '"'
+      );
+    }
+  } else if (errors) {
+    if (obj.tagClass !== v.tagClass) {
+      errors.push(
+        "[" + v.name + '] Expected tag class "' + v.tagClass + '", got "' + obj.tagClass + '"'
+      );
+    }
+    if (obj.type !== v.type) {
+      errors.push(
+        "[" + v.name + '] Expected type "' + v.type + '", got "' + obj.type + '"'
+      );
+    }
+  }
+  return rval;
 };
-var Fa = /[^\\u0000-\\u00ff]/;
-U.prettyPrint = function(e, t, a) {
-  var r = "";
-  t = t || 0, a = a || 2, t > 0 && (r += `
-`);
-  for (var n = "", s = 0; s < t * a; ++s)
-    n += " ";
-  switch (r += n + "Tag: ", e.tagClass) {
-    case U.Class.UNIVERSAL:
-      r += "Universal:";
+var _nonLatinRegex = /[^\\u0000-\\u00ff]/;
+asn1$8.prettyPrint = function(obj, level, indentation) {
+  var rval = "";
+  level = level || 0;
+  indentation = indentation || 2;
+  if (level > 0) {
+    rval += "\n";
+  }
+  var indent = "";
+  for (var i = 0; i < level * indentation; ++i) {
+    indent += " ";
+  }
+  rval += indent + "Tag: ";
+  switch (obj.tagClass) {
+    case asn1$8.Class.UNIVERSAL:
+      rval += "Universal:";
       break;
-    case U.Class.APPLICATION:
-      r += "Application:";
+    case asn1$8.Class.APPLICATION:
+      rval += "Application:";
       break;
-    case U.Class.CONTEXT_SPECIFIC:
-      r += "Context-Specific:";
+    case asn1$8.Class.CONTEXT_SPECIFIC:
+      rval += "Context-Specific:";
       break;
-    case U.Class.PRIVATE:
-      r += "Private:";
+    case asn1$8.Class.PRIVATE:
+      rval += "Private:";
       break;
   }
-  if (e.tagClass === U.Class.UNIVERSAL)
-    switch (r += e.type, e.type) {
-      case U.Type.NONE:
-        r += " (None)";
+  if (obj.tagClass === asn1$8.Class.UNIVERSAL) {
+    rval += obj.type;
+    switch (obj.type) {
+      case asn1$8.Type.NONE:
+        rval += " (None)";
         break;
-      case U.Type.BOOLEAN:
-        r += " (Boolean)";
+      case asn1$8.Type.BOOLEAN:
+        rval += " (Boolean)";
         break;
-      case U.Type.INTEGER:
-        r += " (Integer)";
+      case asn1$8.Type.INTEGER:
+        rval += " (Integer)";
         break;
-      case U.Type.BITSTRING:
-        r += " (Bit string)";
+      case asn1$8.Type.BITSTRING:
+        rval += " (Bit string)";
         break;
-      case U.Type.OCTETSTRING:
-        r += " (Octet string)";
+      case asn1$8.Type.OCTETSTRING:
+        rval += " (Octet string)";
         break;
-      case U.Type.NULL:
-        r += " (Null)";
+      case asn1$8.Type.NULL:
+        rval += " (Null)";
         break;
-      case U.Type.OID:
-        r += " (Object Identifier)";
+      case asn1$8.Type.OID:
+        rval += " (Object Identifier)";
         break;
-      case U.Type.ODESC:
-        r += " (Object Descriptor)";
+      case asn1$8.Type.ODESC:
+        rval += " (Object Descriptor)";
         break;
-      case U.Type.EXTERNAL:
-        r += " (External or Instance of)";
+      case asn1$8.Type.EXTERNAL:
+        rval += " (External or Instance of)";
         break;
-      case U.Type.REAL:
-        r += " (Real)";
+      case asn1$8.Type.REAL:
+        rval += " (Real)";
         break;
-      case U.Type.ENUMERATED:
-        r += " (Enumerated)";
+      case asn1$8.Type.ENUMERATED:
+        rval += " (Enumerated)";
         break;
-      case U.Type.EMBEDDED:
-        r += " (Embedded PDV)";
+      case asn1$8.Type.EMBEDDED:
+        rval += " (Embedded PDV)";
         break;
-      case U.Type.UTF8:
-        r += " (UTF8)";
+      case asn1$8.Type.UTF8:
+        rval += " (UTF8)";
         break;
-      case U.Type.ROID:
-        r += " (Relative Object Identifier)";
+      case asn1$8.Type.ROID:
+        rval += " (Relative Object Identifier)";
         break;
-      case U.Type.SEQUENCE:
-        r += " (Sequence)";
+      case asn1$8.Type.SEQUENCE:
+        rval += " (Sequence)";
         break;
-      case U.Type.SET:
-        r += " (Set)";
+      case asn1$8.Type.SET:
+        rval += " (Set)";
         break;
-      case U.Type.PRINTABLESTRING:
-        r += " (Printable String)";
+      case asn1$8.Type.PRINTABLESTRING:
+        rval += " (Printable String)";
         break;
-      case U.Type.IA5String:
-        r += " (IA5String (ASCII))";
+      case asn1$8.Type.IA5String:
+        rval += " (IA5String (ASCII))";
         break;
-      case U.Type.UTCTIME:
-        r += " (UTC time)";
+      case asn1$8.Type.UTCTIME:
+        rval += " (UTC time)";
         break;
-      case U.Type.GENERALIZEDTIME:
-        r += " (Generalized time)";
+      case asn1$8.Type.GENERALIZEDTIME:
+        rval += " (Generalized time)";
         break;
-      case U.Type.BMPSTRING:
-        r += " (BMP String)";
+      case asn1$8.Type.BMPSTRING:
+        rval += " (BMP String)";
         break;
     }
-  else
-    r += e.type;
-  if (r += `
-`, r += n + "Constructed: " + e.constructed + `
-`, e.composed) {
-    for (var i = 0, o = "", s = 0; s < e.value.length; ++s)
-      e.value[s] !== void 0 && (i += 1, o += U.prettyPrint(e.value[s], t + 1, a), s + 1 < e.value.length && (o += ","));
-    r += n + "Sub values: " + i + o;
   } else {
-    if (r += n + "Value: ", e.type === U.Type.OID) {
-      var l = U.derToOid(e.value);
-      r += l, le.pki && le.pki.oids && l in le.pki.oids && (r += " (" + le.pki.oids[l] + ") ");
-    }
-    if (e.type === U.Type.INTEGER)
-      try {
-        r += U.derToInteger(e.value);
-      } catch {
-        r += "0x" + le.util.bytesToHex(e.value);
-      }
-    else if (e.type === U.Type.BITSTRING) {
-      if (e.value.length > 1 ? r += "0x" + le.util.bytesToHex(e.value.slice(1)) : r += "(none)", e.value.length > 0) {
-        var u = e.value.charCodeAt(0);
-        u == 1 ? r += " (1 unused bit shown)" : u > 1 && (r += " (" + u + " unused bits shown)");
-      }
-    } else if (e.type === U.Type.OCTETSTRING)
-      Fa.test(e.value) || (r += "(" + e.value + ") "), r += "0x" + le.util.bytesToHex(e.value);
-    else if (e.type === U.Type.UTF8)
-      try {
-        r += le.util.decodeUtf8(e.value);
-      } catch (f) {
-        if (f.message === "URI malformed")
-          r += "0x" + le.util.bytesToHex(e.value) + " (malformed UTF8)";
-        else
-          throw f;
-      }
-    else e.type === U.Type.PRINTABLESTRING || e.type === U.Type.IA5String ? r += e.value : Fa.test(e.value) ? r += "0x" + le.util.bytesToHex(e.value) : e.value.length === 0 ? r += "[null]" : r += e.value;
+    rval += obj.type;
   }
-  return r;
-};
-var Tr = z;
-Tr.md = Tr.md || {};
-Tr.md.algorithms = Tr.md.algorithms || {};
-var pt = z, Bi = pt.hmac = pt.hmac || {};
-Bi.create = function() {
-  var e = null, t = null, a = null, r = null, n = {};
-  return n.start = function(s, i) {
-    if (s !== null)
-      if (typeof s == "string")
-        if (s = s.toLowerCase(), s in pt.md.algorithms)
-          t = pt.md.algorithms[s].create();
-        else
-          throw new Error('Unknown hash algorithm "' + s + '"');
-      else
-        t = s;
-    if (i === null)
-      i = e;
-    else {
-      if (typeof i == "string")
-        i = pt.util.createBuffer(i);
-      else if (pt.util.isArray(i)) {
-        var o = i;
-        i = pt.util.createBuffer();
-        for (var l = 0; l < o.length; ++l)
-          i.putByte(o[l]);
+  rval += "\n";
+  rval += indent + "Constructed: " + obj.constructed + "\n";
+  if (obj.composed) {
+    var subvalues = 0;
+    var sub = "";
+    for (var i = 0; i < obj.value.length; ++i) {
+      if (obj.value[i] !== void 0) {
+        subvalues += 1;
+        sub += asn1$8.prettyPrint(obj.value[i], level + 1, indentation);
+        if (i + 1 < obj.value.length) {
+          sub += ",";
+        }
       }
-      var u = i.length();
-      u > t.blockLength && (t.start(), t.update(i.bytes()), i = t.digest()), a = pt.util.createBuffer(), r = pt.util.createBuffer(), u = i.length();
-      for (var l = 0; l < u; ++l) {
-        var o = i.at(l);
-        a.putByte(54 ^ o), r.putByte(92 ^ o);
-      }
-      if (u < t.blockLength)
-        for (var o = t.blockLength - u, l = 0; l < o; ++l)
-          a.putByte(54), r.putByte(92);
-      e = i, a = a.bytes(), r = r.bytes();
     }
-    t.start(), t.update(a);
-  }, n.update = function(s) {
-    t.update(s);
-  }, n.getMac = function() {
-    var s = t.digest().bytes();
-    return t.start(), t.update(r), t.update(s), t.digest();
-  }, n.digest = n.getMac, n;
+    rval += indent + "Sub values: " + subvalues + sub;
+  } else {
+    rval += indent + "Value: ";
+    if (obj.type === asn1$8.Type.OID) {
+      var oid = asn1$8.derToOid(obj.value);
+      rval += oid;
+      if (forge$w.pki && forge$w.pki.oids) {
+        if (oid in forge$w.pki.oids) {
+          rval += " (" + forge$w.pki.oids[oid] + ") ";
+        }
+      }
+    }
+    if (obj.type === asn1$8.Type.INTEGER) {
+      try {
+        rval += asn1$8.derToInteger(obj.value);
+      } catch (ex) {
+        rval += "0x" + forge$w.util.bytesToHex(obj.value);
+      }
+    } else if (obj.type === asn1$8.Type.BITSTRING) {
+      if (obj.value.length > 1) {
+        rval += "0x" + forge$w.util.bytesToHex(obj.value.slice(1));
+      } else {
+        rval += "(none)";
+      }
+      if (obj.value.length > 0) {
+        var unused = obj.value.charCodeAt(0);
+        if (unused == 1) {
+          rval += " (1 unused bit shown)";
+        } else if (unused > 1) {
+          rval += " (" + unused + " unused bits shown)";
+        }
+      }
+    } else if (obj.type === asn1$8.Type.OCTETSTRING) {
+      if (!_nonLatinRegex.test(obj.value)) {
+        rval += "(" + obj.value + ") ";
+      }
+      rval += "0x" + forge$w.util.bytesToHex(obj.value);
+    } else if (obj.type === asn1$8.Type.UTF8) {
+      try {
+        rval += forge$w.util.decodeUtf8(obj.value);
+      } catch (e) {
+        if (e.message === "URI malformed") {
+          rval += "0x" + forge$w.util.bytesToHex(obj.value) + " (malformed UTF8)";
+        } else {
+          throw e;
+        }
+      }
+    } else if (obj.type === asn1$8.Type.PRINTABLESTRING || obj.type === asn1$8.Type.IA5String) {
+      rval += obj.value;
+    } else if (_nonLatinRegex.test(obj.value)) {
+      rval += "0x" + forge$w.util.bytesToHex(obj.value);
+    } else if (obj.value.length === 0) {
+      rval += "[null]";
+    } else {
+      rval += obj.value;
+    }
+  }
+  return rval;
 };
-var ot = z, gn = ot.md5 = ot.md5 || {};
-ot.md.md5 = ot.md.algorithms.md5 = gn;
-gn.create = function() {
-  mn || bi();
-  var e = null, t = ot.util.createBuffer(), a = new Array(16), r = {
+var forge$v = forge$C;
+forge$v.md = forge$v.md || {};
+forge$v.md.algorithms = forge$v.md.algorithms || {};
+var forge$u = forge$C;
+var hmac = forge$u.hmac = forge$u.hmac || {};
+hmac.create = function() {
+  var _key = null;
+  var _md = null;
+  var _ipadding = null;
+  var _opadding = null;
+  var ctx = {};
+  ctx.start = function(md, key) {
+    if (md !== null) {
+      if (typeof md === "string") {
+        md = md.toLowerCase();
+        if (md in forge$u.md.algorithms) {
+          _md = forge$u.md.algorithms[md].create();
+        } else {
+          throw new Error('Unknown hash algorithm "' + md + '"');
+        }
+      } else {
+        _md = md;
+      }
+    }
+    if (key === null) {
+      key = _key;
+    } else {
+      if (typeof key === "string") {
+        key = forge$u.util.createBuffer(key);
+      } else if (forge$u.util.isArray(key)) {
+        var tmp = key;
+        key = forge$u.util.createBuffer();
+        for (var i = 0; i < tmp.length; ++i) {
+          key.putByte(tmp[i]);
+        }
+      }
+      var keylen = key.length();
+      if (keylen > _md.blockLength) {
+        _md.start();
+        _md.update(key.bytes());
+        key = _md.digest();
+      }
+      _ipadding = forge$u.util.createBuffer();
+      _opadding = forge$u.util.createBuffer();
+      keylen = key.length();
+      for (var i = 0; i < keylen; ++i) {
+        var tmp = key.at(i);
+        _ipadding.putByte(54 ^ tmp);
+        _opadding.putByte(92 ^ tmp);
+      }
+      if (keylen < _md.blockLength) {
+        var tmp = _md.blockLength - keylen;
+        for (var i = 0; i < tmp; ++i) {
+          _ipadding.putByte(54);
+          _opadding.putByte(92);
+        }
+      }
+      _key = key;
+      _ipadding = _ipadding.bytes();
+      _opadding = _opadding.bytes();
+    }
+    _md.start();
+    _md.update(_ipadding);
+  };
+  ctx.update = function(bytes) {
+    _md.update(bytes);
+  };
+  ctx.getMac = function() {
+    var inner = _md.digest().bytes();
+    _md.start();
+    _md.update(_opadding);
+    _md.update(inner);
+    return _md.digest();
+  };
+  ctx.digest = ctx.getMac;
+  return ctx;
+};
+var forge$t = forge$C;
+var md5 = forge$t.md5 = forge$t.md5 || {};
+forge$t.md.md5 = forge$t.md.algorithms.md5 = md5;
+md5.create = function() {
+  if (!_initialized$3) {
+    _init$3();
+  }
+  var _state = null;
+  var _input = forge$t.util.createBuffer();
+  var _w = new Array(16);
+  var md = {
     algorithm: "md5",
     blockLength: 64,
     digestLength: 16,
@@ -2206,44 +3558,80 @@ gn.create = function() {
     // size of message length in bytes
     messageLengthSize: 8
   };
-  return r.start = function() {
-    r.messageLength = 0, r.fullMessageLength = r.messageLength64 = [];
-    for (var n = r.messageLengthSize / 4, s = 0; s < n; ++s)
-      r.fullMessageLength.push(0);
-    return t = ot.util.createBuffer(), e = {
+  md.start = function() {
+    md.messageLength = 0;
+    md.fullMessageLength = md.messageLength64 = [];
+    var int32s = md.messageLengthSize / 4;
+    for (var i = 0; i < int32s; ++i) {
+      md.fullMessageLength.push(0);
+    }
+    _input = forge$t.util.createBuffer();
+    _state = {
       h0: 1732584193,
       h1: 4023233417,
       h2: 2562383102,
       h3: 271733878
-    }, r;
-  }, r.start(), r.update = function(n, s) {
-    s === "utf8" && (n = ot.util.encodeUtf8(n));
-    var i = n.length;
-    r.messageLength += i, i = [i / 4294967296 >>> 0, i >>> 0];
-    for (var o = r.fullMessageLength.length - 1; o >= 0; --o)
-      r.fullMessageLength[o] += i[1], i[1] = i[0] + (r.fullMessageLength[o] / 4294967296 >>> 0), r.fullMessageLength[o] = r.fullMessageLength[o] >>> 0, i[0] = i[1] / 4294967296 >>> 0;
-    return t.putBytes(n), Ka(e, a, t), (t.read > 2048 || t.length() === 0) && t.compact(), r;
-  }, r.digest = function() {
-    var n = ot.util.createBuffer();
-    n.putBytes(t.bytes());
-    var s = r.fullMessageLength[r.fullMessageLength.length - 1] + r.messageLengthSize, i = s & r.blockLength - 1;
-    n.putBytes(ea.substr(0, r.blockLength - i));
-    for (var o, l = 0, u = r.fullMessageLength.length - 1; u >= 0; --u)
-      o = r.fullMessageLength[u] * 8 + l, l = o / 4294967296 >>> 0, n.putInt32Le(o >>> 0);
-    var f = {
-      h0: e.h0,
-      h1: e.h1,
-      h2: e.h2,
-      h3: e.h3
     };
-    Ka(f, a, n);
-    var c = ot.util.createBuffer();
-    return c.putInt32Le(f.h0), c.putInt32Le(f.h1), c.putInt32Le(f.h2), c.putInt32Le(f.h3), c;
-  }, r;
+    return md;
+  };
+  md.start();
+  md.update = function(msg, encoding) {
+    if (encoding === "utf8") {
+      msg = forge$t.util.encodeUtf8(msg);
+    }
+    var len = msg.length;
+    md.messageLength += len;
+    len = [len / 4294967296 >>> 0, len >>> 0];
+    for (var i = md.fullMessageLength.length - 1; i >= 0; --i) {
+      md.fullMessageLength[i] += len[1];
+      len[1] = len[0] + (md.fullMessageLength[i] / 4294967296 >>> 0);
+      md.fullMessageLength[i] = md.fullMessageLength[i] >>> 0;
+      len[0] = len[1] / 4294967296 >>> 0;
+    }
+    _input.putBytes(msg);
+    _update$3(_state, _w, _input);
+    if (_input.read > 2048 || _input.length() === 0) {
+      _input.compact();
+    }
+    return md;
+  };
+  md.digest = function() {
+    var finalBlock = forge$t.util.createBuffer();
+    finalBlock.putBytes(_input.bytes());
+    var remaining = md.fullMessageLength[md.fullMessageLength.length - 1] + md.messageLengthSize;
+    var overflow = remaining & md.blockLength - 1;
+    finalBlock.putBytes(_padding$3.substr(0, md.blockLength - overflow));
+    var bits, carry = 0;
+    for (var i = md.fullMessageLength.length - 1; i >= 0; --i) {
+      bits = md.fullMessageLength[i] * 8 + carry;
+      carry = bits / 4294967296 >>> 0;
+      finalBlock.putInt32Le(bits >>> 0);
+    }
+    var s2 = {
+      h0: _state.h0,
+      h1: _state.h1,
+      h2: _state.h2,
+      h3: _state.h3
+    };
+    _update$3(s2, _w, finalBlock);
+    var rval = forge$t.util.createBuffer();
+    rval.putInt32Le(s2.h0);
+    rval.putInt32Le(s2.h1);
+    rval.putInt32Le(s2.h2);
+    rval.putInt32Le(s2.h3);
+    return rval;
+  };
+  return md;
 };
-var ea = null, Er = null, ir = null, qt = null, mn = !1;
-function bi() {
-  ea = "", ea += ot.util.fillString("\0", 64), Er = [
+var _padding$3 = null;
+var _g = null;
+var _r = null;
+var _k$2 = null;
+var _initialized$3 = false;
+function _init$3() {
+  _padding$3 = String.fromCharCode(128);
+  _padding$3 += forge$t.util.fillString(String.fromCharCode(0), 64);
+  _g = [
     0,
     1,
     2,
@@ -2308,7 +3696,8 @@ function bi() {
     11,
     2,
     9
-  ], ir = [
+  ];
+  _r = [
     7,
     12,
     17,
@@ -2373,275 +3762,555 @@ function bi() {
     10,
     15,
     21
-  ], qt = new Array(64);
-  for (var e = 0; e < 64; ++e)
-    qt[e] = Math.floor(Math.abs(Math.sin(e + 1)) * 4294967296);
-  mn = !0;
+  ];
+  _k$2 = new Array(64);
+  for (var i = 0; i < 64; ++i) {
+    _k$2[i] = Math.floor(Math.abs(Math.sin(i + 1)) * 4294967296);
+  }
+  _initialized$3 = true;
 }
-function Ka(e, t, a) {
-  for (var r, n, s, i, o, l, u, f, c = a.length(); c >= 64; ) {
-    for (n = e.h0, s = e.h1, i = e.h2, o = e.h3, f = 0; f < 16; ++f)
-      t[f] = a.getInt32Le(), l = o ^ s & (i ^ o), r = n + l + qt[f] + t[f], u = ir[f], n = o, o = i, i = s, s += r << u | r >>> 32 - u;
-    for (; f < 32; ++f)
-      l = i ^ o & (s ^ i), r = n + l + qt[f] + t[Er[f]], u = ir[f], n = o, o = i, i = s, s += r << u | r >>> 32 - u;
-    for (; f < 48; ++f)
-      l = s ^ i ^ o, r = n + l + qt[f] + t[Er[f]], u = ir[f], n = o, o = i, i = s, s += r << u | r >>> 32 - u;
-    for (; f < 64; ++f)
-      l = i ^ (s | ~o), r = n + l + qt[f] + t[Er[f]], u = ir[f], n = o, o = i, i = s, s += r << u | r >>> 32 - u;
-    e.h0 = e.h0 + n | 0, e.h1 = e.h1 + s | 0, e.h2 = e.h2 + i | 0, e.h3 = e.h3 + o | 0, c -= 64;
+function _update$3(s2, w, bytes) {
+  var t, a, b, c, d, f, r, i;
+  var len = bytes.length();
+  while (len >= 64) {
+    a = s2.h0;
+    b = s2.h1;
+    c = s2.h2;
+    d = s2.h3;
+    for (i = 0; i < 16; ++i) {
+      w[i] = bytes.getInt32Le();
+      f = d ^ b & (c ^ d);
+      t = a + f + _k$2[i] + w[i];
+      r = _r[i];
+      a = d;
+      d = c;
+      c = b;
+      b += t << r | t >>> 32 - r;
+    }
+    for (; i < 32; ++i) {
+      f = c ^ d & (b ^ c);
+      t = a + f + _k$2[i] + w[_g[i]];
+      r = _r[i];
+      a = d;
+      d = c;
+      c = b;
+      b += t << r | t >>> 32 - r;
+    }
+    for (; i < 48; ++i) {
+      f = b ^ c ^ d;
+      t = a + f + _k$2[i] + w[_g[i]];
+      r = _r[i];
+      a = d;
+      d = c;
+      c = b;
+      b += t << r | t >>> 32 - r;
+    }
+    for (; i < 64; ++i) {
+      f = c ^ (b | ~d);
+      t = a + f + _k$2[i] + w[_g[i]];
+      r = _r[i];
+      a = d;
+      d = c;
+      c = b;
+      b += t << r | t >>> 32 - r;
+    }
+    s2.h0 = s2.h0 + a | 0;
+    s2.h1 = s2.h1 + b | 0;
+    s2.h2 = s2.h2 + c | 0;
+    s2.h3 = s2.h3 + d | 0;
+    len -= 64;
   }
 }
-var Ir = z, Cn = Ir.pem = Ir.pem || {};
-Cn.encode = function(e, t) {
-  t = t || {};
-  var a = "-----BEGIN " + e.type + `-----\r
-`, r;
-  if (e.procType && (r = {
-    name: "Proc-Type",
-    values: [String(e.procType.version), e.procType.type]
-  }, a += pr(r)), e.contentDomain && (r = { name: "Content-Domain", values: [e.contentDomain] }, a += pr(r)), e.dekInfo && (r = { name: "DEK-Info", values: [e.dekInfo.algorithm] }, e.dekInfo.parameters && r.values.push(e.dekInfo.parameters), a += pr(r)), e.headers)
-    for (var n = 0; n < e.headers.length; ++n)
-      a += pr(e.headers[n]);
-  return e.procType && (a += `\r
-`), a += Ir.util.encode64(e.body, t.maxline || 64) + `\r
-`, a += "-----END " + e.type + `-----\r
-`, a;
+var forge$s = forge$C;
+var pem = forge$s.pem = forge$s.pem || {};
+pem.encode = function(msg, options) {
+  options = options || {};
+  var rval = "-----BEGIN " + msg.type + "-----\r\n";
+  var header;
+  if (msg.procType) {
+    header = {
+      name: "Proc-Type",
+      values: [String(msg.procType.version), msg.procType.type]
+    };
+    rval += foldHeader(header);
+  }
+  if (msg.contentDomain) {
+    header = { name: "Content-Domain", values: [msg.contentDomain] };
+    rval += foldHeader(header);
+  }
+  if (msg.dekInfo) {
+    header = { name: "DEK-Info", values: [msg.dekInfo.algorithm] };
+    if (msg.dekInfo.parameters) {
+      header.values.push(msg.dekInfo.parameters);
+    }
+    rval += foldHeader(header);
+  }
+  if (msg.headers) {
+    for (var i = 0; i < msg.headers.length; ++i) {
+      rval += foldHeader(msg.headers[i]);
+    }
+  }
+  if (msg.procType) {
+    rval += "\r\n";
+  }
+  rval += forge$s.util.encode64(msg.body, options.maxline || 64) + "\r\n";
+  rval += "-----END " + msg.type + "-----\r\n";
+  return rval;
 };
-Cn.decode = function(e) {
-  for (var t = [], a = /\s*-----BEGIN ([A-Z0-9- ]+)-----\r?\n?([\x21-\x7e\s]+?(?:\r?\n\r?\n))?([:A-Za-z0-9+\/=\s]+?)-----END \1-----/g, r = /([\x21-\x7e]+):\s*([\x21-\x7e\s^:]+)/, n = /\r?\n/, s; s = a.exec(e), !!s; ) {
-    var i = s[1];
-    i === "NEW CERTIFICATE REQUEST" && (i = "CERTIFICATE REQUEST");
-    var o = {
-      type: i,
+pem.decode = function(str) {
+  var rval = [];
+  var rMessage = /\s*-----BEGIN ([A-Z0-9- ]+)-----\r?\n?([\x21-\x7e\s]+?(?:\r?\n\r?\n))?([:A-Za-z0-9+\/=\s]+?)-----END \1-----/g;
+  var rHeader = /([\x21-\x7e]+):\s*([\x21-\x7e\s^:]+)/;
+  var rCRLF = /\r?\n/;
+  var match;
+  while (true) {
+    match = rMessage.exec(str);
+    if (!match) {
+      break;
+    }
+    var type = match[1];
+    if (type === "NEW CERTIFICATE REQUEST") {
+      type = "CERTIFICATE REQUEST";
+    }
+    var msg = {
+      type,
       procType: null,
       contentDomain: null,
       dekInfo: null,
       headers: [],
-      body: Ir.util.decode64(s[3])
+      body: forge$s.util.decode64(match[3])
     };
-    if (t.push(o), !!s[2]) {
-      for (var l = s[2].split(n), u = 0; s && u < l.length; ) {
-        for (var f = l[u].replace(/\s+$/, ""), c = u + 1; c < l.length; ++c) {
-          var v = l[c];
-          if (!/\s/.test(v[0]))
-            break;
-          f += v, u = c;
+    rval.push(msg);
+    if (!match[2]) {
+      continue;
+    }
+    var lines = match[2].split(rCRLF);
+    var li = 0;
+    while (match && li < lines.length) {
+      var line = lines[li].replace(/\s+$/, "");
+      for (var nl = li + 1; nl < lines.length; ++nl) {
+        var next = lines[nl];
+        if (!/\s/.test(next[0])) {
+          break;
         }
-        if (s = f.match(r), s) {
-          for (var m = { name: s[1], values: [] }, y = s[2].split(","), x = 0; x < y.length; ++x)
-            m.values.push(_i(y[x]));
-          if (o.procType)
-            if (!o.contentDomain && m.name === "Content-Domain")
-              o.contentDomain = y[0] || "";
-            else if (!o.dekInfo && m.name === "DEK-Info") {
-              if (m.values.length === 0)
-                throw new Error('Invalid PEM formatted message. The "DEK-Info" header must have at least one subfield.');
-              o.dekInfo = { algorithm: y[0], parameters: y[1] || null };
-            } else
-              o.headers.push(m);
-          else {
-            if (m.name !== "Proc-Type")
-              throw new Error('Invalid PEM formatted message. The first encapsulated header must be "Proc-Type".');
-            if (m.values.length !== 2)
-              throw new Error('Invalid PEM formatted message. The "Proc-Type" header must have two subfields.');
-            o.procType = { version: y[0], type: y[1] };
-          }
-        }
-        ++u;
+        line += next;
+        li = nl;
       }
-      if (o.procType === "ENCRYPTED" && !o.dekInfo)
-        throw new Error('Invalid PEM formatted message. The "DEK-Info" header must be present if "Proc-Type" is "ENCRYPTED".');
+      match = line.match(rHeader);
+      if (match) {
+        var header = { name: match[1], values: [] };
+        var values = match[2].split(",");
+        for (var vi = 0; vi < values.length; ++vi) {
+          header.values.push(ltrim(values[vi]));
+        }
+        if (!msg.procType) {
+          if (header.name !== "Proc-Type") {
+            throw new Error('Invalid PEM formatted message. The first encapsulated header must be "Proc-Type".');
+          } else if (header.values.length !== 2) {
+            throw new Error('Invalid PEM formatted message. The "Proc-Type" header must have two subfields.');
+          }
+          msg.procType = { version: values[0], type: values[1] };
+        } else if (!msg.contentDomain && header.name === "Content-Domain") {
+          msg.contentDomain = values[0] || "";
+        } else if (!msg.dekInfo && header.name === "DEK-Info") {
+          if (header.values.length === 0) {
+            throw new Error('Invalid PEM formatted message. The "DEK-Info" header must have at least one subfield.');
+          }
+          msg.dekInfo = { algorithm: values[0], parameters: values[1] || null };
+        } else {
+          msg.headers.push(header);
+        }
+      }
+      ++li;
+    }
+    if (msg.procType === "ENCRYPTED" && !msg.dekInfo) {
+      throw new Error('Invalid PEM formatted message. The "DEK-Info" header must be present if "Proc-Type" is "ENCRYPTED".');
     }
   }
-  if (t.length === 0)
+  if (rval.length === 0) {
     throw new Error("Invalid PEM formatted message.");
-  return t;
+  }
+  return rval;
 };
-function pr(e) {
-  for (var t = e.name + ": ", a = [], r = function(l, u) {
-    return " " + u;
-  }, n = 0; n < e.values.length; ++n)
-    a.push(e.values[n].replace(/^(\S+\r\n)/, r));
-  t += a.join(",") + `\r
-`;
-  for (var s = 0, i = -1, n = 0; n < t.length; ++n, ++s)
-    if (s > 65 && i !== -1) {
-      var o = t[i];
-      o === "," ? (++i, t = t.substr(0, i) + `\r
- ` + t.substr(i)) : t = t.substr(0, i) + `\r
-` + o + t.substr(i + 1), s = n - i - 1, i = -1, ++n;
-    } else (t[n] === " " || t[n] === "	" || t[n] === ",") && (i = n);
-  return t;
+function foldHeader(header) {
+  var rval = header.name + ": ";
+  var values = [];
+  var insertSpace = function(match, $1) {
+    return " " + $1;
+  };
+  for (var i = 0; i < header.values.length; ++i) {
+    values.push(header.values[i].replace(/^(\S+\r\n)/, insertSpace));
+  }
+  rval += values.join(",") + "\r\n";
+  var length = 0;
+  var candidate = -1;
+  for (var i = 0; i < rval.length; ++i, ++length) {
+    if (length > 65 && candidate !== -1) {
+      var insert = rval[candidate];
+      if (insert === ",") {
+        ++candidate;
+        rval = rval.substr(0, candidate) + "\r\n " + rval.substr(candidate);
+      } else {
+        rval = rval.substr(0, candidate) + "\r\n" + insert + rval.substr(candidate + 1);
+      }
+      length = i - candidate - 1;
+      candidate = -1;
+      ++i;
+    } else if (rval[i] === " " || rval[i] === "	" || rval[i] === ",") {
+      candidate = i;
+    }
+  }
+  return rval;
 }
-function _i(e) {
-  return e.replace(/^\s+/, "");
+function ltrim(str) {
+  return str.replace(/^\s+/, "");
 }
-var ce = z;
-ce.des = ce.des || {};
-ce.des.startEncrypting = function(e, t, a, r) {
-  var n = Vr({
-    key: e,
-    output: a,
-    decrypt: !1,
-    mode: r || (t === null ? "ECB" : "CBC")
+var forge$r = forge$C;
+forge$r.des = forge$r.des || {};
+forge$r.des.startEncrypting = function(key, iv, output, mode) {
+  var cipher = _createCipher({
+    key,
+    output,
+    decrypt: false,
+    mode: mode || (iv === null ? "ECB" : "CBC")
   });
-  return n.start(t), n;
+  cipher.start(iv);
+  return cipher;
 };
-ce.des.createEncryptionCipher = function(e, t) {
-  return Vr({
-    key: e,
+forge$r.des.createEncryptionCipher = function(key, mode) {
+  return _createCipher({
+    key,
     output: null,
-    decrypt: !1,
-    mode: t
+    decrypt: false,
+    mode
   });
 };
-ce.des.startDecrypting = function(e, t, a, r) {
-  var n = Vr({
-    key: e,
-    output: a,
-    decrypt: !0,
-    mode: r || (t === null ? "ECB" : "CBC")
+forge$r.des.startDecrypting = function(key, iv, output, mode) {
+  var cipher = _createCipher({
+    key,
+    output,
+    decrypt: true,
+    mode: mode || (iv === null ? "ECB" : "CBC")
   });
-  return n.start(t), n;
+  cipher.start(iv);
+  return cipher;
 };
-ce.des.createDecryptionCipher = function(e, t) {
-  return Vr({
-    key: e,
+forge$r.des.createDecryptionCipher = function(key, mode) {
+  return _createCipher({
+    key,
     output: null,
-    decrypt: !0,
-    mode: t
+    decrypt: true,
+    mode
   });
 };
-ce.des.Algorithm = function(e, t) {
-  var a = this;
-  a.name = e, a.mode = new t({
+forge$r.des.Algorithm = function(name, mode) {
+  var self2 = this;
+  self2.name = name;
+  self2.mode = new mode({
     blockSize: 8,
     cipher: {
-      encrypt: function(r, n) {
-        return Ma(a._keys, r, n, !1);
+      encrypt: function(inBlock, outBlock) {
+        return _updateBlock(self2._keys, inBlock, outBlock, false);
       },
-      decrypt: function(r, n) {
-        return Ma(a._keys, r, n, !0);
+      decrypt: function(inBlock, outBlock) {
+        return _updateBlock(self2._keys, inBlock, outBlock, true);
       }
     }
-  }), a._init = !1;
+  });
+  self2._init = false;
 };
-ce.des.Algorithm.prototype.initialize = function(e) {
-  if (!this._init) {
-    var t = ce.util.createBuffer(e.key);
-    if (this.name.indexOf("3DES") === 0 && t.length() !== 24)
-      throw new Error("Invalid Triple-DES key size: " + t.length() * 8);
-    this._keys = Vi(t), this._init = !0;
+forge$r.des.Algorithm.prototype.initialize = function(options) {
+  if (this._init) {
+    return;
   }
+  var key = forge$r.util.createBuffer(options.key);
+  if (this.name.indexOf("3DES") === 0) {
+    if (key.length() !== 24) {
+      throw new Error("Invalid Triple-DES key size: " + key.length() * 8);
+    }
+  }
+  this._keys = _createKeys(key);
+  this._init = true;
 };
-ht("DES-ECB", ce.cipher.modes.ecb);
-ht("DES-CBC", ce.cipher.modes.cbc);
-ht("DES-CFB", ce.cipher.modes.cfb);
-ht("DES-OFB", ce.cipher.modes.ofb);
-ht("DES-CTR", ce.cipher.modes.ctr);
-ht("3DES-ECB", ce.cipher.modes.ecb);
-ht("3DES-CBC", ce.cipher.modes.cbc);
-ht("3DES-CFB", ce.cipher.modes.cfb);
-ht("3DES-OFB", ce.cipher.modes.ofb);
-ht("3DES-CTR", ce.cipher.modes.ctr);
-function ht(e, t) {
-  var a = function() {
-    return new ce.des.Algorithm(e, t);
+registerAlgorithm("DES-ECB", forge$r.cipher.modes.ecb);
+registerAlgorithm("DES-CBC", forge$r.cipher.modes.cbc);
+registerAlgorithm("DES-CFB", forge$r.cipher.modes.cfb);
+registerAlgorithm("DES-OFB", forge$r.cipher.modes.ofb);
+registerAlgorithm("DES-CTR", forge$r.cipher.modes.ctr);
+registerAlgorithm("3DES-ECB", forge$r.cipher.modes.ecb);
+registerAlgorithm("3DES-CBC", forge$r.cipher.modes.cbc);
+registerAlgorithm("3DES-CFB", forge$r.cipher.modes.cfb);
+registerAlgorithm("3DES-OFB", forge$r.cipher.modes.ofb);
+registerAlgorithm("3DES-CTR", forge$r.cipher.modes.ctr);
+function registerAlgorithm(name, mode) {
+  var factory = function() {
+    return new forge$r.des.Algorithm(name, mode);
   };
-  ce.cipher.registerAlgorithm(e, a);
+  forge$r.cipher.registerAlgorithm(name, factory);
 }
-var Ni = [16843776, 0, 65536, 16843780, 16842756, 66564, 4, 65536, 1024, 16843776, 16843780, 1024, 16778244, 16842756, 16777216, 4, 1028, 16778240, 16778240, 66560, 66560, 16842752, 16842752, 16778244, 65540, 16777220, 16777220, 65540, 0, 1028, 66564, 16777216, 65536, 16843780, 4, 16842752, 16843776, 16777216, 16777216, 1024, 16842756, 65536, 66560, 16777220, 1024, 4, 16778244, 66564, 16843780, 65540, 16842752, 16778244, 16777220, 1028, 66564, 16843776, 1028, 16778240, 16778240, 0, 65540, 66560, 0, 16842756], Ri = [-2146402272, -2147450880, 32768, 1081376, 1048576, 32, -2146435040, -2147450848, -2147483616, -2146402272, -2146402304, -2147483648, -2147450880, 1048576, 32, -2146435040, 1081344, 1048608, -2147450848, 0, -2147483648, 32768, 1081376, -2146435072, 1048608, -2147483616, 0, 1081344, 32800, -2146402304, -2146435072, 32800, 0, 1081376, -2146435040, 1048576, -2147450848, -2146435072, -2146402304, 32768, -2146435072, -2147450880, 32, -2146402272, 1081376, 32, 32768, -2147483648, 32800, -2146402304, 1048576, -2147483616, 1048608, -2147450848, -2147483616, 1048608, 1081344, 0, -2147450880, 32800, -2147483648, -2146435040, -2146402272, 1081344], wi = [520, 134349312, 0, 134348808, 134218240, 0, 131592, 134218240, 131080, 134217736, 134217736, 131072, 134349320, 131080, 134348800, 520, 134217728, 8, 134349312, 512, 131584, 134348800, 134348808, 131592, 134218248, 131584, 131072, 134218248, 8, 134349320, 512, 134217728, 134349312, 134217728, 131080, 520, 131072, 134349312, 134218240, 0, 512, 131080, 134349320, 134218240, 134217736, 512, 0, 134348808, 134218248, 131072, 134217728, 134349320, 8, 131592, 131584, 134217736, 134348800, 134218248, 520, 134348800, 131592, 8, 134348808, 131584], Li = [8396801, 8321, 8321, 128, 8396928, 8388737, 8388609, 8193, 0, 8396800, 8396800, 8396929, 129, 0, 8388736, 8388609, 1, 8192, 8388608, 8396801, 128, 8388608, 8193, 8320, 8388737, 1, 8320, 8388736, 8192, 8396928, 8396929, 129, 8388736, 8388609, 8396800, 8396929, 129, 0, 0, 8396800, 8320, 8388736, 8388737, 1, 8396801, 8321, 8321, 128, 8396929, 129, 1, 8192, 8388609, 8193, 8396928, 8388737, 8193, 8320, 8388608, 8396801, 128, 8388608, 8192, 8396928], ki = [256, 34078976, 34078720, 1107296512, 524288, 256, 1073741824, 34078720, 1074266368, 524288, 33554688, 1074266368, 1107296512, 1107820544, 524544, 1073741824, 33554432, 1074266112, 1074266112, 0, 1073742080, 1107820800, 1107820800, 33554688, 1107820544, 1073742080, 0, 1107296256, 34078976, 33554432, 1107296256, 524544, 524288, 1107296512, 256, 33554432, 1073741824, 34078720, 1107296512, 1074266368, 33554688, 1073741824, 1107820544, 34078976, 1074266368, 256, 33554432, 1107820544, 1107820800, 524544, 1107296256, 1107820800, 34078720, 0, 1074266112, 1107296256, 524544, 33554688, 1073742080, 524288, 0, 1074266112, 34078976, 1073742080], Di = [536870928, 541065216, 16384, 541081616, 541065216, 16, 541081616, 4194304, 536887296, 4210704, 4194304, 536870928, 4194320, 536887296, 536870912, 16400, 0, 4194320, 536887312, 16384, 4210688, 536887312, 16, 541065232, 541065232, 0, 4210704, 541081600, 16400, 4210688, 541081600, 536870912, 536887296, 16, 541065232, 4210688, 541081616, 4194304, 16400, 536870928, 4194304, 536887296, 536870912, 16400, 536870928, 541081616, 4210688, 541065216, 4210704, 541081600, 0, 541065232, 16, 16384, 541065216, 4210704, 16384, 4194320, 536887312, 0, 541081600, 536870912, 4194320, 536887312], Ui = [2097152, 69206018, 67110914, 0, 2048, 67110914, 2099202, 69208064, 69208066, 2097152, 0, 67108866, 2, 67108864, 69206018, 2050, 67110912, 2099202, 2097154, 67110912, 67108866, 69206016, 69208064, 2097154, 69206016, 2048, 2050, 69208066, 2099200, 2, 67108864, 2099200, 67108864, 2099200, 2097152, 67110914, 67110914, 69206018, 69206018, 2, 2097154, 67108864, 67110912, 2097152, 69208064, 2050, 2099202, 69208064, 2050, 67108866, 69208066, 69206016, 2099200, 0, 2, 69208066, 0, 2099202, 69206016, 2048, 67108866, 67110912, 2048, 2097154], Pi = [268439616, 4096, 262144, 268701760, 268435456, 268439616, 64, 268435456, 262208, 268697600, 268701760, 266240, 268701696, 266304, 4096, 64, 268697600, 268435520, 268439552, 4160, 266240, 262208, 268697664, 268701696, 4160, 0, 0, 268697664, 268435520, 268439552, 266304, 262144, 266304, 262144, 268701696, 4096, 64, 268697664, 4096, 266304, 268439552, 64, 268435520, 268697600, 268697664, 268435456, 262144, 268439616, 0, 268701760, 262208, 268435520, 268697600, 268439552, 268439616, 0, 268701760, 266240, 266240, 4160, 4160, 262208, 268435456, 268701696];
-function Vi(e) {
-  for (var t = [0, 4, 536870912, 536870916, 65536, 65540, 536936448, 536936452, 512, 516, 536871424, 536871428, 66048, 66052, 536936960, 536936964], a = [0, 1, 1048576, 1048577, 67108864, 67108865, 68157440, 68157441, 256, 257, 1048832, 1048833, 67109120, 67109121, 68157696, 68157697], r = [0, 8, 2048, 2056, 16777216, 16777224, 16779264, 16779272, 0, 8, 2048, 2056, 16777216, 16777224, 16779264, 16779272], n = [0, 2097152, 134217728, 136314880, 8192, 2105344, 134225920, 136323072, 131072, 2228224, 134348800, 136445952, 139264, 2236416, 134356992, 136454144], s = [0, 262144, 16, 262160, 0, 262144, 16, 262160, 4096, 266240, 4112, 266256, 4096, 266240, 4112, 266256], i = [0, 1024, 32, 1056, 0, 1024, 32, 1056, 33554432, 33555456, 33554464, 33555488, 33554432, 33555456, 33554464, 33555488], o = [0, 268435456, 524288, 268959744, 2, 268435458, 524290, 268959746, 0, 268435456, 524288, 268959744, 2, 268435458, 524290, 268959746], l = [0, 65536, 2048, 67584, 536870912, 536936448, 536872960, 536938496, 131072, 196608, 133120, 198656, 537001984, 537067520, 537004032, 537069568], u = [0, 262144, 0, 262144, 2, 262146, 2, 262146, 33554432, 33816576, 33554432, 33816576, 33554434, 33816578, 33554434, 33816578], f = [0, 268435456, 8, 268435464, 0, 268435456, 8, 268435464, 1024, 268436480, 1032, 268436488, 1024, 268436480, 1032, 268436488], c = [0, 32, 0, 32, 1048576, 1048608, 1048576, 1048608, 8192, 8224, 8192, 8224, 1056768, 1056800, 1056768, 1056800], v = [0, 16777216, 512, 16777728, 2097152, 18874368, 2097664, 18874880, 67108864, 83886080, 67109376, 83886592, 69206016, 85983232, 69206528, 85983744], m = [0, 4096, 134217728, 134221824, 524288, 528384, 134742016, 134746112, 16, 4112, 134217744, 134221840, 524304, 528400, 134742032, 134746128], y = [0, 4, 256, 260, 0, 4, 256, 260, 1, 5, 257, 261, 1, 5, 257, 261], x = e.length() > 8 ? 3 : 1, S = [], I = [0, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0], b = 0, _, V = 0; V < x; V++) {
-    var k = e.getInt32(), w = e.getInt32();
-    _ = (k >>> 4 ^ w) & 252645135, w ^= _, k ^= _ << 4, _ = (w >>> -16 ^ k) & 65535, k ^= _, w ^= _ << -16, _ = (k >>> 2 ^ w) & 858993459, w ^= _, k ^= _ << 2, _ = (w >>> -16 ^ k) & 65535, k ^= _, w ^= _ << -16, _ = (k >>> 1 ^ w) & 1431655765, w ^= _, k ^= _ << 1, _ = (w >>> 8 ^ k) & 16711935, k ^= _, w ^= _ << 8, _ = (k >>> 1 ^ w) & 1431655765, w ^= _, k ^= _ << 1, _ = k << 8 | w >>> 20 & 240, k = w << 24 | w << 8 & 16711680 | w >>> 8 & 65280 | w >>> 24 & 240, w = _;
-    for (var G = 0; G < I.length; ++G) {
-      I[G] ? (k = k << 2 | k >>> 26, w = w << 2 | w >>> 26) : (k = k << 1 | k >>> 27, w = w << 1 | w >>> 27), k &= -15, w &= -15;
-      var Y = t[k >>> 28] | a[k >>> 24 & 15] | r[k >>> 20 & 15] | n[k >>> 16 & 15] | s[k >>> 12 & 15] | i[k >>> 8 & 15] | o[k >>> 4 & 15], re = l[w >>> 28] | u[w >>> 24 & 15] | f[w >>> 20 & 15] | c[w >>> 16 & 15] | v[w >>> 12 & 15] | m[w >>> 8 & 15] | y[w >>> 4 & 15];
-      _ = (re >>> 16 ^ Y) & 65535, S[b++] = Y ^ _, S[b++] = re ^ _ << 16;
+var spfunction1 = [16843776, 0, 65536, 16843780, 16842756, 66564, 4, 65536, 1024, 16843776, 16843780, 1024, 16778244, 16842756, 16777216, 4, 1028, 16778240, 16778240, 66560, 66560, 16842752, 16842752, 16778244, 65540, 16777220, 16777220, 65540, 0, 1028, 66564, 16777216, 65536, 16843780, 4, 16842752, 16843776, 16777216, 16777216, 1024, 16842756, 65536, 66560, 16777220, 1024, 4, 16778244, 66564, 16843780, 65540, 16842752, 16778244, 16777220, 1028, 66564, 16843776, 1028, 16778240, 16778240, 0, 65540, 66560, 0, 16842756];
+var spfunction2 = [-2146402272, -2147450880, 32768, 1081376, 1048576, 32, -2146435040, -2147450848, -2147483616, -2146402272, -2146402304, -2147483648, -2147450880, 1048576, 32, -2146435040, 1081344, 1048608, -2147450848, 0, -2147483648, 32768, 1081376, -2146435072, 1048608, -2147483616, 0, 1081344, 32800, -2146402304, -2146435072, 32800, 0, 1081376, -2146435040, 1048576, -2147450848, -2146435072, -2146402304, 32768, -2146435072, -2147450880, 32, -2146402272, 1081376, 32, 32768, -2147483648, 32800, -2146402304, 1048576, -2147483616, 1048608, -2147450848, -2147483616, 1048608, 1081344, 0, -2147450880, 32800, -2147483648, -2146435040, -2146402272, 1081344];
+var spfunction3 = [520, 134349312, 0, 134348808, 134218240, 0, 131592, 134218240, 131080, 134217736, 134217736, 131072, 134349320, 131080, 134348800, 520, 134217728, 8, 134349312, 512, 131584, 134348800, 134348808, 131592, 134218248, 131584, 131072, 134218248, 8, 134349320, 512, 134217728, 134349312, 134217728, 131080, 520, 131072, 134349312, 134218240, 0, 512, 131080, 134349320, 134218240, 134217736, 512, 0, 134348808, 134218248, 131072, 134217728, 134349320, 8, 131592, 131584, 134217736, 134348800, 134218248, 520, 134348800, 131592, 8, 134348808, 131584];
+var spfunction4 = [8396801, 8321, 8321, 128, 8396928, 8388737, 8388609, 8193, 0, 8396800, 8396800, 8396929, 129, 0, 8388736, 8388609, 1, 8192, 8388608, 8396801, 128, 8388608, 8193, 8320, 8388737, 1, 8320, 8388736, 8192, 8396928, 8396929, 129, 8388736, 8388609, 8396800, 8396929, 129, 0, 0, 8396800, 8320, 8388736, 8388737, 1, 8396801, 8321, 8321, 128, 8396929, 129, 1, 8192, 8388609, 8193, 8396928, 8388737, 8193, 8320, 8388608, 8396801, 128, 8388608, 8192, 8396928];
+var spfunction5 = [256, 34078976, 34078720, 1107296512, 524288, 256, 1073741824, 34078720, 1074266368, 524288, 33554688, 1074266368, 1107296512, 1107820544, 524544, 1073741824, 33554432, 1074266112, 1074266112, 0, 1073742080, 1107820800, 1107820800, 33554688, 1107820544, 1073742080, 0, 1107296256, 34078976, 33554432, 1107296256, 524544, 524288, 1107296512, 256, 33554432, 1073741824, 34078720, 1107296512, 1074266368, 33554688, 1073741824, 1107820544, 34078976, 1074266368, 256, 33554432, 1107820544, 1107820800, 524544, 1107296256, 1107820800, 34078720, 0, 1074266112, 1107296256, 524544, 33554688, 1073742080, 524288, 0, 1074266112, 34078976, 1073742080];
+var spfunction6 = [536870928, 541065216, 16384, 541081616, 541065216, 16, 541081616, 4194304, 536887296, 4210704, 4194304, 536870928, 4194320, 536887296, 536870912, 16400, 0, 4194320, 536887312, 16384, 4210688, 536887312, 16, 541065232, 541065232, 0, 4210704, 541081600, 16400, 4210688, 541081600, 536870912, 536887296, 16, 541065232, 4210688, 541081616, 4194304, 16400, 536870928, 4194304, 536887296, 536870912, 16400, 536870928, 541081616, 4210688, 541065216, 4210704, 541081600, 0, 541065232, 16, 16384, 541065216, 4210704, 16384, 4194320, 536887312, 0, 541081600, 536870912, 4194320, 536887312];
+var spfunction7 = [2097152, 69206018, 67110914, 0, 2048, 67110914, 2099202, 69208064, 69208066, 2097152, 0, 67108866, 2, 67108864, 69206018, 2050, 67110912, 2099202, 2097154, 67110912, 67108866, 69206016, 69208064, 2097154, 69206016, 2048, 2050, 69208066, 2099200, 2, 67108864, 2099200, 67108864, 2099200, 2097152, 67110914, 67110914, 69206018, 69206018, 2, 2097154, 67108864, 67110912, 2097152, 69208064, 2050, 2099202, 69208064, 2050, 67108866, 69208066, 69206016, 2099200, 0, 2, 69208066, 0, 2099202, 69206016, 2048, 67108866, 67110912, 2048, 2097154];
+var spfunction8 = [268439616, 4096, 262144, 268701760, 268435456, 268439616, 64, 268435456, 262208, 268697600, 268701760, 266240, 268701696, 266304, 4096, 64, 268697600, 268435520, 268439552, 4160, 266240, 262208, 268697664, 268701696, 4160, 0, 0, 268697664, 268435520, 268439552, 266304, 262144, 266304, 262144, 268701696, 4096, 64, 268697664, 4096, 266304, 268439552, 64, 268435520, 268697600, 268697664, 268435456, 262144, 268439616, 0, 268701760, 262208, 268435520, 268697600, 268439552, 268439616, 0, 268701760, 266240, 266240, 4160, 4160, 262208, 268435456, 268701696];
+function _createKeys(key) {
+  var pc2bytes0 = [0, 4, 536870912, 536870916, 65536, 65540, 536936448, 536936452, 512, 516, 536871424, 536871428, 66048, 66052, 536936960, 536936964], pc2bytes1 = [0, 1, 1048576, 1048577, 67108864, 67108865, 68157440, 68157441, 256, 257, 1048832, 1048833, 67109120, 67109121, 68157696, 68157697], pc2bytes2 = [0, 8, 2048, 2056, 16777216, 16777224, 16779264, 16779272, 0, 8, 2048, 2056, 16777216, 16777224, 16779264, 16779272], pc2bytes3 = [0, 2097152, 134217728, 136314880, 8192, 2105344, 134225920, 136323072, 131072, 2228224, 134348800, 136445952, 139264, 2236416, 134356992, 136454144], pc2bytes4 = [0, 262144, 16, 262160, 0, 262144, 16, 262160, 4096, 266240, 4112, 266256, 4096, 266240, 4112, 266256], pc2bytes5 = [0, 1024, 32, 1056, 0, 1024, 32, 1056, 33554432, 33555456, 33554464, 33555488, 33554432, 33555456, 33554464, 33555488], pc2bytes6 = [0, 268435456, 524288, 268959744, 2, 268435458, 524290, 268959746, 0, 268435456, 524288, 268959744, 2, 268435458, 524290, 268959746], pc2bytes7 = [0, 65536, 2048, 67584, 536870912, 536936448, 536872960, 536938496, 131072, 196608, 133120, 198656, 537001984, 537067520, 537004032, 537069568], pc2bytes8 = [0, 262144, 0, 262144, 2, 262146, 2, 262146, 33554432, 33816576, 33554432, 33816576, 33554434, 33816578, 33554434, 33816578], pc2bytes9 = [0, 268435456, 8, 268435464, 0, 268435456, 8, 268435464, 1024, 268436480, 1032, 268436488, 1024, 268436480, 1032, 268436488], pc2bytes10 = [0, 32, 0, 32, 1048576, 1048608, 1048576, 1048608, 8192, 8224, 8192, 8224, 1056768, 1056800, 1056768, 1056800], pc2bytes11 = [0, 16777216, 512, 16777728, 2097152, 18874368, 2097664, 18874880, 67108864, 83886080, 67109376, 83886592, 69206016, 85983232, 69206528, 85983744], pc2bytes12 = [0, 4096, 134217728, 134221824, 524288, 528384, 134742016, 134746112, 16, 4112, 134217744, 134221840, 524304, 528400, 134742032, 134746128], pc2bytes13 = [0, 4, 256, 260, 0, 4, 256, 260, 1, 5, 257, 261, 1, 5, 257, 261];
+  var iterations = key.length() > 8 ? 3 : 1;
+  var keys = [];
+  var shifts = [0, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0];
+  var n = 0, tmp;
+  for (var j = 0; j < iterations; j++) {
+    var left = key.getInt32();
+    var right = key.getInt32();
+    tmp = (left >>> 4 ^ right) & 252645135;
+    right ^= tmp;
+    left ^= tmp << 4;
+    tmp = (right >>> -16 ^ left) & 65535;
+    left ^= tmp;
+    right ^= tmp << -16;
+    tmp = (left >>> 2 ^ right) & 858993459;
+    right ^= tmp;
+    left ^= tmp << 2;
+    tmp = (right >>> -16 ^ left) & 65535;
+    left ^= tmp;
+    right ^= tmp << -16;
+    tmp = (left >>> 1 ^ right) & 1431655765;
+    right ^= tmp;
+    left ^= tmp << 1;
+    tmp = (right >>> 8 ^ left) & 16711935;
+    left ^= tmp;
+    right ^= tmp << 8;
+    tmp = (left >>> 1 ^ right) & 1431655765;
+    right ^= tmp;
+    left ^= tmp << 1;
+    tmp = left << 8 | right >>> 20 & 240;
+    left = right << 24 | right << 8 & 16711680 | right >>> 8 & 65280 | right >>> 24 & 240;
+    right = tmp;
+    for (var i = 0; i < shifts.length; ++i) {
+      if (shifts[i]) {
+        left = left << 2 | left >>> 26;
+        right = right << 2 | right >>> 26;
+      } else {
+        left = left << 1 | left >>> 27;
+        right = right << 1 | right >>> 27;
+      }
+      left &= -15;
+      right &= -15;
+      var lefttmp = pc2bytes0[left >>> 28] | pc2bytes1[left >>> 24 & 15] | pc2bytes2[left >>> 20 & 15] | pc2bytes3[left >>> 16 & 15] | pc2bytes4[left >>> 12 & 15] | pc2bytes5[left >>> 8 & 15] | pc2bytes6[left >>> 4 & 15];
+      var righttmp = pc2bytes7[right >>> 28] | pc2bytes8[right >>> 24 & 15] | pc2bytes9[right >>> 20 & 15] | pc2bytes10[right >>> 16 & 15] | pc2bytes11[right >>> 12 & 15] | pc2bytes12[right >>> 8 & 15] | pc2bytes13[right >>> 4 & 15];
+      tmp = (righttmp >>> 16 ^ lefttmp) & 65535;
+      keys[n++] = lefttmp ^ tmp;
+      keys[n++] = righttmp ^ tmp << 16;
     }
   }
-  return S;
+  return keys;
 }
-function Ma(e, t, a, r) {
-  var n = e.length === 32 ? 3 : 9, s;
-  n === 3 ? s = r ? [30, -2, -2] : [0, 32, 2] : s = r ? [94, 62, -2, 32, 64, 2, 30, -2, -2] : [0, 32, 2, 62, 30, -2, 64, 96, 2];
-  var i, o = t[0], l = t[1];
-  i = (o >>> 4 ^ l) & 252645135, l ^= i, o ^= i << 4, i = (o >>> 16 ^ l) & 65535, l ^= i, o ^= i << 16, i = (l >>> 2 ^ o) & 858993459, o ^= i, l ^= i << 2, i = (l >>> 8 ^ o) & 16711935, o ^= i, l ^= i << 8, i = (o >>> 1 ^ l) & 1431655765, l ^= i, o ^= i << 1, o = o << 1 | o >>> 31, l = l << 1 | l >>> 31;
-  for (var u = 0; u < n; u += 3) {
-    for (var f = s[u + 1], c = s[u + 2], v = s[u]; v != f; v += c) {
-      var m = l ^ e[v], y = (l >>> 4 | l << 28) ^ e[v + 1];
-      i = o, o = l, l = i ^ (Ri[m >>> 24 & 63] | Li[m >>> 16 & 63] | Di[m >>> 8 & 63] | Pi[m & 63] | Ni[y >>> 24 & 63] | wi[y >>> 16 & 63] | ki[y >>> 8 & 63] | Ui[y & 63]);
+function _updateBlock(keys, input, output, decrypt) {
+  var iterations = keys.length === 32 ? 3 : 9;
+  var looping;
+  if (iterations === 3) {
+    looping = decrypt ? [30, -2, -2] : [0, 32, 2];
+  } else {
+    looping = decrypt ? [94, 62, -2, 32, 64, 2, 30, -2, -2] : [0, 32, 2, 62, 30, -2, 64, 96, 2];
+  }
+  var tmp;
+  var left = input[0];
+  var right = input[1];
+  tmp = (left >>> 4 ^ right) & 252645135;
+  right ^= tmp;
+  left ^= tmp << 4;
+  tmp = (left >>> 16 ^ right) & 65535;
+  right ^= tmp;
+  left ^= tmp << 16;
+  tmp = (right >>> 2 ^ left) & 858993459;
+  left ^= tmp;
+  right ^= tmp << 2;
+  tmp = (right >>> 8 ^ left) & 16711935;
+  left ^= tmp;
+  right ^= tmp << 8;
+  tmp = (left >>> 1 ^ right) & 1431655765;
+  right ^= tmp;
+  left ^= tmp << 1;
+  left = left << 1 | left >>> 31;
+  right = right << 1 | right >>> 31;
+  for (var j = 0; j < iterations; j += 3) {
+    var endloop = looping[j + 1];
+    var loopinc = looping[j + 2];
+    for (var i = looping[j]; i != endloop; i += loopinc) {
+      var right1 = right ^ keys[i];
+      var right2 = (right >>> 4 | right << 28) ^ keys[i + 1];
+      tmp = left;
+      left = right;
+      right = tmp ^ (spfunction2[right1 >>> 24 & 63] | spfunction4[right1 >>> 16 & 63] | spfunction6[right1 >>> 8 & 63] | spfunction8[right1 & 63] | spfunction1[right2 >>> 24 & 63] | spfunction3[right2 >>> 16 & 63] | spfunction5[right2 >>> 8 & 63] | spfunction7[right2 & 63]);
     }
-    i = o, o = l, l = i;
+    tmp = left;
+    left = right;
+    right = tmp;
   }
-  o = o >>> 1 | o << 31, l = l >>> 1 | l << 31, i = (o >>> 1 ^ l) & 1431655765, l ^= i, o ^= i << 1, i = (l >>> 8 ^ o) & 16711935, o ^= i, l ^= i << 8, i = (l >>> 2 ^ o) & 858993459, o ^= i, l ^= i << 2, i = (o >>> 16 ^ l) & 65535, l ^= i, o ^= i << 16, i = (o >>> 4 ^ l) & 252645135, l ^= i, o ^= i << 4, a[0] = o, a[1] = l;
+  left = left >>> 1 | left << 31;
+  right = right >>> 1 | right << 31;
+  tmp = (left >>> 1 ^ right) & 1431655765;
+  right ^= tmp;
+  left ^= tmp << 1;
+  tmp = (right >>> 8 ^ left) & 16711935;
+  left ^= tmp;
+  right ^= tmp << 8;
+  tmp = (right >>> 2 ^ left) & 858993459;
+  left ^= tmp;
+  right ^= tmp << 2;
+  tmp = (left >>> 16 ^ right) & 65535;
+  right ^= tmp;
+  left ^= tmp << 16;
+  tmp = (left >>> 4 ^ right) & 252645135;
+  right ^= tmp;
+  left ^= tmp << 4;
+  output[0] = left;
+  output[1] = right;
 }
-function Vr(e) {
-  e = e || {};
-  var t = (e.mode || "CBC").toUpperCase(), a = "DES-" + t, r;
-  e.decrypt ? r = ce.cipher.createDecipher(a, e.key) : r = ce.cipher.createCipher(a, e.key);
-  var n = r.start;
-  return r.start = function(s, i) {
-    var o = null;
-    i instanceof ce.util.ByteBuffer && (o = i, i = {}), i = i || {}, i.output = o, i.iv = s, n.call(r, i);
-  }, r;
-}
-var Ye = z, Oi = Ye.pkcs5 = Ye.pkcs5 || {}, dt;
-Ye.util.isNodejs && (dt = va);
-Ye.pbkdf2 = Oi.pbkdf2 = function(e, t, a, r, n, s) {
-  if (typeof n == "function" && (s = n, n = null), Ye.util.isNodejs && dt.pbkdf2 && (n === null || typeof n != "object") && (dt.pbkdf2Sync.length > 4 || !n || n === "sha1"))
-    return typeof n != "string" && (n = "sha1"), e = Buffer.from(e, "binary"), t = Buffer.from(t, "binary"), s ? dt.pbkdf2Sync.length === 4 ? dt.pbkdf2(e, t, a, r, function(_, V) {
-      if (_)
-        return s(_);
-      s(null, V.toString("binary"));
-    }) : dt.pbkdf2(e, t, a, r, n, function(_, V) {
-      if (_)
-        return s(_);
-      s(null, V.toString("binary"));
-    }) : dt.pbkdf2Sync.length === 4 ? dt.pbkdf2Sync(e, t, a, r).toString("binary") : dt.pbkdf2Sync(e, t, a, r, n).toString("binary");
-  if ((typeof n > "u" || n === null) && (n = "sha1"), typeof n == "string") {
-    if (!(n in Ye.md.algorithms))
-      throw new Error("Unknown hash algorithm: " + n);
-    n = Ye.md[n].create();
+function _createCipher(options) {
+  options = options || {};
+  var mode = (options.mode || "CBC").toUpperCase();
+  var algorithm = "DES-" + mode;
+  var cipher;
+  if (options.decrypt) {
+    cipher = forge$r.cipher.createDecipher(algorithm, options.key);
+  } else {
+    cipher = forge$r.cipher.createCipher(algorithm, options.key);
   }
-  var i = n.digestLength;
-  if (r > 4294967295 * i) {
-    var o = new Error("Derived key is too long.");
-    if (s)
-      return s(o);
-    throw o;
-  }
-  var l = Math.ceil(r / i), u = r - (l - 1) * i, f = Ye.hmac.create();
-  f.start(n, e);
-  var c = "", v, m, y;
-  if (!s) {
-    for (var x = 1; x <= l; ++x) {
-      f.start(null, null), f.update(t), f.update(Ye.util.int32ToBytes(x)), v = y = f.digest().getBytes();
-      for (var S = 2; S <= a; ++S)
-        f.start(null, null), f.update(y), m = f.digest().getBytes(), v = Ye.util.xorBytes(v, m, i), y = m;
-      c += x < l ? v : v.substr(0, u);
+  var start = cipher.start;
+  cipher.start = function(iv, options2) {
+    var output = null;
+    if (options2 instanceof forge$r.util.ByteBuffer) {
+      output = options2;
+      options2 = {};
     }
-    return c;
+    options2 = options2 || {};
+    options2.output = output;
+    options2.iv = iv;
+    start.call(cipher, options2);
+  };
+  return cipher;
+}
+var forge$q = forge$C;
+var pkcs5 = forge$q.pkcs5 = forge$q.pkcs5 || {};
+var crypto;
+if (forge$q.util.isNodejs && true) {
+  crypto = require$$4;
+}
+forge$q.pbkdf2 = pkcs5.pbkdf2 = function(p, s2, c, dkLen, md, callback) {
+  if (typeof md === "function") {
+    callback = md;
+    md = null;
   }
-  var x = 1, S;
-  function I() {
-    if (x > l)
-      return s(null, c);
-    f.start(null, null), f.update(t), f.update(Ye.util.int32ToBytes(x)), v = y = f.digest().getBytes(), S = 2, b();
+  if (forge$q.util.isNodejs && true && crypto.pbkdf2 && (md === null || typeof md !== "object") && (crypto.pbkdf2Sync.length > 4 || (!md || md === "sha1"))) {
+    if (typeof md !== "string") {
+      md = "sha1";
+    }
+    p = Buffer.from(p, "binary");
+    s2 = Buffer.from(s2, "binary");
+    if (!callback) {
+      if (crypto.pbkdf2Sync.length === 4) {
+        return crypto.pbkdf2Sync(p, s2, c, dkLen).toString("binary");
+      }
+      return crypto.pbkdf2Sync(p, s2, c, dkLen, md).toString("binary");
+    }
+    if (crypto.pbkdf2Sync.length === 4) {
+      return crypto.pbkdf2(p, s2, c, dkLen, function(err2, key) {
+        if (err2) {
+          return callback(err2);
+        }
+        callback(null, key.toString("binary"));
+      });
+    }
+    return crypto.pbkdf2(p, s2, c, dkLen, md, function(err2, key) {
+      if (err2) {
+        return callback(err2);
+      }
+      callback(null, key.toString("binary"));
+    });
   }
-  function b() {
-    if (S <= a)
-      return f.start(null, null), f.update(y), m = f.digest().getBytes(), v = Ye.util.xorBytes(v, m, i), y = m, ++S, Ye.util.setImmediate(b);
-    c += x < l ? v : v.substr(0, u), ++x, I();
+  if (typeof md === "undefined" || md === null) {
+    md = "sha1";
   }
-  I();
+  if (typeof md === "string") {
+    if (!(md in forge$q.md.algorithms)) {
+      throw new Error("Unknown hash algorithm: " + md);
+    }
+    md = forge$q.md[md].create();
+  }
+  var hLen = md.digestLength;
+  if (dkLen > 4294967295 * hLen) {
+    var err = new Error("Derived key is too long.");
+    if (callback) {
+      return callback(err);
+    }
+    throw err;
+  }
+  var len = Math.ceil(dkLen / hLen);
+  var r = dkLen - (len - 1) * hLen;
+  var prf = forge$q.hmac.create();
+  prf.start(md, p);
+  var dk = "";
+  var xor, u_c, u_c1;
+  if (!callback) {
+    for (var i = 1; i <= len; ++i) {
+      prf.start(null, null);
+      prf.update(s2);
+      prf.update(forge$q.util.int32ToBytes(i));
+      xor = u_c1 = prf.digest().getBytes();
+      for (var j = 2; j <= c; ++j) {
+        prf.start(null, null);
+        prf.update(u_c1);
+        u_c = prf.digest().getBytes();
+        xor = forge$q.util.xorBytes(xor, u_c, hLen);
+        u_c1 = u_c;
+      }
+      dk += i < len ? xor : xor.substr(0, r);
+    }
+    return dk;
+  }
+  var i = 1, j;
+  function outer() {
+    if (i > len) {
+      return callback(null, dk);
+    }
+    prf.start(null, null);
+    prf.update(s2);
+    prf.update(forge$q.util.int32ToBytes(i));
+    xor = u_c1 = prf.digest().getBytes();
+    j = 2;
+    inner();
+  }
+  function inner() {
+    if (j <= c) {
+      prf.start(null, null);
+      prf.update(u_c1);
+      u_c = prf.digest().getBytes();
+      xor = forge$q.util.xorBytes(xor, u_c, hLen);
+      u_c1 = u_c;
+      ++j;
+      return forge$q.util.setImmediate(inner);
+    }
+    dk += i < len ? xor : xor.substr(0, r);
+    ++i;
+    outer();
+  }
+  outer();
 };
-var ut = z, En = ut.sha256 = ut.sha256 || {};
-ut.md.sha256 = ut.md.algorithms.sha256 = En;
-En.create = function() {
-  xn || Fi();
-  var e = null, t = ut.util.createBuffer(), a = new Array(64), r = {
+var forge$p = forge$C;
+var sha256 = forge$p.sha256 = forge$p.sha256 || {};
+forge$p.md.sha256 = forge$p.md.algorithms.sha256 = sha256;
+sha256.create = function() {
+  if (!_initialized$2) {
+    _init$2();
+  }
+  var _state = null;
+  var _input = forge$p.util.createBuffer();
+  var _w = new Array(64);
+  var md = {
     algorithm: "sha256",
     blockLength: 64,
     digestLength: 32,
@@ -2652,11 +4321,15 @@ En.create = function() {
     // size of message length in bytes
     messageLengthSize: 8
   };
-  return r.start = function() {
-    r.messageLength = 0, r.fullMessageLength = r.messageLength64 = [];
-    for (var n = r.messageLengthSize / 4, s = 0; s < n; ++s)
-      r.fullMessageLength.push(0);
-    return t = ut.util.createBuffer(), e = {
+  md.start = function() {
+    md.messageLength = 0;
+    md.fullMessageLength = md.messageLength64 = [];
+    var int32s = md.messageLengthSize / 4;
+    for (var i = 0; i < int32s; ++i) {
+      md.fullMessageLength.push(0);
+    }
+    _input = forge$p.util.createBuffer();
+    _state = {
       h0: 1779033703,
       h1: 3144134277,
       h2: 1013904242,
@@ -2665,40 +4338,77 @@ En.create = function() {
       h5: 2600822924,
       h6: 528734635,
       h7: 1541459225
-    }, r;
-  }, r.start(), r.update = function(n, s) {
-    s === "utf8" && (n = ut.util.encodeUtf8(n));
-    var i = n.length;
-    r.messageLength += i, i = [i / 4294967296 >>> 0, i >>> 0];
-    for (var o = r.fullMessageLength.length - 1; o >= 0; --o)
-      r.fullMessageLength[o] += i[1], i[1] = i[0] + (r.fullMessageLength[o] / 4294967296 >>> 0), r.fullMessageLength[o] = r.fullMessageLength[o] >>> 0, i[0] = i[1] / 4294967296 >>> 0;
-    return t.putBytes(n), Ha(e, a, t), (t.read > 2048 || t.length() === 0) && t.compact(), r;
-  }, r.digest = function() {
-    var n = ut.util.createBuffer();
-    n.putBytes(t.bytes());
-    var s = r.fullMessageLength[r.fullMessageLength.length - 1] + r.messageLengthSize, i = s & r.blockLength - 1;
-    n.putBytes(ta.substr(0, r.blockLength - i));
-    for (var o, l, u = r.fullMessageLength[0] * 8, f = 0; f < r.fullMessageLength.length - 1; ++f)
-      o = r.fullMessageLength[f + 1] * 8, l = o / 4294967296 >>> 0, u += l, n.putInt32(u >>> 0), u = o >>> 0;
-    n.putInt32(u);
-    var c = {
-      h0: e.h0,
-      h1: e.h1,
-      h2: e.h2,
-      h3: e.h3,
-      h4: e.h4,
-      h5: e.h5,
-      h6: e.h6,
-      h7: e.h7
     };
-    Ha(c, a, n);
-    var v = ut.util.createBuffer();
-    return v.putInt32(c.h0), v.putInt32(c.h1), v.putInt32(c.h2), v.putInt32(c.h3), v.putInt32(c.h4), v.putInt32(c.h5), v.putInt32(c.h6), v.putInt32(c.h7), v;
-  }, r;
+    return md;
+  };
+  md.start();
+  md.update = function(msg, encoding) {
+    if (encoding === "utf8") {
+      msg = forge$p.util.encodeUtf8(msg);
+    }
+    var len = msg.length;
+    md.messageLength += len;
+    len = [len / 4294967296 >>> 0, len >>> 0];
+    for (var i = md.fullMessageLength.length - 1; i >= 0; --i) {
+      md.fullMessageLength[i] += len[1];
+      len[1] = len[0] + (md.fullMessageLength[i] / 4294967296 >>> 0);
+      md.fullMessageLength[i] = md.fullMessageLength[i] >>> 0;
+      len[0] = len[1] / 4294967296 >>> 0;
+    }
+    _input.putBytes(msg);
+    _update$2(_state, _w, _input);
+    if (_input.read > 2048 || _input.length() === 0) {
+      _input.compact();
+    }
+    return md;
+  };
+  md.digest = function() {
+    var finalBlock = forge$p.util.createBuffer();
+    finalBlock.putBytes(_input.bytes());
+    var remaining = md.fullMessageLength[md.fullMessageLength.length - 1] + md.messageLengthSize;
+    var overflow = remaining & md.blockLength - 1;
+    finalBlock.putBytes(_padding$2.substr(0, md.blockLength - overflow));
+    var next, carry;
+    var bits = md.fullMessageLength[0] * 8;
+    for (var i = 0; i < md.fullMessageLength.length - 1; ++i) {
+      next = md.fullMessageLength[i + 1] * 8;
+      carry = next / 4294967296 >>> 0;
+      bits += carry;
+      finalBlock.putInt32(bits >>> 0);
+      bits = next >>> 0;
+    }
+    finalBlock.putInt32(bits);
+    var s2 = {
+      h0: _state.h0,
+      h1: _state.h1,
+      h2: _state.h2,
+      h3: _state.h3,
+      h4: _state.h4,
+      h5: _state.h5,
+      h6: _state.h6,
+      h7: _state.h7
+    };
+    _update$2(s2, _w, finalBlock);
+    var rval = forge$p.util.createBuffer();
+    rval.putInt32(s2.h0);
+    rval.putInt32(s2.h1);
+    rval.putInt32(s2.h2);
+    rval.putInt32(s2.h3);
+    rval.putInt32(s2.h4);
+    rval.putInt32(s2.h5);
+    rval.putInt32(s2.h6);
+    rval.putInt32(s2.h7);
+    return rval;
+  };
+  return md;
 };
-var ta = null, xn = !1, Sn = null;
-function Fi() {
-  ta = "", ta += ut.util.fillString("\0", 64), Sn = [
+var _padding$2 = null;
+var _initialized$2 = false;
+var _k$1 = null;
+function _init$2() {
+  _padding$2 = String.fromCharCode(128);
+  _padding$2 += forge$p.util.fillString(String.fromCharCode(0), 64);
+  _k$1 = [
     1116352408,
     1899447441,
     3049323471,
@@ -2763,25 +4473,67 @@ function Fi() {
     2756734187,
     3204031479,
     3329325298
-  ], xn = !0;
+  ];
+  _initialized$2 = true;
 }
-function Ha(e, t, a) {
-  for (var r, n, s, i, o, l, u, f, c, v, m, y, x, S, I, b = a.length(); b >= 64; ) {
-    for (u = 0; u < 16; ++u)
-      t[u] = a.getInt32();
-    for (; u < 64; ++u)
-      r = t[u - 2], r = (r >>> 17 | r << 15) ^ (r >>> 19 | r << 13) ^ r >>> 10, n = t[u - 15], n = (n >>> 7 | n << 25) ^ (n >>> 18 | n << 14) ^ n >>> 3, t[u] = r + t[u - 7] + n + t[u - 16] | 0;
-    for (f = e.h0, c = e.h1, v = e.h2, m = e.h3, y = e.h4, x = e.h5, S = e.h6, I = e.h7, u = 0; u < 64; ++u)
-      i = (y >>> 6 | y << 26) ^ (y >>> 11 | y << 21) ^ (y >>> 25 | y << 7), o = S ^ y & (x ^ S), s = (f >>> 2 | f << 30) ^ (f >>> 13 | f << 19) ^ (f >>> 22 | f << 10), l = f & c | v & (f ^ c), r = I + i + o + Sn[u] + t[u], n = s + l, I = S, S = x, x = y, y = m + r >>> 0, m = v, v = c, c = f, f = r + n >>> 0;
-    e.h0 = e.h0 + f | 0, e.h1 = e.h1 + c | 0, e.h2 = e.h2 + v | 0, e.h3 = e.h3 + m | 0, e.h4 = e.h4 + y | 0, e.h5 = e.h5 + x | 0, e.h6 = e.h6 + S | 0, e.h7 = e.h7 + I | 0, b -= 64;
+function _update$2(s2, w, bytes) {
+  var t1, t2, s0, s1, ch, maj, i, a, b, c, d, e, f, g, h;
+  var len = bytes.length();
+  while (len >= 64) {
+    for (i = 0; i < 16; ++i) {
+      w[i] = bytes.getInt32();
+    }
+    for (; i < 64; ++i) {
+      t1 = w[i - 2];
+      t1 = (t1 >>> 17 | t1 << 15) ^ (t1 >>> 19 | t1 << 13) ^ t1 >>> 10;
+      t2 = w[i - 15];
+      t2 = (t2 >>> 7 | t2 << 25) ^ (t2 >>> 18 | t2 << 14) ^ t2 >>> 3;
+      w[i] = t1 + w[i - 7] + t2 + w[i - 16] | 0;
+    }
+    a = s2.h0;
+    b = s2.h1;
+    c = s2.h2;
+    d = s2.h3;
+    e = s2.h4;
+    f = s2.h5;
+    g = s2.h6;
+    h = s2.h7;
+    for (i = 0; i < 64; ++i) {
+      s1 = (e >>> 6 | e << 26) ^ (e >>> 11 | e << 21) ^ (e >>> 25 | e << 7);
+      ch = g ^ e & (f ^ g);
+      s0 = (a >>> 2 | a << 30) ^ (a >>> 13 | a << 19) ^ (a >>> 22 | a << 10);
+      maj = a & b | c & (a ^ b);
+      t1 = h + s1 + ch + _k$1[i] + w[i];
+      t2 = s0 + maj;
+      h = g;
+      g = f;
+      f = e;
+      e = d + t1 >>> 0;
+      d = c;
+      c = b;
+      b = a;
+      a = t1 + t2 >>> 0;
+    }
+    s2.h0 = s2.h0 + a | 0;
+    s2.h1 = s2.h1 + b | 0;
+    s2.h2 = s2.h2 + c | 0;
+    s2.h3 = s2.h3 + d | 0;
+    s2.h4 = s2.h4 + e | 0;
+    s2.h5 = s2.h5 + f | 0;
+    s2.h6 = s2.h6 + g | 0;
+    s2.h7 = s2.h7 + h | 0;
+    len -= 64;
   }
 }
-var vt = z, xr = null;
-vt.util.isNodejs && !process.versions["node-webkit"] && (xr = va);
-var Ki = vt.prng = vt.prng || {};
-Ki.create = function(e) {
-  for (var t = {
-    plugin: e,
+var forge$o = forge$C;
+var _crypto$1 = null;
+if (forge$o.util.isNodejs && true && !process.versions["node-webkit"]) {
+  _crypto$1 = require$$4;
+}
+var prng = forge$o.prng = forge$o.prng || {};
+prng.create = function(plugin) {
+  var ctx = {
+    plugin,
     key: null,
     seed: null,
     time: null,
@@ -2791,179 +4543,317 @@ Ki.create = function(e) {
     generated: 0,
     // no initial key bytes
     keyBytes: ""
-  }, a = e.md, r = new Array(32), n = 0; n < 32; ++n)
-    r[n] = a.create();
-  t.pools = r, t.pool = 0, t.generate = function(u, f) {
-    if (!f)
-      return t.generateSync(u);
-    var c = t.plugin.cipher, v = t.plugin.increment, m = t.plugin.formatKey, y = t.plugin.formatSeed, x = vt.util.createBuffer();
-    t.key = null, S();
-    function S(I) {
-      if (I)
-        return f(I);
-      if (x.length() >= u)
-        return f(null, x.getBytes(u));
-      if (t.generated > 1048575 && (t.key = null), t.key === null)
-        return vt.util.nextTick(function() {
-          s(S);
-        });
-      var b = c(t.key, t.seed);
-      t.generated += b.length, x.putBytes(b), t.key = m(c(t.key, v(t.seed))), t.seed = y(c(t.key, t.seed)), vt.util.setImmediate(S);
-    }
-  }, t.generateSync = function(u) {
-    var f = t.plugin.cipher, c = t.plugin.increment, v = t.plugin.formatKey, m = t.plugin.formatSeed;
-    t.key = null;
-    for (var y = vt.util.createBuffer(); y.length() < u; ) {
-      t.generated > 1048575 && (t.key = null), t.key === null && i();
-      var x = f(t.key, t.seed);
-      t.generated += x.length, y.putBytes(x), t.key = v(f(t.key, c(t.seed))), t.seed = m(f(t.key, t.seed));
-    }
-    return y.getBytes(u);
   };
-  function s(u) {
-    if (t.pools[0].messageLength >= 32)
-      return o(), u();
-    var f = 32 - t.pools[0].messageLength << 5;
-    t.seedFile(f, function(c, v) {
-      if (c)
-        return u(c);
-      t.collect(v), o(), u();
-    });
+  var md = plugin.md;
+  var pools = new Array(32);
+  for (var i = 0; i < 32; ++i) {
+    pools[i] = md.create();
   }
-  function i() {
-    if (t.pools[0].messageLength >= 32)
-      return o();
-    var u = 32 - t.pools[0].messageLength << 5;
-    t.collect(t.seedFileSync(u)), o();
-  }
-  function o() {
-    t.reseeds = t.reseeds === 4294967295 ? 0 : t.reseeds + 1;
-    var u = t.plugin.md.create();
-    u.update(t.keyBytes);
-    for (var f = 1, c = 0; c < 32; ++c)
-      t.reseeds % f === 0 && (u.update(t.pools[c].digest().getBytes()), t.pools[c].start()), f = f << 1;
-    t.keyBytes = u.digest().getBytes(), u.start(), u.update(t.keyBytes);
-    var v = u.digest().getBytes();
-    t.key = t.plugin.formatKey(t.keyBytes), t.seed = t.plugin.formatSeed(v), t.generated = 0;
-  }
-  function l(u) {
-    var f = null, c = vt.util.globalScope, v = c.crypto || c.msCrypto;
-    v && v.getRandomValues && (f = function(k) {
-      return v.getRandomValues(k);
-    });
-    var m = vt.util.createBuffer();
-    if (f)
-      for (; m.length() < u; ) {
-        var y = Math.max(1, Math.min(u - m.length(), 65536) / 4), x = new Uint32Array(Math.floor(y));
-        try {
-          f(x);
-          for (var S = 0; S < x.length; ++S)
-            m.putInt32(x[S]);
-        } catch (k) {
-          if (!(typeof QuotaExceededError < "u" && k instanceof QuotaExceededError))
-            throw k;
-        }
-      }
-    if (m.length() < u)
-      for (var I, b, _, V = Math.floor(Math.random() * 65536); m.length() < u; ) {
-        b = 16807 * (V & 65535), I = 16807 * (V >> 16), b += (I & 32767) << 16, b += I >> 15, b = (b & 2147483647) + (b >> 31), V = b & 4294967295;
-        for (var S = 0; S < 3; ++S)
-          _ = V >>> (S << 3), _ ^= Math.floor(Math.random() * 256), m.putByte(_ & 255);
-      }
-    return m.getBytes(u);
-  }
-  return xr ? (t.seedFile = function(u, f) {
-    xr.randomBytes(u, function(c, v) {
-      if (c)
-        return f(c);
-      f(null, v.toString());
-    });
-  }, t.seedFileSync = function(u) {
-    return xr.randomBytes(u).toString();
-  }) : (t.seedFile = function(u, f) {
-    try {
-      f(null, l(u));
-    } catch (c) {
-      f(c);
+  ctx.pools = pools;
+  ctx.pool = 0;
+  ctx.generate = function(count, callback) {
+    if (!callback) {
+      return ctx.generateSync(count);
     }
-  }, t.seedFileSync = l), t.collect = function(u) {
-    for (var f = u.length, c = 0; c < f; ++c)
-      t.pools[t.pool].update(u.substr(c, 1)), t.pool = t.pool === 31 ? 0 : t.pool + 1;
-  }, t.collectInt = function(u, f) {
-    for (var c = "", v = 0; v < f; v += 8)
-      c += String.fromCharCode(u >> v & 255);
-    t.collect(c);
-  }, t.registerWorker = function(u) {
-    if (u === self)
-      t.seedFile = function(c, v) {
-        function m(y) {
-          var x = y.data;
-          x.forge && x.forge.prng && (self.removeEventListener("message", m), v(x.forge.prng.err, x.forge.prng.bytes));
-        }
-        self.addEventListener("message", m), self.postMessage({ forge: { prng: { needed: c } } });
-      };
-    else {
-      var f = function(c) {
-        var v = c.data;
-        v.forge && v.forge.prng && t.seedFile(v.forge.prng.needed, function(m, y) {
-          u.postMessage({ forge: { prng: { err: m, bytes: y } } });
+    var cipher = ctx.plugin.cipher;
+    var increment = ctx.plugin.increment;
+    var formatKey = ctx.plugin.formatKey;
+    var formatSeed = ctx.plugin.formatSeed;
+    var b = forge$o.util.createBuffer();
+    ctx.key = null;
+    generate();
+    function generate(err) {
+      if (err) {
+        return callback(err);
+      }
+      if (b.length() >= count) {
+        return callback(null, b.getBytes(count));
+      }
+      if (ctx.generated > 1048575) {
+        ctx.key = null;
+      }
+      if (ctx.key === null) {
+        return forge$o.util.nextTick(function() {
+          _reseed(generate);
         });
-      };
-      u.addEventListener("message", f);
-    }
-  }, t;
-};
-var Ke = z;
-(function() {
-  Ke.random && Ke.random.getBytes || function(e) {
-    var t = {}, a = new Array(4), r = Ke.util.createBuffer();
-    t.formatKey = function(c) {
-      var v = Ke.util.createBuffer(c);
-      return c = new Array(4), c[0] = v.getInt32(), c[1] = v.getInt32(), c[2] = v.getInt32(), c[3] = v.getInt32(), Ke.aes._expandKey(c, !1);
-    }, t.formatSeed = function(c) {
-      var v = Ke.util.createBuffer(c);
-      return c = new Array(4), c[0] = v.getInt32(), c[1] = v.getInt32(), c[2] = v.getInt32(), c[3] = v.getInt32(), c;
-    }, t.cipher = function(c, v) {
-      return Ke.aes._updateBlock(c, v, a, !1), r.putInt32(a[0]), r.putInt32(a[1]), r.putInt32(a[2]), r.putInt32(a[3]), r.getBytes();
-    }, t.increment = function(c) {
-      return ++c[3], c;
-    }, t.md = Ke.md.sha256;
-    function n() {
-      var c = Ke.prng.create(t);
-      return c.getBytes = function(v, m) {
-        return c.generate(v, m);
-      }, c.getBytesSync = function(v) {
-        return c.generate(v);
-      }, c;
-    }
-    var s = n(), i = null, o = Ke.util.globalScope, l = o.crypto || o.msCrypto;
-    if (l && l.getRandomValues && (i = function(c) {
-      return l.getRandomValues(c);
-    }), !Ke.util.isNodejs && !i) {
-      if (s.collectInt(+/* @__PURE__ */ new Date(), 32), typeof navigator < "u") {
-        var u = "";
-        for (var f in navigator)
-          try {
-            typeof navigator[f] == "string" && (u += navigator[f]);
-          } catch {
-          }
-        s.collect(u), u = null;
       }
-      e && (e().mousemove(function(c) {
-        s.collectInt(c.clientX, 16), s.collectInt(c.clientY, 16);
-      }), e().keypress(function(c) {
-        s.collectInt(c.charCode, 8);
-      }));
+      var bytes = cipher(ctx.key, ctx.seed);
+      ctx.generated += bytes.length;
+      b.putBytes(bytes);
+      ctx.key = formatKey(cipher(ctx.key, increment(ctx.seed)));
+      ctx.seed = formatSeed(cipher(ctx.key, ctx.seed));
+      forge$o.util.setImmediate(generate);
     }
-    if (!Ke.random)
-      Ke.random = s;
-    else
-      for (var f in s)
-        Ke.random[f] = s[f];
-    Ke.random.createInstance = n;
-  }(typeof jQuery < "u" ? jQuery : null);
+  };
+  ctx.generateSync = function(count) {
+    var cipher = ctx.plugin.cipher;
+    var increment = ctx.plugin.increment;
+    var formatKey = ctx.plugin.formatKey;
+    var formatSeed = ctx.plugin.formatSeed;
+    ctx.key = null;
+    var b = forge$o.util.createBuffer();
+    while (b.length() < count) {
+      if (ctx.generated > 1048575) {
+        ctx.key = null;
+      }
+      if (ctx.key === null) {
+        _reseedSync();
+      }
+      var bytes = cipher(ctx.key, ctx.seed);
+      ctx.generated += bytes.length;
+      b.putBytes(bytes);
+      ctx.key = formatKey(cipher(ctx.key, increment(ctx.seed)));
+      ctx.seed = formatSeed(cipher(ctx.key, ctx.seed));
+    }
+    return b.getBytes(count);
+  };
+  function _reseed(callback) {
+    if (ctx.pools[0].messageLength >= 32) {
+      _seed();
+      return callback();
+    }
+    var needed = 32 - ctx.pools[0].messageLength << 5;
+    ctx.seedFile(needed, function(err, bytes) {
+      if (err) {
+        return callback(err);
+      }
+      ctx.collect(bytes);
+      _seed();
+      callback();
+    });
+  }
+  function _reseedSync() {
+    if (ctx.pools[0].messageLength >= 32) {
+      return _seed();
+    }
+    var needed = 32 - ctx.pools[0].messageLength << 5;
+    ctx.collect(ctx.seedFileSync(needed));
+    _seed();
+  }
+  function _seed() {
+    ctx.reseeds = ctx.reseeds === 4294967295 ? 0 : ctx.reseeds + 1;
+    var md2 = ctx.plugin.md.create();
+    md2.update(ctx.keyBytes);
+    var _2powK = 1;
+    for (var k = 0; k < 32; ++k) {
+      if (ctx.reseeds % _2powK === 0) {
+        md2.update(ctx.pools[k].digest().getBytes());
+        ctx.pools[k].start();
+      }
+      _2powK = _2powK << 1;
+    }
+    ctx.keyBytes = md2.digest().getBytes();
+    md2.start();
+    md2.update(ctx.keyBytes);
+    var seedBytes = md2.digest().getBytes();
+    ctx.key = ctx.plugin.formatKey(ctx.keyBytes);
+    ctx.seed = ctx.plugin.formatSeed(seedBytes);
+    ctx.generated = 0;
+  }
+  function defaultSeedFile(needed) {
+    var getRandomValues = null;
+    var globalScope = forge$o.util.globalScope;
+    var _crypto2 = globalScope.crypto || globalScope.msCrypto;
+    if (_crypto2 && _crypto2.getRandomValues) {
+      getRandomValues = function(arr) {
+        return _crypto2.getRandomValues(arr);
+      };
+    }
+    var b = forge$o.util.createBuffer();
+    if (getRandomValues) {
+      while (b.length() < needed) {
+        var count = Math.max(1, Math.min(needed - b.length(), 65536) / 4);
+        var entropy = new Uint32Array(Math.floor(count));
+        try {
+          getRandomValues(entropy);
+          for (var i2 = 0; i2 < entropy.length; ++i2) {
+            b.putInt32(entropy[i2]);
+          }
+        } catch (e) {
+          if (!(typeof QuotaExceededError !== "undefined" && e instanceof QuotaExceededError)) {
+            throw e;
+          }
+        }
+      }
+    }
+    if (b.length() < needed) {
+      var hi, lo, next;
+      var seed = Math.floor(Math.random() * 65536);
+      while (b.length() < needed) {
+        lo = 16807 * (seed & 65535);
+        hi = 16807 * (seed >> 16);
+        lo += (hi & 32767) << 16;
+        lo += hi >> 15;
+        lo = (lo & 2147483647) + (lo >> 31);
+        seed = lo & 4294967295;
+        for (var i2 = 0; i2 < 3; ++i2) {
+          next = seed >>> (i2 << 3);
+          next ^= Math.floor(Math.random() * 256);
+          b.putByte(next & 255);
+        }
+      }
+    }
+    return b.getBytes(needed);
+  }
+  if (_crypto$1) {
+    ctx.seedFile = function(needed, callback) {
+      _crypto$1.randomBytes(needed, function(err, bytes) {
+        if (err) {
+          return callback(err);
+        }
+        callback(null, bytes.toString());
+      });
+    };
+    ctx.seedFileSync = function(needed) {
+      return _crypto$1.randomBytes(needed).toString();
+    };
+  } else {
+    ctx.seedFile = function(needed, callback) {
+      try {
+        callback(null, defaultSeedFile(needed));
+      } catch (e) {
+        callback(e);
+      }
+    };
+    ctx.seedFileSync = defaultSeedFile;
+  }
+  ctx.collect = function(bytes) {
+    var count = bytes.length;
+    for (var i2 = 0; i2 < count; ++i2) {
+      ctx.pools[ctx.pool].update(bytes.substr(i2, 1));
+      ctx.pool = ctx.pool === 31 ? 0 : ctx.pool + 1;
+    }
+  };
+  ctx.collectInt = function(i2, n) {
+    var bytes = "";
+    for (var x = 0; x < n; x += 8) {
+      bytes += String.fromCharCode(i2 >> x & 255);
+    }
+    ctx.collect(bytes);
+  };
+  ctx.registerWorker = function(worker) {
+    if (worker === self) {
+      ctx.seedFile = function(needed, callback) {
+        function listener2(e) {
+          var data = e.data;
+          if (data.forge && data.forge.prng) {
+            self.removeEventListener("message", listener2);
+            callback(data.forge.prng.err, data.forge.prng.bytes);
+          }
+        }
+        self.addEventListener("message", listener2);
+        self.postMessage({ forge: { prng: { needed } } });
+      };
+    } else {
+      var listener = function(e) {
+        var data = e.data;
+        if (data.forge && data.forge.prng) {
+          ctx.seedFile(data.forge.prng.needed, function(err, bytes) {
+            worker.postMessage({ forge: { prng: { err, bytes } } });
+          });
+        }
+      };
+      worker.addEventListener("message", listener);
+    }
+  };
+  return ctx;
+};
+var forge$n = forge$C;
+(function() {
+  if (forge$n.random && forge$n.random.getBytes) {
+    return;
+  }
+  (function(jQuery2) {
+    var prng_aes = {};
+    var _prng_aes_output = new Array(4);
+    var _prng_aes_buffer = forge$n.util.createBuffer();
+    prng_aes.formatKey = function(key2) {
+      var tmp = forge$n.util.createBuffer(key2);
+      key2 = new Array(4);
+      key2[0] = tmp.getInt32();
+      key2[1] = tmp.getInt32();
+      key2[2] = tmp.getInt32();
+      key2[3] = tmp.getInt32();
+      return forge$n.aes._expandKey(key2, false);
+    };
+    prng_aes.formatSeed = function(seed) {
+      var tmp = forge$n.util.createBuffer(seed);
+      seed = new Array(4);
+      seed[0] = tmp.getInt32();
+      seed[1] = tmp.getInt32();
+      seed[2] = tmp.getInt32();
+      seed[3] = tmp.getInt32();
+      return seed;
+    };
+    prng_aes.cipher = function(key2, seed) {
+      forge$n.aes._updateBlock(key2, seed, _prng_aes_output, false);
+      _prng_aes_buffer.putInt32(_prng_aes_output[0]);
+      _prng_aes_buffer.putInt32(_prng_aes_output[1]);
+      _prng_aes_buffer.putInt32(_prng_aes_output[2]);
+      _prng_aes_buffer.putInt32(_prng_aes_output[3]);
+      return _prng_aes_buffer.getBytes();
+    };
+    prng_aes.increment = function(seed) {
+      ++seed[3];
+      return seed;
+    };
+    prng_aes.md = forge$n.md.sha256;
+    function spawnPrng() {
+      var ctx = forge$n.prng.create(prng_aes);
+      ctx.getBytes = function(count, callback) {
+        return ctx.generate(count, callback);
+      };
+      ctx.getBytesSync = function(count) {
+        return ctx.generate(count);
+      };
+      return ctx;
+    }
+    var _ctx = spawnPrng();
+    var getRandomValues = null;
+    var globalScope = forge$n.util.globalScope;
+    var _crypto2 = globalScope.crypto || globalScope.msCrypto;
+    if (_crypto2 && _crypto2.getRandomValues) {
+      getRandomValues = function(arr) {
+        return _crypto2.getRandomValues(arr);
+      };
+    }
+    if (!forge$n.util.isNodejs && !getRandomValues) {
+      _ctx.collectInt(+/* @__PURE__ */ new Date(), 32);
+      if (typeof navigator !== "undefined") {
+        var _navBytes = "";
+        for (var key in navigator) {
+          try {
+            if (typeof navigator[key] == "string") {
+              _navBytes += navigator[key];
+            }
+          } catch (e) {
+          }
+        }
+        _ctx.collect(_navBytes);
+        _navBytes = null;
+      }
+      if (jQuery2) {
+        jQuery2().mousemove(function(e) {
+          _ctx.collectInt(e.clientX, 16);
+          _ctx.collectInt(e.clientY, 16);
+        });
+        jQuery2().keypress(function(e) {
+          _ctx.collectInt(e.charCode, 8);
+        });
+      }
+    }
+    if (!forge$n.random) {
+      forge$n.random = _ctx;
+    } else {
+      for (var key in _ctx) {
+        forge$n.random[key] = _ctx[key];
+      }
+    }
+    forge$n.random.createInstance = spawnPrng;
+  })(typeof jQuery !== "undefined" ? jQuery : null);
 })();
-var qe = z, Gr = [
+var forge$m = forge$C;
+var piTable = [
   217,
   120,
   249,
@@ -3220,52 +5110,102 @@ var qe = z, Gr = [
   127,
   193,
   173
-], Ga = [1, 2, 3, 5], Mi = function(e, t) {
-  return e << t & 65535 | (e & 65535) >> 16 - t;
-}, Hi = function(e, t) {
-  return (e & 65535) >> t | e << 16 - t & 65535;
+];
+var s = [1, 2, 3, 5];
+var rol = function(word, bits) {
+  return word << bits & 65535 | (word & 65535) >> 16 - bits;
 };
-qe.rc2 = qe.rc2 || {};
-qe.rc2.expandKey = function(e, t) {
-  typeof e == "string" && (e = qe.util.createBuffer(e)), t = t || 128;
-  var a = e, r = e.length(), n = t, s = Math.ceil(n / 8), i = 255 >> (n & 7), o;
-  for (o = r; o < 128; o++)
-    a.putByte(Gr[a.at(o - 1) + a.at(o - r) & 255]);
-  for (a.setAt(128 - s, Gr[a.at(128 - s) & i]), o = 127 - s; o >= 0; o--)
-    a.setAt(o, Gr[a.at(o + 1) ^ a.at(o + s)]);
-  return a;
+var ror = function(word, bits) {
+  return (word & 65535) >> bits | word << 16 - bits & 65535;
 };
-var Tn = function(e, t, a) {
-  var r = !1, n = null, s = null, i = null, o, l, u, f, c = [];
-  for (e = qe.rc2.expandKey(e, t), u = 0; u < 64; u++)
-    c.push(e.getInt16Le());
-  a ? (o = function(y) {
-    for (u = 0; u < 4; u++)
-      y[u] += c[f] + (y[(u + 3) % 4] & y[(u + 2) % 4]) + (~y[(u + 3) % 4] & y[(u + 1) % 4]), y[u] = Mi(y[u], Ga[u]), f++;
-  }, l = function(y) {
-    for (u = 0; u < 4; u++)
-      y[u] += c[y[(u + 3) % 4] & 63];
-  }) : (o = function(y) {
-    for (u = 3; u >= 0; u--)
-      y[u] = Hi(y[u], Ga[u]), y[u] -= c[f] + (y[(u + 3) % 4] & y[(u + 2) % 4]) + (~y[(u + 3) % 4] & y[(u + 1) % 4]), f--;
-  }, l = function(y) {
-    for (u = 3; u >= 0; u--)
-      y[u] -= c[y[(u + 3) % 4] & 63];
-  });
-  var v = function(y) {
-    var x = [];
-    for (u = 0; u < 4; u++) {
-      var S = n.getInt16Le();
-      i !== null && (a ? S ^= i.getInt16Le() : i.putInt16Le(S)), x.push(S & 65535);
+forge$m.rc2 = forge$m.rc2 || {};
+forge$m.rc2.expandKey = function(key, effKeyBits) {
+  if (typeof key === "string") {
+    key = forge$m.util.createBuffer(key);
+  }
+  effKeyBits = effKeyBits || 128;
+  var L2 = key;
+  var T = key.length();
+  var T1 = effKeyBits;
+  var T8 = Math.ceil(T1 / 8);
+  var TM = 255 >> (T1 & 7);
+  var i;
+  for (i = T; i < 128; i++) {
+    L2.putByte(piTable[L2.at(i - 1) + L2.at(i - T) & 255]);
+  }
+  L2.setAt(128 - T8, piTable[L2.at(128 - T8) & TM]);
+  for (i = 127 - T8; i >= 0; i--) {
+    L2.setAt(i, piTable[L2.at(i + 1) ^ L2.at(i + T8)]);
+  }
+  return L2;
+};
+var createCipher = function(key, bits, encrypt) {
+  var _finish = false, _input = null, _output = null, _iv = null;
+  var mixRound, mashRound;
+  var i, j, K = [];
+  key = forge$m.rc2.expandKey(key, bits);
+  for (i = 0; i < 64; i++) {
+    K.push(key.getInt16Le());
+  }
+  if (encrypt) {
+    mixRound = function(R) {
+      for (i = 0; i < 4; i++) {
+        R[i] += K[j] + (R[(i + 3) % 4] & R[(i + 2) % 4]) + (~R[(i + 3) % 4] & R[(i + 1) % 4]);
+        R[i] = rol(R[i], s[i]);
+        j++;
+      }
+    };
+    mashRound = function(R) {
+      for (i = 0; i < 4; i++) {
+        R[i] += K[R[(i + 3) % 4] & 63];
+      }
+    };
+  } else {
+    mixRound = function(R) {
+      for (i = 3; i >= 0; i--) {
+        R[i] = ror(R[i], s[i]);
+        R[i] -= K[j] + (R[(i + 3) % 4] & R[(i + 2) % 4]) + (~R[(i + 3) % 4] & R[(i + 1) % 4]);
+        j--;
+      }
+    };
+    mashRound = function(R) {
+      for (i = 3; i >= 0; i--) {
+        R[i] -= K[R[(i + 3) % 4] & 63];
+      }
+    };
+  }
+  var runPlan = function(plan) {
+    var R = [];
+    for (i = 0; i < 4; i++) {
+      var val = _input.getInt16Le();
+      if (_iv !== null) {
+        if (encrypt) {
+          val ^= _iv.getInt16Le();
+        } else {
+          _iv.putInt16Le(val);
+        }
+      }
+      R.push(val & 65535);
     }
-    f = a ? 0 : 63;
-    for (var I = 0; I < y.length; I++)
-      for (var b = 0; b < y[I][0]; b++)
-        y[I][1](x);
-    for (u = 0; u < 4; u++)
-      i !== null && (a ? i.putInt16Le(x[u]) : x[u] ^= i.getInt16Le()), s.putInt16Le(x[u]);
-  }, m = null;
-  return m = {
+    j = encrypt ? 0 : 63;
+    for (var ptr = 0; ptr < plan.length; ptr++) {
+      for (var ctr = 0; ctr < plan[ptr][0]; ctr++) {
+        plan[ptr][1](R);
+      }
+    }
+    for (i = 0; i < 4; i++) {
+      if (_iv !== null) {
+        if (encrypt) {
+          _iv.putInt16Le(R[i]);
+        } else {
+          R[i] ^= _iv.getInt16Le();
+        }
+      }
+      _output.putInt16Le(R[i]);
+    }
+  };
+  var cipher = null;
+  cipher = {
     /**
      * Starts or restarts the encryption or decryption process, whichever
      * was previously configured.
@@ -3276,23 +5216,36 @@ var Tn = function(e, t, a) {
      * @param iv the initialization vector to use, null for ECB mode.
      * @param output the output the buffer to write to, null to create one.
      */
-    start: function(y, x) {
-      y && typeof y == "string" && (y = qe.util.createBuffer(y)), r = !1, n = qe.util.createBuffer(), s = x || new qe.util.createBuffer(), i = y, m.output = s;
+    start: function(iv, output) {
+      if (iv) {
+        if (typeof iv === "string") {
+          iv = forge$m.util.createBuffer(iv);
+        }
+      }
+      _finish = false;
+      _input = forge$m.util.createBuffer();
+      _output = output || new forge$m.util.createBuffer();
+      _iv = iv;
+      cipher.output = _output;
     },
     /**
      * Updates the next block.
      *
      * @param input the buffer to read from.
      */
-    update: function(y) {
-      for (r || n.putBuffer(y); n.length() >= 8; )
-        v([
-          [5, o],
-          [1, l],
-          [6, o],
-          [1, l],
-          [5, o]
+    update: function(input) {
+      if (!_finish) {
+        _input.putBuffer(input);
+      }
+      while (_input.length() >= 8) {
+        runPlan([
+          [5, mixRound],
+          [1, mashRound],
+          [6, mixRound],
+          [1, mashRound],
+          [5, mixRound]
         ]);
+      }
     },
     /**
      * Finishes encrypting or decrypting.
@@ -3302,788 +5255,1247 @@ var Tn = function(e, t, a) {
      *
      * @return true if successful, false on error.
      */
-    finish: function(y) {
-      var x = !0;
-      if (a)
-        if (y)
-          x = y(8, n, !a);
-        else {
-          var S = n.length() === 8 ? 8 : 8 - n.length();
-          n.fillWithByte(S, S);
+    finish: function(pad) {
+      var rval = true;
+      if (encrypt) {
+        if (pad) {
+          rval = pad(8, _input, !encrypt);
+        } else {
+          var padding = _input.length() === 8 ? 8 : 8 - _input.length();
+          _input.fillWithByte(padding, padding);
         }
-      if (x && (r = !0, m.update()), !a && (x = n.length() === 0, x))
-        if (y)
-          x = y(8, s, !a);
-        else {
-          var I = s.length(), b = s.at(I - 1);
-          b > I ? x = !1 : s.truncate(b);
+      }
+      if (rval) {
+        _finish = true;
+        cipher.update();
+      }
+      if (!encrypt) {
+        rval = _input.length() === 0;
+        if (rval) {
+          if (pad) {
+            rval = pad(8, _output, !encrypt);
+          } else {
+            var len = _output.length();
+            var count = _output.at(len - 1);
+            if (count > len) {
+              rval = false;
+            } else {
+              _output.truncate(count);
+            }
+          }
         }
-      return x;
+      }
+      return rval;
     }
-  }, m;
+  };
+  return cipher;
 };
-qe.rc2.startEncrypting = function(e, t, a) {
-  var r = qe.rc2.createEncryptionCipher(e, 128);
-  return r.start(t, a), r;
+forge$m.rc2.startEncrypting = function(key, iv, output) {
+  var cipher = forge$m.rc2.createEncryptionCipher(key, 128);
+  cipher.start(iv, output);
+  return cipher;
 };
-qe.rc2.createEncryptionCipher = function(e, t) {
-  return Tn(e, t, !0);
+forge$m.rc2.createEncryptionCipher = function(key, bits) {
+  return createCipher(key, bits, true);
 };
-qe.rc2.startDecrypting = function(e, t, a) {
-  var r = qe.rc2.createDecryptionCipher(e, 128);
-  return r.start(t, a), r;
+forge$m.rc2.startDecrypting = function(key, iv, output) {
+  var cipher = forge$m.rc2.createDecryptionCipher(key, 128);
+  cipher.start(iv, output);
+  return cipher;
 };
-qe.rc2.createDecryptionCipher = function(e, t) {
-  return Tn(e, t, !1);
+forge$m.rc2.createDecryptionCipher = function(key, bits) {
+  return createCipher(key, bits, false);
 };
-var ra = z;
-ra.jsbn = ra.jsbn || {};
-var yt;
-function B(e, t, a) {
-  this.data = [], e != null && (typeof e == "number" ? this.fromNumber(e, t, a) : t == null && typeof e != "string" ? this.fromString(e, 256) : this.fromString(e, t));
+var forge$l = forge$C;
+forge$l.jsbn = forge$l.jsbn || {};
+var dbits;
+function BigInteger$4(a, b, c) {
+  this.data = [];
+  if (a != null)
+    if ("number" == typeof a) this.fromNumber(a, b, c);
+    else if (b == null && "string" != typeof a) this.fromString(a, 256);
+    else this.fromString(a, b);
 }
-ra.jsbn.BigInteger = B;
-function J() {
-  return new B(null);
+forge$l.jsbn.BigInteger = BigInteger$4;
+function nbi() {
+  return new BigInteger$4(null);
 }
-function Gi(e, t, a, r, n, s) {
-  for (; --s >= 0; ) {
-    var i = t * this.data[e++] + a.data[r] + n;
-    n = Math.floor(i / 67108864), a.data[r++] = i & 67108863;
+function am1(i, x, w, j, c, n) {
+  while (--n >= 0) {
+    var v = x * this.data[i++] + w.data[j] + c;
+    c = Math.floor(v / 67108864);
+    w.data[j++] = v & 67108863;
   }
-  return n;
+  return c;
 }
-function qi(e, t, a, r, n, s) {
-  for (var i = t & 32767, o = t >> 15; --s >= 0; ) {
-    var l = this.data[e] & 32767, u = this.data[e++] >> 15, f = o * l + u * i;
-    l = i * l + ((f & 32767) << 15) + a.data[r] + (n & 1073741823), n = (l >>> 30) + (f >>> 15) + o * u + (n >>> 30), a.data[r++] = l & 1073741823;
+function am2(i, x, w, j, c, n) {
+  var xl = x & 32767, xh = x >> 15;
+  while (--n >= 0) {
+    var l = this.data[i] & 32767;
+    var h = this.data[i++] >> 15;
+    var m = xh * l + h * xl;
+    l = xl * l + ((m & 32767) << 15) + w.data[j] + (c & 1073741823);
+    c = (l >>> 30) + (m >>> 15) + xh * h + (c >>> 30);
+    w.data[j++] = l & 1073741823;
   }
-  return n;
+  return c;
 }
-function qa(e, t, a, r, n, s) {
-  for (var i = t & 16383, o = t >> 14; --s >= 0; ) {
-    var l = this.data[e] & 16383, u = this.data[e++] >> 14, f = o * l + u * i;
-    l = i * l + ((f & 16383) << 14) + a.data[r] + n, n = (l >> 28) + (f >> 14) + o * u, a.data[r++] = l & 268435455;
+function am3(i, x, w, j, c, n) {
+  var xl = x & 16383, xh = x >> 14;
+  while (--n >= 0) {
+    var l = this.data[i] & 16383;
+    var h = this.data[i++] >> 14;
+    var m = xh * l + h * xl;
+    l = xl * l + ((m & 16383) << 14) + w.data[j] + c;
+    c = (l >> 28) + (m >> 14) + xh * h;
+    w.data[j++] = l & 268435455;
   }
-  return n;
+  return c;
 }
-typeof navigator > "u" ? (B.prototype.am = qa, yt = 28) : navigator.appName == "Microsoft Internet Explorer" ? (B.prototype.am = qi, yt = 30) : navigator.appName != "Netscape" ? (B.prototype.am = Gi, yt = 26) : (B.prototype.am = qa, yt = 28);
-B.prototype.DB = yt;
-B.prototype.DM = (1 << yt) - 1;
-B.prototype.DV = 1 << yt;
-var Sa = 52;
-B.prototype.FV = Math.pow(2, Sa);
-B.prototype.F1 = Sa - yt;
-B.prototype.F2 = 2 * yt - Sa;
-var Qi = "0123456789abcdefghijklmnopqrstuvwxyz", Or = new Array(), Jt, Ze;
-Jt = 48;
-for (Ze = 0; Ze <= 9; ++Ze) Or[Jt++] = Ze;
-Jt = 97;
-for (Ze = 10; Ze < 36; ++Ze) Or[Jt++] = Ze;
-Jt = 65;
-for (Ze = 10; Ze < 36; ++Ze) Or[Jt++] = Ze;
-function Qa(e) {
-  return Qi.charAt(e);
+if (typeof navigator === "undefined") {
+  BigInteger$4.prototype.am = am3;
+  dbits = 28;
+} else if (navigator.appName == "Microsoft Internet Explorer") {
+  BigInteger$4.prototype.am = am2;
+  dbits = 30;
+} else if (navigator.appName != "Netscape") {
+  BigInteger$4.prototype.am = am1;
+  dbits = 26;
+} else {
+  BigInteger$4.prototype.am = am3;
+  dbits = 28;
 }
-function In(e, t) {
-  var a = Or[e.charCodeAt(t)];
-  return a ?? -1;
+BigInteger$4.prototype.DB = dbits;
+BigInteger$4.prototype.DM = (1 << dbits) - 1;
+BigInteger$4.prototype.DV = 1 << dbits;
+var BI_FP = 52;
+BigInteger$4.prototype.FV = Math.pow(2, BI_FP);
+BigInteger$4.prototype.F1 = BI_FP - dbits;
+BigInteger$4.prototype.F2 = 2 * dbits - BI_FP;
+var BI_RM = "0123456789abcdefghijklmnopqrstuvwxyz";
+var BI_RC = new Array();
+var rr, vv;
+rr = "0".charCodeAt(0);
+for (vv = 0; vv <= 9; ++vv) BI_RC[rr++] = vv;
+rr = "a".charCodeAt(0);
+for (vv = 10; vv < 36; ++vv) BI_RC[rr++] = vv;
+rr = "A".charCodeAt(0);
+for (vv = 10; vv < 36; ++vv) BI_RC[rr++] = vv;
+function int2char(n) {
+  return BI_RM.charAt(n);
 }
-function zi(e) {
-  for (var t = this.t - 1; t >= 0; --t) e.data[t] = this.data[t];
-  e.t = this.t, e.s = this.s;
+function intAt(s2, i) {
+  var c = BI_RC[s2.charCodeAt(i)];
+  return c == null ? -1 : c;
 }
-function Yi(e) {
-  this.t = 1, this.s = e < 0 ? -1 : 0, e > 0 ? this.data[0] = e : e < -1 ? this.data[0] = e + this.DV : this.t = 0;
+function bnpCopyTo(r) {
+  for (var i = this.t - 1; i >= 0; --i) r.data[i] = this.data[i];
+  r.t = this.t;
+  r.s = this.s;
 }
-function Tt(e) {
-  var t = J();
-  return t.fromInt(e), t;
+function bnpFromInt(x) {
+  this.t = 1;
+  this.s = x < 0 ? -1 : 0;
+  if (x > 0) this.data[0] = x;
+  else if (x < -1) this.data[0] = x + this.DV;
+  else this.t = 0;
 }
-function $i(e, t) {
-  var a;
-  if (t == 16) a = 4;
-  else if (t == 8) a = 3;
-  else if (t == 256) a = 8;
-  else if (t == 2) a = 1;
-  else if (t == 32) a = 5;
-  else if (t == 4) a = 2;
+function nbv(i) {
+  var r = nbi();
+  r.fromInt(i);
+  return r;
+}
+function bnpFromString(s2, b) {
+  var k;
+  if (b == 16) k = 4;
+  else if (b == 8) k = 3;
+  else if (b == 256) k = 8;
+  else if (b == 2) k = 1;
+  else if (b == 32) k = 5;
+  else if (b == 4) k = 2;
   else {
-    this.fromRadix(e, t);
+    this.fromRadix(s2, b);
     return;
   }
-  this.t = 0, this.s = 0;
-  for (var r = e.length, n = !1, s = 0; --r >= 0; ) {
-    var i = a == 8 ? e[r] & 255 : In(e, r);
-    if (i < 0) {
-      e.charAt(r) == "-" && (n = !0);
+  this.t = 0;
+  this.s = 0;
+  var i = s2.length, mi = false, sh = 0;
+  while (--i >= 0) {
+    var x = k == 8 ? s2[i] & 255 : intAt(s2, i);
+    if (x < 0) {
+      if (s2.charAt(i) == "-") mi = true;
       continue;
     }
-    n = !1, s == 0 ? this.data[this.t++] = i : s + a > this.DB ? (this.data[this.t - 1] |= (i & (1 << this.DB - s) - 1) << s, this.data[this.t++] = i >> this.DB - s) : this.data[this.t - 1] |= i << s, s += a, s >= this.DB && (s -= this.DB);
+    mi = false;
+    if (sh == 0)
+      this.data[this.t++] = x;
+    else if (sh + k > this.DB) {
+      this.data[this.t - 1] |= (x & (1 << this.DB - sh) - 1) << sh;
+      this.data[this.t++] = x >> this.DB - sh;
+    } else
+      this.data[this.t - 1] |= x << sh;
+    sh += k;
+    if (sh >= this.DB) sh -= this.DB;
   }
-  a == 8 && e[0] & 128 && (this.s = -1, s > 0 && (this.data[this.t - 1] |= (1 << this.DB - s) - 1 << s)), this.clamp(), n && B.ZERO.subTo(this, this);
+  if (k == 8 && (s2[0] & 128) != 0) {
+    this.s = -1;
+    if (sh > 0) this.data[this.t - 1] |= (1 << this.DB - sh) - 1 << sh;
+  }
+  this.clamp();
+  if (mi) BigInteger$4.ZERO.subTo(this, this);
 }
-function Wi() {
-  for (var e = this.s & this.DM; this.t > 0 && this.data[this.t - 1] == e; ) --this.t;
+function bnpClamp() {
+  var c = this.s & this.DM;
+  while (this.t > 0 && this.data[this.t - 1] == c) --this.t;
 }
-function Xi(e) {
-  if (this.s < 0) return "-" + this.negate().toString(e);
-  var t;
-  if (e == 16) t = 4;
-  else if (e == 8) t = 3;
-  else if (e == 2) t = 1;
-  else if (e == 32) t = 5;
-  else if (e == 4) t = 2;
-  else return this.toRadix(e);
-  var a = (1 << t) - 1, r, n = !1, s = "", i = this.t, o = this.DB - i * this.DB % t;
-  if (i-- > 0)
-    for (o < this.DB && (r = this.data[i] >> o) > 0 && (n = !0, s = Qa(r)); i >= 0; )
-      o < t ? (r = (this.data[i] & (1 << o) - 1) << t - o, r |= this.data[--i] >> (o += this.DB - t)) : (r = this.data[i] >> (o -= t) & a, o <= 0 && (o += this.DB, --i)), r > 0 && (n = !0), n && (s += Qa(r));
-  return n ? s : "0";
+function bnToString(b) {
+  if (this.s < 0) return "-" + this.negate().toString(b);
+  var k;
+  if (b == 16) k = 4;
+  else if (b == 8) k = 3;
+  else if (b == 2) k = 1;
+  else if (b == 32) k = 5;
+  else if (b == 4) k = 2;
+  else return this.toRadix(b);
+  var km = (1 << k) - 1, d, m = false, r = "", i = this.t;
+  var p = this.DB - i * this.DB % k;
+  if (i-- > 0) {
+    if (p < this.DB && (d = this.data[i] >> p) > 0) {
+      m = true;
+      r = int2char(d);
+    }
+    while (i >= 0) {
+      if (p < k) {
+        d = (this.data[i] & (1 << p) - 1) << k - p;
+        d |= this.data[--i] >> (p += this.DB - k);
+      } else {
+        d = this.data[i] >> (p -= k) & km;
+        if (p <= 0) {
+          p += this.DB;
+          --i;
+        }
+      }
+      if (d > 0) m = true;
+      if (m) r += int2char(d);
+    }
+  }
+  return m ? r : "0";
 }
-function ji() {
-  var e = J();
-  return B.ZERO.subTo(this, e), e;
+function bnNegate() {
+  var r = nbi();
+  BigInteger$4.ZERO.subTo(this, r);
+  return r;
 }
-function Zi() {
+function bnAbs() {
   return this.s < 0 ? this.negate() : this;
 }
-function Ji(e) {
-  var t = this.s - e.s;
-  if (t != 0) return t;
-  var a = this.t;
-  if (t = a - e.t, t != 0) return this.s < 0 ? -t : t;
-  for (; --a >= 0; ) if ((t = this.data[a] - e.data[a]) != 0) return t;
+function bnCompareTo(a) {
+  var r = this.s - a.s;
+  if (r != 0) return r;
+  var i = this.t;
+  r = i - a.t;
+  if (r != 0) return this.s < 0 ? -r : r;
+  while (--i >= 0) if ((r = this.data[i] - a.data[i]) != 0) return r;
   return 0;
 }
-function Fr(e) {
-  var t = 1, a;
-  return (a = e >>> 16) != 0 && (e = a, t += 16), (a = e >> 8) != 0 && (e = a, t += 8), (a = e >> 4) != 0 && (e = a, t += 4), (a = e >> 2) != 0 && (e = a, t += 2), (a = e >> 1) != 0 && (e = a, t += 1), t;
+function nbits(x) {
+  var r = 1, t;
+  if ((t = x >>> 16) != 0) {
+    x = t;
+    r += 16;
+  }
+  if ((t = x >> 8) != 0) {
+    x = t;
+    r += 8;
+  }
+  if ((t = x >> 4) != 0) {
+    x = t;
+    r += 4;
+  }
+  if ((t = x >> 2) != 0) {
+    x = t;
+    r += 2;
+  }
+  if ((t = x >> 1) != 0) {
+    x = t;
+    r += 1;
+  }
+  return r;
 }
-function es() {
-  return this.t <= 0 ? 0 : this.DB * (this.t - 1) + Fr(this.data[this.t - 1] ^ this.s & this.DM);
+function bnBitLength() {
+  if (this.t <= 0) return 0;
+  return this.DB * (this.t - 1) + nbits(this.data[this.t - 1] ^ this.s & this.DM);
 }
-function ts(e, t) {
-  var a;
-  for (a = this.t - 1; a >= 0; --a) t.data[a + e] = this.data[a];
-  for (a = e - 1; a >= 0; --a) t.data[a] = 0;
-  t.t = this.t + e, t.s = this.s;
+function bnpDLShiftTo(n, r) {
+  var i;
+  for (i = this.t - 1; i >= 0; --i) r.data[i + n] = this.data[i];
+  for (i = n - 1; i >= 0; --i) r.data[i] = 0;
+  r.t = this.t + n;
+  r.s = this.s;
 }
-function rs(e, t) {
-  for (var a = e; a < this.t; ++a) t.data[a - e] = this.data[a];
-  t.t = Math.max(this.t - e, 0), t.s = this.s;
+function bnpDRShiftTo(n, r) {
+  for (var i = n; i < this.t; ++i) r.data[i - n] = this.data[i];
+  r.t = Math.max(this.t - n, 0);
+  r.s = this.s;
 }
-function as(e, t) {
-  var a = e % this.DB, r = this.DB - a, n = (1 << r) - 1, s = Math.floor(e / this.DB), i = this.s << a & this.DM, o;
-  for (o = this.t - 1; o >= 0; --o)
-    t.data[o + s + 1] = this.data[o] >> r | i, i = (this.data[o] & n) << a;
-  for (o = s - 1; o >= 0; --o) t.data[o] = 0;
-  t.data[s] = i, t.t = this.t + s + 1, t.s = this.s, t.clamp();
+function bnpLShiftTo(n, r) {
+  var bs = n % this.DB;
+  var cbs = this.DB - bs;
+  var bm = (1 << cbs) - 1;
+  var ds = Math.floor(n / this.DB), c = this.s << bs & this.DM, i;
+  for (i = this.t - 1; i >= 0; --i) {
+    r.data[i + ds + 1] = this.data[i] >> cbs | c;
+    c = (this.data[i] & bm) << bs;
+  }
+  for (i = ds - 1; i >= 0; --i) r.data[i] = 0;
+  r.data[ds] = c;
+  r.t = this.t + ds + 1;
+  r.s = this.s;
+  r.clamp();
 }
-function ns(e, t) {
-  t.s = this.s;
-  var a = Math.floor(e / this.DB);
-  if (a >= this.t) {
-    t.t = 0;
+function bnpRShiftTo(n, r) {
+  r.s = this.s;
+  var ds = Math.floor(n / this.DB);
+  if (ds >= this.t) {
+    r.t = 0;
     return;
   }
-  var r = e % this.DB, n = this.DB - r, s = (1 << r) - 1;
-  t.data[0] = this.data[a] >> r;
-  for (var i = a + 1; i < this.t; ++i)
-    t.data[i - a - 1] |= (this.data[i] & s) << n, t.data[i - a] = this.data[i] >> r;
-  r > 0 && (t.data[this.t - a - 1] |= (this.s & s) << n), t.t = this.t - a, t.clamp();
+  var bs = n % this.DB;
+  var cbs = this.DB - bs;
+  var bm = (1 << bs) - 1;
+  r.data[0] = this.data[ds] >> bs;
+  for (var i = ds + 1; i < this.t; ++i) {
+    r.data[i - ds - 1] |= (this.data[i] & bm) << cbs;
+    r.data[i - ds] = this.data[i] >> bs;
+  }
+  if (bs > 0) r.data[this.t - ds - 1] |= (this.s & bm) << cbs;
+  r.t = this.t - ds;
+  r.clamp();
 }
-function is(e, t) {
-  for (var a = 0, r = 0, n = Math.min(e.t, this.t); a < n; )
-    r += this.data[a] - e.data[a], t.data[a++] = r & this.DM, r >>= this.DB;
-  if (e.t < this.t) {
-    for (r -= e.s; a < this.t; )
-      r += this.data[a], t.data[a++] = r & this.DM, r >>= this.DB;
-    r += this.s;
+function bnpSubTo(a, r) {
+  var i = 0, c = 0, m = Math.min(a.t, this.t);
+  while (i < m) {
+    c += this.data[i] - a.data[i];
+    r.data[i++] = c & this.DM;
+    c >>= this.DB;
+  }
+  if (a.t < this.t) {
+    c -= a.s;
+    while (i < this.t) {
+      c += this.data[i];
+      r.data[i++] = c & this.DM;
+      c >>= this.DB;
+    }
+    c += this.s;
   } else {
-    for (r += this.s; a < e.t; )
-      r -= e.data[a], t.data[a++] = r & this.DM, r >>= this.DB;
-    r -= e.s;
-  }
-  t.s = r < 0 ? -1 : 0, r < -1 ? t.data[a++] = this.DV + r : r > 0 && (t.data[a++] = r), t.t = a, t.clamp();
-}
-function ss(e, t) {
-  var a = this.abs(), r = e.abs(), n = a.t;
-  for (t.t = n + r.t; --n >= 0; ) t.data[n] = 0;
-  for (n = 0; n < r.t; ++n) t.data[n + a.t] = a.am(0, r.data[n], t, n, 0, a.t);
-  t.s = 0, t.clamp(), this.s != e.s && B.ZERO.subTo(t, t);
-}
-function os(e) {
-  for (var t = this.abs(), a = e.t = 2 * t.t; --a >= 0; ) e.data[a] = 0;
-  for (a = 0; a < t.t - 1; ++a) {
-    var r = t.am(a, t.data[a], e, 2 * a, 0, 1);
-    (e.data[a + t.t] += t.am(a + 1, 2 * t.data[a], e, 2 * a + 1, r, t.t - a - 1)) >= t.DV && (e.data[a + t.t] -= t.DV, e.data[a + t.t + 1] = 1);
-  }
-  e.t > 0 && (e.data[e.t - 1] += t.am(a, t.data[a], e, 2 * a, 0, 1)), e.s = 0, e.clamp();
-}
-function us(e, t, a) {
-  var r = e.abs();
-  if (!(r.t <= 0)) {
-    var n = this.abs();
-    if (n.t < r.t) {
-      t != null && t.fromInt(0), a != null && this.copyTo(a);
-      return;
+    c += this.s;
+    while (i < a.t) {
+      c -= a.data[i];
+      r.data[i++] = c & this.DM;
+      c >>= this.DB;
     }
-    a == null && (a = J());
-    var s = J(), i = this.s, o = e.s, l = this.DB - Fr(r.data[r.t - 1]);
-    l > 0 ? (r.lShiftTo(l, s), n.lShiftTo(l, a)) : (r.copyTo(s), n.copyTo(a));
-    var u = s.t, f = s.data[u - 1];
-    if (f != 0) {
-      var c = f * (1 << this.F1) + (u > 1 ? s.data[u - 2] >> this.F2 : 0), v = this.FV / c, m = (1 << this.F1) / c, y = 1 << this.F2, x = a.t, S = x - u, I = t ?? J();
-      for (s.dlShiftTo(S, I), a.compareTo(I) >= 0 && (a.data[a.t++] = 1, a.subTo(I, a)), B.ONE.dlShiftTo(u, I), I.subTo(s, s); s.t < u; ) s.data[s.t++] = 0;
-      for (; --S >= 0; ) {
-        var b = a.data[--x] == f ? this.DM : Math.floor(a.data[x] * v + (a.data[x - 1] + y) * m);
-        if ((a.data[x] += s.am(0, b, a, S, 0, u)) < b)
-          for (s.dlShiftTo(S, I), a.subTo(I, a); a.data[x] < --b; ) a.subTo(I, a);
-      }
-      t != null && (a.drShiftTo(u, t), i != o && B.ZERO.subTo(t, t)), a.t = u, a.clamp(), l > 0 && a.rShiftTo(l, a), i < 0 && B.ZERO.subTo(a, a);
+    c -= a.s;
+  }
+  r.s = c < 0 ? -1 : 0;
+  if (c < -1) r.data[i++] = this.DV + c;
+  else if (c > 0) r.data[i++] = c;
+  r.t = i;
+  r.clamp();
+}
+function bnpMultiplyTo(a, r) {
+  var x = this.abs(), y = a.abs();
+  var i = x.t;
+  r.t = i + y.t;
+  while (--i >= 0) r.data[i] = 0;
+  for (i = 0; i < y.t; ++i) r.data[i + x.t] = x.am(0, y.data[i], r, i, 0, x.t);
+  r.s = 0;
+  r.clamp();
+  if (this.s != a.s) BigInteger$4.ZERO.subTo(r, r);
+}
+function bnpSquareTo(r) {
+  var x = this.abs();
+  var i = r.t = 2 * x.t;
+  while (--i >= 0) r.data[i] = 0;
+  for (i = 0; i < x.t - 1; ++i) {
+    var c = x.am(i, x.data[i], r, 2 * i, 0, 1);
+    if ((r.data[i + x.t] += x.am(i + 1, 2 * x.data[i], r, 2 * i + 1, c, x.t - i - 1)) >= x.DV) {
+      r.data[i + x.t] -= x.DV;
+      r.data[i + x.t + 1] = 1;
     }
   }
+  if (r.t > 0) r.data[r.t - 1] += x.am(i, x.data[i], r, 2 * i, 0, 1);
+  r.s = 0;
+  r.clamp();
 }
-function ls(e) {
-  var t = J();
-  return this.abs().divRemTo(e, null, t), this.s < 0 && t.compareTo(B.ZERO) > 0 && e.subTo(t, t), t;
+function bnpDivRemTo(m, q, r) {
+  var pm = m.abs();
+  if (pm.t <= 0) return;
+  var pt = this.abs();
+  if (pt.t < pm.t) {
+    if (q != null) q.fromInt(0);
+    if (r != null) this.copyTo(r);
+    return;
+  }
+  if (r == null) r = nbi();
+  var y = nbi(), ts = this.s, ms = m.s;
+  var nsh = this.DB - nbits(pm.data[pm.t - 1]);
+  if (nsh > 0) {
+    pm.lShiftTo(nsh, y);
+    pt.lShiftTo(nsh, r);
+  } else {
+    pm.copyTo(y);
+    pt.copyTo(r);
+  }
+  var ys = y.t;
+  var y0 = y.data[ys - 1];
+  if (y0 == 0) return;
+  var yt = y0 * (1 << this.F1) + (ys > 1 ? y.data[ys - 2] >> this.F2 : 0);
+  var d1 = this.FV / yt, d2 = (1 << this.F1) / yt, e = 1 << this.F2;
+  var i = r.t, j = i - ys, t = q == null ? nbi() : q;
+  y.dlShiftTo(j, t);
+  if (r.compareTo(t) >= 0) {
+    r.data[r.t++] = 1;
+    r.subTo(t, r);
+  }
+  BigInteger$4.ONE.dlShiftTo(ys, t);
+  t.subTo(y, y);
+  while (y.t < ys) y.data[y.t++] = 0;
+  while (--j >= 0) {
+    var qd = r.data[--i] == y0 ? this.DM : Math.floor(r.data[i] * d1 + (r.data[i - 1] + e) * d2);
+    if ((r.data[i] += y.am(0, qd, r, j, 0, ys)) < qd) {
+      y.dlShiftTo(j, t);
+      r.subTo(t, r);
+      while (r.data[i] < --qd) r.subTo(t, r);
+    }
+  }
+  if (q != null) {
+    r.drShiftTo(ys, q);
+    if (ts != ms) BigInteger$4.ZERO.subTo(q, q);
+  }
+  r.t = ys;
+  r.clamp();
+  if (nsh > 0) r.rShiftTo(nsh, r);
+  if (ts < 0) BigInteger$4.ZERO.subTo(r, r);
 }
-function Ft(e) {
-  this.m = e;
+function bnMod(a) {
+  var r = nbi();
+  this.abs().divRemTo(a, null, r);
+  if (this.s < 0 && r.compareTo(BigInteger$4.ZERO) > 0) a.subTo(r, r);
+  return r;
 }
-function fs(e) {
-  return e.s < 0 || e.compareTo(this.m) >= 0 ? e.mod(this.m) : e;
+function Classic(m) {
+  this.m = m;
 }
-function cs(e) {
-  return e;
+function cConvert(x) {
+  if (x.s < 0 || x.compareTo(this.m) >= 0) return x.mod(this.m);
+  else return x;
 }
-function hs(e) {
-  e.divRemTo(this.m, null, e);
+function cRevert(x) {
+  return x;
 }
-function ds(e, t, a) {
-  e.multiplyTo(t, a), this.reduce(a);
+function cReduce(x) {
+  x.divRemTo(this.m, null, x);
 }
-function ps(e, t) {
-  e.squareTo(t), this.reduce(t);
+function cMulTo(x, y, r) {
+  x.multiplyTo(y, r);
+  this.reduce(r);
 }
-Ft.prototype.convert = fs;
-Ft.prototype.revert = cs;
-Ft.prototype.reduce = hs;
-Ft.prototype.mulTo = ds;
-Ft.prototype.sqrTo = ps;
-function vs() {
+function cSqrTo(x, r) {
+  x.squareTo(r);
+  this.reduce(r);
+}
+Classic.prototype.convert = cConvert;
+Classic.prototype.revert = cRevert;
+Classic.prototype.reduce = cReduce;
+Classic.prototype.mulTo = cMulTo;
+Classic.prototype.sqrTo = cSqrTo;
+function bnpInvDigit() {
   if (this.t < 1) return 0;
-  var e = this.data[0];
-  if (!(e & 1)) return 0;
-  var t = e & 3;
-  return t = t * (2 - (e & 15) * t) & 15, t = t * (2 - (e & 255) * t) & 255, t = t * (2 - ((e & 65535) * t & 65535)) & 65535, t = t * (2 - e * t % this.DV) % this.DV, t > 0 ? this.DV - t : -t;
+  var x = this.data[0];
+  if ((x & 1) == 0) return 0;
+  var y = x & 3;
+  y = y * (2 - (x & 15) * y) & 15;
+  y = y * (2 - (x & 255) * y) & 255;
+  y = y * (2 - ((x & 65535) * y & 65535)) & 65535;
+  y = y * (2 - x * y % this.DV) % this.DV;
+  return y > 0 ? this.DV - y : -y;
 }
-function Kt(e) {
-  this.m = e, this.mp = e.invDigit(), this.mpl = this.mp & 32767, this.mph = this.mp >> 15, this.um = (1 << e.DB - 15) - 1, this.mt2 = 2 * e.t;
+function Montgomery(m) {
+  this.m = m;
+  this.mp = m.invDigit();
+  this.mpl = this.mp & 32767;
+  this.mph = this.mp >> 15;
+  this.um = (1 << m.DB - 15) - 1;
+  this.mt2 = 2 * m.t;
 }
-function ys(e) {
-  var t = J();
-  return e.abs().dlShiftTo(this.m.t, t), t.divRemTo(this.m, null, t), e.s < 0 && t.compareTo(B.ZERO) > 0 && this.m.subTo(t, t), t;
+function montConvert(x) {
+  var r = nbi();
+  x.abs().dlShiftTo(this.m.t, r);
+  r.divRemTo(this.m, null, r);
+  if (x.s < 0 && r.compareTo(BigInteger$4.ZERO) > 0) this.m.subTo(r, r);
+  return r;
 }
-function gs(e) {
-  var t = J();
-  return e.copyTo(t), this.reduce(t), t;
+function montRevert(x) {
+  var r = nbi();
+  x.copyTo(r);
+  this.reduce(r);
+  return r;
 }
-function ms(e) {
-  for (; e.t <= this.mt2; )
-    e.data[e.t++] = 0;
-  for (var t = 0; t < this.m.t; ++t) {
-    var a = e.data[t] & 32767, r = a * this.mpl + ((a * this.mph + (e.data[t] >> 15) * this.mpl & this.um) << 15) & e.DM;
-    for (a = t + this.m.t, e.data[a] += this.m.am(0, r, e, t, 0, this.m.t); e.data[a] >= e.DV; )
-      e.data[a] -= e.DV, e.data[++a]++;
+function montReduce(x) {
+  while (x.t <= this.mt2)
+    x.data[x.t++] = 0;
+  for (var i = 0; i < this.m.t; ++i) {
+    var j = x.data[i] & 32767;
+    var u0 = j * this.mpl + ((j * this.mph + (x.data[i] >> 15) * this.mpl & this.um) << 15) & x.DM;
+    j = i + this.m.t;
+    x.data[j] += this.m.am(0, u0, x, i, 0, this.m.t);
+    while (x.data[j] >= x.DV) {
+      x.data[j] -= x.DV;
+      x.data[++j]++;
+    }
   }
-  e.clamp(), e.drShiftTo(this.m.t, e), e.compareTo(this.m) >= 0 && e.subTo(this.m, e);
+  x.clamp();
+  x.drShiftTo(this.m.t, x);
+  if (x.compareTo(this.m) >= 0) x.subTo(this.m, x);
 }
-function Cs(e, t) {
-  e.squareTo(t), this.reduce(t);
+function montSqrTo(x, r) {
+  x.squareTo(r);
+  this.reduce(r);
 }
-function Es(e, t, a) {
-  e.multiplyTo(t, a), this.reduce(a);
+function montMulTo(x, y, r) {
+  x.multiplyTo(y, r);
+  this.reduce(r);
 }
-Kt.prototype.convert = ys;
-Kt.prototype.revert = gs;
-Kt.prototype.reduce = ms;
-Kt.prototype.mulTo = Es;
-Kt.prototype.sqrTo = Cs;
-function xs() {
+Montgomery.prototype.convert = montConvert;
+Montgomery.prototype.revert = montRevert;
+Montgomery.prototype.reduce = montReduce;
+Montgomery.prototype.mulTo = montMulTo;
+Montgomery.prototype.sqrTo = montSqrTo;
+function bnpIsEven() {
   return (this.t > 0 ? this.data[0] & 1 : this.s) == 0;
 }
-function Ss(e, t) {
-  if (e > 4294967295 || e < 1) return B.ONE;
-  var a = J(), r = J(), n = t.convert(this), s = Fr(e) - 1;
-  for (n.copyTo(a); --s >= 0; )
-    if (t.sqrTo(a, r), (e & 1 << s) > 0) t.mulTo(r, n, a);
+function bnpExp(e, z) {
+  if (e > 4294967295 || e < 1) return BigInteger$4.ONE;
+  var r = nbi(), r2 = nbi(), g = z.convert(this), i = nbits(e) - 1;
+  g.copyTo(r);
+  while (--i >= 0) {
+    z.sqrTo(r, r2);
+    if ((e & 1 << i) > 0) z.mulTo(r2, g, r);
     else {
-      var i = a;
-      a = r, r = i;
+      var t = r;
+      r = r2;
+      r2 = t;
     }
-  return t.revert(a);
+  }
+  return z.revert(r);
 }
-function Ts(e, t) {
-  var a;
-  return e < 256 || t.isEven() ? a = new Ft(t) : a = new Kt(t), this.exp(e, a);
+function bnModPowInt(e, m) {
+  var z;
+  if (e < 256 || m.isEven()) z = new Classic(m);
+  else z = new Montgomery(m);
+  return this.exp(e, z);
 }
-B.prototype.copyTo = zi;
-B.prototype.fromInt = Yi;
-B.prototype.fromString = $i;
-B.prototype.clamp = Wi;
-B.prototype.dlShiftTo = ts;
-B.prototype.drShiftTo = rs;
-B.prototype.lShiftTo = as;
-B.prototype.rShiftTo = ns;
-B.prototype.subTo = is;
-B.prototype.multiplyTo = ss;
-B.prototype.squareTo = os;
-B.prototype.divRemTo = us;
-B.prototype.invDigit = vs;
-B.prototype.isEven = xs;
-B.prototype.exp = Ss;
-B.prototype.toString = Xi;
-B.prototype.negate = ji;
-B.prototype.abs = Zi;
-B.prototype.compareTo = Ji;
-B.prototype.bitLength = es;
-B.prototype.mod = ls;
-B.prototype.modPowInt = Ts;
-B.ZERO = Tt(0);
-B.ONE = Tt(1);
-function Is() {
-  var e = J();
-  return this.copyTo(e), e;
+BigInteger$4.prototype.copyTo = bnpCopyTo;
+BigInteger$4.prototype.fromInt = bnpFromInt;
+BigInteger$4.prototype.fromString = bnpFromString;
+BigInteger$4.prototype.clamp = bnpClamp;
+BigInteger$4.prototype.dlShiftTo = bnpDLShiftTo;
+BigInteger$4.prototype.drShiftTo = bnpDRShiftTo;
+BigInteger$4.prototype.lShiftTo = bnpLShiftTo;
+BigInteger$4.prototype.rShiftTo = bnpRShiftTo;
+BigInteger$4.prototype.subTo = bnpSubTo;
+BigInteger$4.prototype.multiplyTo = bnpMultiplyTo;
+BigInteger$4.prototype.squareTo = bnpSquareTo;
+BigInteger$4.prototype.divRemTo = bnpDivRemTo;
+BigInteger$4.prototype.invDigit = bnpInvDigit;
+BigInteger$4.prototype.isEven = bnpIsEven;
+BigInteger$4.prototype.exp = bnpExp;
+BigInteger$4.prototype.toString = bnToString;
+BigInteger$4.prototype.negate = bnNegate;
+BigInteger$4.prototype.abs = bnAbs;
+BigInteger$4.prototype.compareTo = bnCompareTo;
+BigInteger$4.prototype.bitLength = bnBitLength;
+BigInteger$4.prototype.mod = bnMod;
+BigInteger$4.prototype.modPowInt = bnModPowInt;
+BigInteger$4.ZERO = nbv(0);
+BigInteger$4.ONE = nbv(1);
+function bnClone() {
+  var r = nbi();
+  this.copyTo(r);
+  return r;
 }
-function As() {
+function bnIntValue() {
   if (this.s < 0) {
     if (this.t == 1) return this.data[0] - this.DV;
-    if (this.t == 0) return -1;
-  } else {
-    if (this.t == 1) return this.data[0];
-    if (this.t == 0) return 0;
-  }
+    else if (this.t == 0) return -1;
+  } else if (this.t == 1) return this.data[0];
+  else if (this.t == 0) return 0;
   return (this.data[1] & (1 << 32 - this.DB) - 1) << this.DB | this.data[0];
 }
-function Bs() {
+function bnByteValue() {
   return this.t == 0 ? this.s : this.data[0] << 24 >> 24;
 }
-function bs() {
+function bnShortValue() {
   return this.t == 0 ? this.s : this.data[0] << 16 >> 16;
 }
-function _s(e) {
-  return Math.floor(Math.LN2 * this.DB / Math.log(e));
+function bnpChunkSize(r) {
+  return Math.floor(Math.LN2 * this.DB / Math.log(r));
 }
-function Ns() {
-  return this.s < 0 ? -1 : this.t <= 0 || this.t == 1 && this.data[0] <= 0 ? 0 : 1;
+function bnSigNum() {
+  if (this.s < 0) return -1;
+  else if (this.t <= 0 || this.t == 1 && this.data[0] <= 0) return 0;
+  else return 1;
 }
-function Rs(e) {
-  if (e == null && (e = 10), this.signum() == 0 || e < 2 || e > 36) return "0";
-  var t = this.chunkSize(e), a = Math.pow(e, t), r = Tt(a), n = J(), s = J(), i = "";
-  for (this.divRemTo(r, n, s); n.signum() > 0; )
-    i = (a + s.intValue()).toString(e).substr(1) + i, n.divRemTo(r, n, s);
-  return s.intValue().toString(e) + i;
+function bnpToRadix(b) {
+  if (b == null) b = 10;
+  if (this.signum() == 0 || b < 2 || b > 36) return "0";
+  var cs = this.chunkSize(b);
+  var a = Math.pow(b, cs);
+  var d = nbv(a), y = nbi(), z = nbi(), r = "";
+  this.divRemTo(d, y, z);
+  while (y.signum() > 0) {
+    r = (a + z.intValue()).toString(b).substr(1) + r;
+    y.divRemTo(d, y, z);
+  }
+  return z.intValue().toString(b) + r;
 }
-function ws(e, t) {
-  this.fromInt(0), t == null && (t = 10);
-  for (var a = this.chunkSize(t), r = Math.pow(t, a), n = !1, s = 0, i = 0, o = 0; o < e.length; ++o) {
-    var l = In(e, o);
-    if (l < 0) {
-      e.charAt(o) == "-" && this.signum() == 0 && (n = !0);
+function bnpFromRadix(s2, b) {
+  this.fromInt(0);
+  if (b == null) b = 10;
+  var cs = this.chunkSize(b);
+  var d = Math.pow(b, cs), mi = false, j = 0, w = 0;
+  for (var i = 0; i < s2.length; ++i) {
+    var x = intAt(s2, i);
+    if (x < 0) {
+      if (s2.charAt(i) == "-" && this.signum() == 0) mi = true;
       continue;
     }
-    i = t * i + l, ++s >= a && (this.dMultiply(r), this.dAddOffset(i, 0), s = 0, i = 0);
+    w = b * w + x;
+    if (++j >= cs) {
+      this.dMultiply(d);
+      this.dAddOffset(w, 0);
+      j = 0;
+      w = 0;
+    }
   }
-  s > 0 && (this.dMultiply(Math.pow(t, s)), this.dAddOffset(i, 0)), n && B.ZERO.subTo(this, this);
-}
-function Ls(e, t, a) {
-  if (typeof t == "number")
-    if (e < 2) this.fromInt(1);
-    else
-      for (this.fromNumber(e, a), this.testBit(e - 1) || this.bitwiseTo(B.ONE.shiftLeft(e - 1), Ta, this), this.isEven() && this.dAddOffset(1, 0); !this.isProbablePrime(t); )
-        this.dAddOffset(2, 0), this.bitLength() > e && this.subTo(B.ONE.shiftLeft(e - 1), this);
-  else {
-    var r = new Array(), n = e & 7;
-    r.length = (e >> 3) + 1, t.nextBytes(r), n > 0 ? r[0] &= (1 << n) - 1 : r[0] = 0, this.fromString(r, 256);
+  if (j > 0) {
+    this.dMultiply(Math.pow(b, j));
+    this.dAddOffset(w, 0);
   }
+  if (mi) BigInteger$4.ZERO.subTo(this, this);
 }
-function ks() {
-  var e = this.t, t = new Array();
-  t[0] = this.s;
-  var a = this.DB - e * this.DB % 8, r, n = 0;
-  if (e-- > 0)
-    for (a < this.DB && (r = this.data[e] >> a) != (this.s & this.DM) >> a && (t[n++] = r | this.s << this.DB - a); e >= 0; )
-      a < 8 ? (r = (this.data[e] & (1 << a) - 1) << 8 - a, r |= this.data[--e] >> (a += this.DB - 8)) : (r = this.data[e] >> (a -= 8) & 255, a <= 0 && (a += this.DB, --e)), r & 128 && (r |= -256), n == 0 && (this.s & 128) != (r & 128) && ++n, (n > 0 || r != this.s) && (t[n++] = r);
-  return t;
-}
-function Ds(e) {
-  return this.compareTo(e) == 0;
-}
-function Us(e) {
-  return this.compareTo(e) < 0 ? this : e;
-}
-function Ps(e) {
-  return this.compareTo(e) > 0 ? this : e;
-}
-function Vs(e, t, a) {
-  var r, n, s = Math.min(e.t, this.t);
-  for (r = 0; r < s; ++r) a.data[r] = t(this.data[r], e.data[r]);
-  if (e.t < this.t) {
-    for (n = e.s & this.DM, r = s; r < this.t; ++r) a.data[r] = t(this.data[r], n);
-    a.t = this.t;
-  } else {
-    for (n = this.s & this.DM, r = s; r < e.t; ++r) a.data[r] = t(n, e.data[r]);
-    a.t = e.t;
-  }
-  a.s = t(this.s, e.s), a.clamp();
-}
-function Os(e, t) {
-  return e & t;
-}
-function Fs(e) {
-  var t = J();
-  return this.bitwiseTo(e, Os, t), t;
-}
-function Ta(e, t) {
-  return e | t;
-}
-function Ks(e) {
-  var t = J();
-  return this.bitwiseTo(e, Ta, t), t;
-}
-function An(e, t) {
-  return e ^ t;
-}
-function Ms(e) {
-  var t = J();
-  return this.bitwiseTo(e, An, t), t;
-}
-function Bn(e, t) {
-  return e & ~t;
-}
-function Hs(e) {
-  var t = J();
-  return this.bitwiseTo(e, Bn, t), t;
-}
-function Gs() {
-  for (var e = J(), t = 0; t < this.t; ++t) e.data[t] = this.DM & ~this.data[t];
-  return e.t = this.t, e.s = ~this.s, e;
-}
-function qs(e) {
-  var t = J();
-  return e < 0 ? this.rShiftTo(-e, t) : this.lShiftTo(e, t), t;
-}
-function Qs(e) {
-  var t = J();
-  return e < 0 ? this.lShiftTo(-e, t) : this.rShiftTo(e, t), t;
-}
-function zs(e) {
-  if (e == 0) return -1;
-  var t = 0;
-  return e & 65535 || (e >>= 16, t += 16), e & 255 || (e >>= 8, t += 8), e & 15 || (e >>= 4, t += 4), e & 3 || (e >>= 2, t += 2), e & 1 || ++t, t;
-}
-function Ys() {
-  for (var e = 0; e < this.t; ++e)
-    if (this.data[e] != 0) return e * this.DB + zs(this.data[e]);
-  return this.s < 0 ? this.t * this.DB : -1;
-}
-function $s(e) {
-  for (var t = 0; e != 0; )
-    e &= e - 1, ++t;
-  return t;
-}
-function Ws() {
-  for (var e = 0, t = this.s & this.DM, a = 0; a < this.t; ++a) e += $s(this.data[a] ^ t);
-  return e;
-}
-function Xs(e) {
-  var t = Math.floor(e / this.DB);
-  return t >= this.t ? this.s != 0 : (this.data[t] & 1 << e % this.DB) != 0;
-}
-function js(e, t) {
-  var a = B.ONE.shiftLeft(e);
-  return this.bitwiseTo(a, t, a), a;
-}
-function Zs(e) {
-  return this.changeBit(e, Ta);
-}
-function Js(e) {
-  return this.changeBit(e, Bn);
-}
-function eo(e) {
-  return this.changeBit(e, An);
-}
-function to(e, t) {
-  for (var a = 0, r = 0, n = Math.min(e.t, this.t); a < n; )
-    r += this.data[a] + e.data[a], t.data[a++] = r & this.DM, r >>= this.DB;
-  if (e.t < this.t) {
-    for (r += e.s; a < this.t; )
-      r += this.data[a], t.data[a++] = r & this.DM, r >>= this.DB;
-    r += this.s;
-  } else {
-    for (r += this.s; a < e.t; )
-      r += e.data[a], t.data[a++] = r & this.DM, r >>= this.DB;
-    r += e.s;
-  }
-  t.s = r < 0 ? -1 : 0, r > 0 ? t.data[a++] = r : r < -1 && (t.data[a++] = this.DV + r), t.t = a, t.clamp();
-}
-function ro(e) {
-  var t = J();
-  return this.addTo(e, t), t;
-}
-function ao(e) {
-  var t = J();
-  return this.subTo(e, t), t;
-}
-function no(e) {
-  var t = J();
-  return this.multiplyTo(e, t), t;
-}
-function io() {
-  var e = J();
-  return this.squareTo(e), e;
-}
-function so(e) {
-  var t = J();
-  return this.divRemTo(e, t, null), t;
-}
-function oo(e) {
-  var t = J();
-  return this.divRemTo(e, null, t), t;
-}
-function uo(e) {
-  var t = J(), a = J();
-  return this.divRemTo(e, t, a), new Array(t, a);
-}
-function lo(e) {
-  this.data[this.t] = this.am(0, e - 1, this, 0, 0, this.t), ++this.t, this.clamp();
-}
-function fo(e, t) {
-  if (e != 0) {
-    for (; this.t <= t; ) this.data[this.t++] = 0;
-    for (this.data[t] += e; this.data[t] >= this.DV; )
-      this.data[t] -= this.DV, ++t >= this.t && (this.data[this.t++] = 0), ++this.data[t];
-  }
-}
-function hr() {
-}
-function bn(e) {
-  return e;
-}
-function co(e, t, a) {
-  e.multiplyTo(t, a);
-}
-function ho(e, t) {
-  e.squareTo(t);
-}
-hr.prototype.convert = bn;
-hr.prototype.revert = bn;
-hr.prototype.mulTo = co;
-hr.prototype.sqrTo = ho;
-function po(e) {
-  return this.exp(e, new hr());
-}
-function vo(e, t, a) {
-  var r = Math.min(this.t + e.t, t);
-  for (a.s = 0, a.t = r; r > 0; ) a.data[--r] = 0;
-  var n;
-  for (n = a.t - this.t; r < n; ++r) a.data[r + this.t] = this.am(0, e.data[r], a, r, 0, this.t);
-  for (n = Math.min(e.t, t); r < n; ++r) this.am(0, e.data[r], a, r, 0, t - r);
-  a.clamp();
-}
-function yo(e, t, a) {
-  --t;
-  var r = a.t = this.t + e.t - t;
-  for (a.s = 0; --r >= 0; ) a.data[r] = 0;
-  for (r = Math.max(t - this.t, 0); r < e.t; ++r)
-    a.data[this.t + r - t] = this.am(t - r, e.data[r], a, 0, 0, this.t + r - t);
-  a.clamp(), a.drShiftTo(1, a);
-}
-function er(e) {
-  this.r2 = J(), this.q3 = J(), B.ONE.dlShiftTo(2 * e.t, this.r2), this.mu = this.r2.divide(e), this.m = e;
-}
-function go(e) {
-  if (e.s < 0 || e.t > 2 * this.m.t) return e.mod(this.m);
-  if (e.compareTo(this.m) < 0) return e;
-  var t = J();
-  return e.copyTo(t), this.reduce(t), t;
-}
-function mo(e) {
-  return e;
-}
-function Co(e) {
-  for (e.drShiftTo(this.m.t - 1, this.r2), e.t > this.m.t + 1 && (e.t = this.m.t + 1, e.clamp()), this.mu.multiplyUpperTo(this.r2, this.m.t + 1, this.q3), this.m.multiplyLowerTo(this.q3, this.m.t + 1, this.r2); e.compareTo(this.r2) < 0; ) e.dAddOffset(1, this.m.t + 1);
-  for (e.subTo(this.r2, e); e.compareTo(this.m) >= 0; ) e.subTo(this.m, e);
-}
-function Eo(e, t) {
-  e.squareTo(t), this.reduce(t);
-}
-function xo(e, t, a) {
-  e.multiplyTo(t, a), this.reduce(a);
-}
-er.prototype.convert = go;
-er.prototype.revert = mo;
-er.prototype.reduce = Co;
-er.prototype.mulTo = xo;
-er.prototype.sqrTo = Eo;
-function So(e, t) {
-  var a = e.bitLength(), r, n = Tt(1), s;
-  if (a <= 0) return n;
-  a < 18 ? r = 1 : a < 48 ? r = 3 : a < 144 ? r = 4 : a < 768 ? r = 5 : r = 6, a < 8 ? s = new Ft(t) : t.isEven() ? s = new er(t) : s = new Kt(t);
-  var i = new Array(), o = 3, l = r - 1, u = (1 << r) - 1;
-  if (i[1] = s.convert(this), r > 1) {
-    var f = J();
-    for (s.sqrTo(i[1], f); o <= u; )
-      i[o] = J(), s.mulTo(f, i[o - 2], i[o]), o += 2;
-  }
-  var c = e.t - 1, v, m = !0, y = J(), x;
-  for (a = Fr(e.data[c]) - 1; c >= 0; ) {
-    for (a >= l ? v = e.data[c] >> a - l & u : (v = (e.data[c] & (1 << a + 1) - 1) << l - a, c > 0 && (v |= e.data[c - 1] >> this.DB + a - l)), o = r; !(v & 1); )
-      v >>= 1, --o;
-    if ((a -= o) < 0 && (a += this.DB, --c), m)
-      i[v].copyTo(n), m = !1;
+function bnpFromNumber(a, b, c) {
+  if ("number" == typeof b) {
+    if (a < 2) this.fromInt(1);
     else {
-      for (; o > 1; )
-        s.sqrTo(n, y), s.sqrTo(y, n), o -= 2;
-      o > 0 ? s.sqrTo(n, y) : (x = n, n = y, y = x), s.mulTo(y, i[v], n);
+      this.fromNumber(a, c);
+      if (!this.testBit(a - 1))
+        this.bitwiseTo(BigInteger$4.ONE.shiftLeft(a - 1), op_or, this);
+      if (this.isEven()) this.dAddOffset(1, 0);
+      while (!this.isProbablePrime(b)) {
+        this.dAddOffset(2, 0);
+        if (this.bitLength() > a) this.subTo(BigInteger$4.ONE.shiftLeft(a - 1), this);
+      }
     }
-    for (; c >= 0 && !(e.data[c] & 1 << a); )
-      s.sqrTo(n, y), x = n, n = y, y = x, --a < 0 && (a = this.DB - 1, --c);
+  } else {
+    var x = new Array(), t = a & 7;
+    x.length = (a >> 3) + 1;
+    b.nextBytes(x);
+    if (t > 0) x[0] &= (1 << t) - 1;
+    else x[0] = 0;
+    this.fromString(x, 256);
   }
-  return s.revert(n);
 }
-function To(e) {
-  var t = this.s < 0 ? this.negate() : this.clone(), a = e.s < 0 ? e.negate() : e.clone();
-  if (t.compareTo(a) < 0) {
-    var r = t;
-    t = a, a = r;
+function bnToByteArray() {
+  var i = this.t, r = new Array();
+  r[0] = this.s;
+  var p = this.DB - i * this.DB % 8, d, k = 0;
+  if (i-- > 0) {
+    if (p < this.DB && (d = this.data[i] >> p) != (this.s & this.DM) >> p)
+      r[k++] = d | this.s << this.DB - p;
+    while (i >= 0) {
+      if (p < 8) {
+        d = (this.data[i] & (1 << p) - 1) << 8 - p;
+        d |= this.data[--i] >> (p += this.DB - 8);
+      } else {
+        d = this.data[i] >> (p -= 8) & 255;
+        if (p <= 0) {
+          p += this.DB;
+          --i;
+        }
+      }
+      if ((d & 128) != 0) d |= -256;
+      if (k == 0 && (this.s & 128) != (d & 128)) ++k;
+      if (k > 0 || d != this.s) r[k++] = d;
+    }
   }
-  var n = t.getLowestSetBit(), s = a.getLowestSetBit();
-  if (s < 0) return t;
-  for (n < s && (s = n), s > 0 && (t.rShiftTo(s, t), a.rShiftTo(s, a)); t.signum() > 0; )
-    (n = t.getLowestSetBit()) > 0 && t.rShiftTo(n, t), (n = a.getLowestSetBit()) > 0 && a.rShiftTo(n, a), t.compareTo(a) >= 0 ? (t.subTo(a, t), t.rShiftTo(1, t)) : (a.subTo(t, a), a.rShiftTo(1, a));
-  return s > 0 && a.lShiftTo(s, a), a;
+  return r;
 }
-function Io(e) {
-  if (e <= 0) return 0;
-  var t = this.DV % e, a = this.s < 0 ? e - 1 : 0;
+function bnEquals(a) {
+  return this.compareTo(a) == 0;
+}
+function bnMin(a) {
+  return this.compareTo(a) < 0 ? this : a;
+}
+function bnMax(a) {
+  return this.compareTo(a) > 0 ? this : a;
+}
+function bnpBitwiseTo(a, op, r) {
+  var i, f, m = Math.min(a.t, this.t);
+  for (i = 0; i < m; ++i) r.data[i] = op(this.data[i], a.data[i]);
+  if (a.t < this.t) {
+    f = a.s & this.DM;
+    for (i = m; i < this.t; ++i) r.data[i] = op(this.data[i], f);
+    r.t = this.t;
+  } else {
+    f = this.s & this.DM;
+    for (i = m; i < a.t; ++i) r.data[i] = op(f, a.data[i]);
+    r.t = a.t;
+  }
+  r.s = op(this.s, a.s);
+  r.clamp();
+}
+function op_and(x, y) {
+  return x & y;
+}
+function bnAnd(a) {
+  var r = nbi();
+  this.bitwiseTo(a, op_and, r);
+  return r;
+}
+function op_or(x, y) {
+  return x | y;
+}
+function bnOr(a) {
+  var r = nbi();
+  this.bitwiseTo(a, op_or, r);
+  return r;
+}
+function op_xor(x, y) {
+  return x ^ y;
+}
+function bnXor(a) {
+  var r = nbi();
+  this.bitwiseTo(a, op_xor, r);
+  return r;
+}
+function op_andnot(x, y) {
+  return x & ~y;
+}
+function bnAndNot(a) {
+  var r = nbi();
+  this.bitwiseTo(a, op_andnot, r);
+  return r;
+}
+function bnNot() {
+  var r = nbi();
+  for (var i = 0; i < this.t; ++i) r.data[i] = this.DM & ~this.data[i];
+  r.t = this.t;
+  r.s = ~this.s;
+  return r;
+}
+function bnShiftLeft(n) {
+  var r = nbi();
+  if (n < 0) this.rShiftTo(-n, r);
+  else this.lShiftTo(n, r);
+  return r;
+}
+function bnShiftRight(n) {
+  var r = nbi();
+  if (n < 0) this.lShiftTo(-n, r);
+  else this.rShiftTo(n, r);
+  return r;
+}
+function lbit(x) {
+  if (x == 0) return -1;
+  var r = 0;
+  if ((x & 65535) == 0) {
+    x >>= 16;
+    r += 16;
+  }
+  if ((x & 255) == 0) {
+    x >>= 8;
+    r += 8;
+  }
+  if ((x & 15) == 0) {
+    x >>= 4;
+    r += 4;
+  }
+  if ((x & 3) == 0) {
+    x >>= 2;
+    r += 2;
+  }
+  if ((x & 1) == 0) ++r;
+  return r;
+}
+function bnGetLowestSetBit() {
+  for (var i = 0; i < this.t; ++i)
+    if (this.data[i] != 0) return i * this.DB + lbit(this.data[i]);
+  if (this.s < 0) return this.t * this.DB;
+  return -1;
+}
+function cbit(x) {
+  var r = 0;
+  while (x != 0) {
+    x &= x - 1;
+    ++r;
+  }
+  return r;
+}
+function bnBitCount() {
+  var r = 0, x = this.s & this.DM;
+  for (var i = 0; i < this.t; ++i) r += cbit(this.data[i] ^ x);
+  return r;
+}
+function bnTestBit(n) {
+  var j = Math.floor(n / this.DB);
+  if (j >= this.t) return this.s != 0;
+  return (this.data[j] & 1 << n % this.DB) != 0;
+}
+function bnpChangeBit(n, op) {
+  var r = BigInteger$4.ONE.shiftLeft(n);
+  this.bitwiseTo(r, op, r);
+  return r;
+}
+function bnSetBit(n) {
+  return this.changeBit(n, op_or);
+}
+function bnClearBit(n) {
+  return this.changeBit(n, op_andnot);
+}
+function bnFlipBit(n) {
+  return this.changeBit(n, op_xor);
+}
+function bnpAddTo(a, r) {
+  var i = 0, c = 0, m = Math.min(a.t, this.t);
+  while (i < m) {
+    c += this.data[i] + a.data[i];
+    r.data[i++] = c & this.DM;
+    c >>= this.DB;
+  }
+  if (a.t < this.t) {
+    c += a.s;
+    while (i < this.t) {
+      c += this.data[i];
+      r.data[i++] = c & this.DM;
+      c >>= this.DB;
+    }
+    c += this.s;
+  } else {
+    c += this.s;
+    while (i < a.t) {
+      c += a.data[i];
+      r.data[i++] = c & this.DM;
+      c >>= this.DB;
+    }
+    c += a.s;
+  }
+  r.s = c < 0 ? -1 : 0;
+  if (c > 0) r.data[i++] = c;
+  else if (c < -1) r.data[i++] = this.DV + c;
+  r.t = i;
+  r.clamp();
+}
+function bnAdd(a) {
+  var r = nbi();
+  this.addTo(a, r);
+  return r;
+}
+function bnSubtract(a) {
+  var r = nbi();
+  this.subTo(a, r);
+  return r;
+}
+function bnMultiply(a) {
+  var r = nbi();
+  this.multiplyTo(a, r);
+  return r;
+}
+function bnSquare() {
+  var r = nbi();
+  this.squareTo(r);
+  return r;
+}
+function bnDivide(a) {
+  var r = nbi();
+  this.divRemTo(a, r, null);
+  return r;
+}
+function bnRemainder(a) {
+  var r = nbi();
+  this.divRemTo(a, null, r);
+  return r;
+}
+function bnDivideAndRemainder(a) {
+  var q = nbi(), r = nbi();
+  this.divRemTo(a, q, r);
+  return new Array(q, r);
+}
+function bnpDMultiply(n) {
+  this.data[this.t] = this.am(0, n - 1, this, 0, 0, this.t);
+  ++this.t;
+  this.clamp();
+}
+function bnpDAddOffset(n, w) {
+  if (n == 0) return;
+  while (this.t <= w) this.data[this.t++] = 0;
+  this.data[w] += n;
+  while (this.data[w] >= this.DV) {
+    this.data[w] -= this.DV;
+    if (++w >= this.t) this.data[this.t++] = 0;
+    ++this.data[w];
+  }
+}
+function NullExp() {
+}
+function nNop(x) {
+  return x;
+}
+function nMulTo(x, y, r) {
+  x.multiplyTo(y, r);
+}
+function nSqrTo(x, r) {
+  x.squareTo(r);
+}
+NullExp.prototype.convert = nNop;
+NullExp.prototype.revert = nNop;
+NullExp.prototype.mulTo = nMulTo;
+NullExp.prototype.sqrTo = nSqrTo;
+function bnPow(e) {
+  return this.exp(e, new NullExp());
+}
+function bnpMultiplyLowerTo(a, n, r) {
+  var i = Math.min(this.t + a.t, n);
+  r.s = 0;
+  r.t = i;
+  while (i > 0) r.data[--i] = 0;
+  var j;
+  for (j = r.t - this.t; i < j; ++i) r.data[i + this.t] = this.am(0, a.data[i], r, i, 0, this.t);
+  for (j = Math.min(a.t, n); i < j; ++i) this.am(0, a.data[i], r, i, 0, n - i);
+  r.clamp();
+}
+function bnpMultiplyUpperTo(a, n, r) {
+  --n;
+  var i = r.t = this.t + a.t - n;
+  r.s = 0;
+  while (--i >= 0) r.data[i] = 0;
+  for (i = Math.max(n - this.t, 0); i < a.t; ++i)
+    r.data[this.t + i - n] = this.am(n - i, a.data[i], r, 0, 0, this.t + i - n);
+  r.clamp();
+  r.drShiftTo(1, r);
+}
+function Barrett(m) {
+  this.r2 = nbi();
+  this.q3 = nbi();
+  BigInteger$4.ONE.dlShiftTo(2 * m.t, this.r2);
+  this.mu = this.r2.divide(m);
+  this.m = m;
+}
+function barrettConvert(x) {
+  if (x.s < 0 || x.t > 2 * this.m.t) return x.mod(this.m);
+  else if (x.compareTo(this.m) < 0) return x;
+  else {
+    var r = nbi();
+    x.copyTo(r);
+    this.reduce(r);
+    return r;
+  }
+}
+function barrettRevert(x) {
+  return x;
+}
+function barrettReduce(x) {
+  x.drShiftTo(this.m.t - 1, this.r2);
+  if (x.t > this.m.t + 1) {
+    x.t = this.m.t + 1;
+    x.clamp();
+  }
+  this.mu.multiplyUpperTo(this.r2, this.m.t + 1, this.q3);
+  this.m.multiplyLowerTo(this.q3, this.m.t + 1, this.r2);
+  while (x.compareTo(this.r2) < 0) x.dAddOffset(1, this.m.t + 1);
+  x.subTo(this.r2, x);
+  while (x.compareTo(this.m) >= 0) x.subTo(this.m, x);
+}
+function barrettSqrTo(x, r) {
+  x.squareTo(r);
+  this.reduce(r);
+}
+function barrettMulTo(x, y, r) {
+  x.multiplyTo(y, r);
+  this.reduce(r);
+}
+Barrett.prototype.convert = barrettConvert;
+Barrett.prototype.revert = barrettRevert;
+Barrett.prototype.reduce = barrettReduce;
+Barrett.prototype.mulTo = barrettMulTo;
+Barrett.prototype.sqrTo = barrettSqrTo;
+function bnModPow(e, m) {
+  var i = e.bitLength(), k, r = nbv(1), z;
+  if (i <= 0) return r;
+  else if (i < 18) k = 1;
+  else if (i < 48) k = 3;
+  else if (i < 144) k = 4;
+  else if (i < 768) k = 5;
+  else k = 6;
+  if (i < 8)
+    z = new Classic(m);
+  else if (m.isEven())
+    z = new Barrett(m);
+  else
+    z = new Montgomery(m);
+  var g = new Array(), n = 3, k1 = k - 1, km = (1 << k) - 1;
+  g[1] = z.convert(this);
+  if (k > 1) {
+    var g2 = nbi();
+    z.sqrTo(g[1], g2);
+    while (n <= km) {
+      g[n] = nbi();
+      z.mulTo(g2, g[n - 2], g[n]);
+      n += 2;
+    }
+  }
+  var j = e.t - 1, w, is1 = true, r2 = nbi(), t;
+  i = nbits(e.data[j]) - 1;
+  while (j >= 0) {
+    if (i >= k1) w = e.data[j] >> i - k1 & km;
+    else {
+      w = (e.data[j] & (1 << i + 1) - 1) << k1 - i;
+      if (j > 0) w |= e.data[j - 1] >> this.DB + i - k1;
+    }
+    n = k;
+    while ((w & 1) == 0) {
+      w >>= 1;
+      --n;
+    }
+    if ((i -= n) < 0) {
+      i += this.DB;
+      --j;
+    }
+    if (is1) {
+      g[w].copyTo(r);
+      is1 = false;
+    } else {
+      while (n > 1) {
+        z.sqrTo(r, r2);
+        z.sqrTo(r2, r);
+        n -= 2;
+      }
+      if (n > 0) z.sqrTo(r, r2);
+      else {
+        t = r;
+        r = r2;
+        r2 = t;
+      }
+      z.mulTo(r2, g[w], r);
+    }
+    while (j >= 0 && (e.data[j] & 1 << i) == 0) {
+      z.sqrTo(r, r2);
+      t = r;
+      r = r2;
+      r2 = t;
+      if (--i < 0) {
+        i = this.DB - 1;
+        --j;
+      }
+    }
+  }
+  return z.revert(r);
+}
+function bnGCD(a) {
+  var x = this.s < 0 ? this.negate() : this.clone();
+  var y = a.s < 0 ? a.negate() : a.clone();
+  if (x.compareTo(y) < 0) {
+    var t = x;
+    x = y;
+    y = t;
+  }
+  var i = x.getLowestSetBit(), g = y.getLowestSetBit();
+  if (g < 0) return x;
+  if (i < g) g = i;
+  if (g > 0) {
+    x.rShiftTo(g, x);
+    y.rShiftTo(g, y);
+  }
+  while (x.signum() > 0) {
+    if ((i = x.getLowestSetBit()) > 0) x.rShiftTo(i, x);
+    if ((i = y.getLowestSetBit()) > 0) y.rShiftTo(i, y);
+    if (x.compareTo(y) >= 0) {
+      x.subTo(y, x);
+      x.rShiftTo(1, x);
+    } else {
+      y.subTo(x, y);
+      y.rShiftTo(1, y);
+    }
+  }
+  if (g > 0) y.lShiftTo(g, y);
+  return y;
+}
+function bnpModInt(n) {
+  if (n <= 0) return 0;
+  var d = this.DV % n, r = this.s < 0 ? n - 1 : 0;
   if (this.t > 0)
-    if (t == 0) a = this.data[0] % e;
-    else for (var r = this.t - 1; r >= 0; --r) a = (t * a + this.data[r]) % e;
-  return a;
+    if (d == 0) r = this.data[0] % n;
+    else for (var i = this.t - 1; i >= 0; --i) r = (d * r + this.data[i]) % n;
+  return r;
 }
-function Ao(e) {
-  if (this.signum() == 0)
-    return B.ZERO;
-  var t = e.isEven();
-  if (this.isEven() && t || e.signum() == 0) return B.ZERO;
-  for (var a = e.clone(), r = this.clone(), n = Tt(1), s = Tt(0), i = Tt(0), o = Tt(1); a.signum() != 0; ) {
-    for (; a.isEven(); )
-      a.rShiftTo(1, a), t ? ((!n.isEven() || !s.isEven()) && (n.addTo(this, n), s.subTo(e, s)), n.rShiftTo(1, n)) : s.isEven() || s.subTo(e, s), s.rShiftTo(1, s);
-    for (; r.isEven(); )
-      r.rShiftTo(1, r), t ? ((!i.isEven() || !o.isEven()) && (i.addTo(this, i), o.subTo(e, o)), i.rShiftTo(1, i)) : o.isEven() || o.subTo(e, o), o.rShiftTo(1, o);
-    a.compareTo(r) >= 0 ? (a.subTo(r, a), t && n.subTo(i, n), s.subTo(o, s)) : (r.subTo(a, r), t && i.subTo(n, i), o.subTo(s, o));
+function bnModInverse(m) {
+  if (this.signum() == 0) {
+    return BigInteger$4.ZERO;
   }
-  if (r.compareTo(B.ONE) != 0) return B.ZERO;
-  if (o.compareTo(e) >= 0) return o.subtract(e);
-  if (o.signum() < 0) o.addTo(e, o);
-  else return o;
-  return o.signum() < 0 ? o.add(e) : o;
-}
-var rt = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157, 163, 167, 173, 179, 181, 191, 193, 197, 199, 211, 223, 227, 229, 233, 239, 241, 251, 257, 263, 269, 271, 277, 281, 283, 293, 307, 311, 313, 317, 331, 337, 347, 349, 353, 359, 367, 373, 379, 383, 389, 397, 401, 409, 419, 421, 431, 433, 439, 443, 449, 457, 461, 463, 467, 479, 487, 491, 499, 503, 509, 521, 523, 541, 547, 557, 563, 569, 571, 577, 587, 593, 599, 601, 607, 613, 617, 619, 631, 641, 643, 647, 653, 659, 661, 673, 677, 683, 691, 701, 709, 719, 727, 733, 739, 743, 751, 757, 761, 769, 773, 787, 797, 809, 811, 821, 823, 827, 829, 839, 853, 857, 859, 863, 877, 881, 883, 887, 907, 911, 919, 929, 937, 941, 947, 953, 967, 971, 977, 983, 991, 997], Bo = (1 << 26) / rt[rt.length - 1];
-function bo(e) {
-  var t, a = this.abs();
-  if (a.t == 1 && a.data[0] <= rt[rt.length - 1]) {
-    for (t = 0; t < rt.length; ++t)
-      if (a.data[0] == rt[t]) return !0;
-    return !1;
-  }
-  if (a.isEven()) return !1;
-  for (t = 1; t < rt.length; ) {
-    for (var r = rt[t], n = t + 1; n < rt.length && r < Bo; ) r *= rt[n++];
-    for (r = a.modInt(r); t < n; ) if (r % rt[t++] == 0) return !1;
-  }
-  return a.millerRabin(e);
-}
-function _o(e) {
-  var t = this.subtract(B.ONE), a = t.getLowestSetBit();
-  if (a <= 0) return !1;
-  for (var r = t.shiftRight(a), n = No(), s, i = 0; i < e; ++i) {
-    do
-      s = new B(this.bitLength(), n);
-    while (s.compareTo(B.ONE) <= 0 || s.compareTo(t) >= 0);
-    var o = s.modPow(r, this);
-    if (o.compareTo(B.ONE) != 0 && o.compareTo(t) != 0) {
-      for (var l = 1; l++ < a && o.compareTo(t) != 0; )
-        if (o = o.modPowInt(2, this), o.compareTo(B.ONE) == 0) return !1;
-      if (o.compareTo(t) != 0) return !1;
+  var ac = m.isEven();
+  if (this.isEven() && ac || m.signum() == 0) return BigInteger$4.ZERO;
+  var u = m.clone(), v = this.clone();
+  var a = nbv(1), b = nbv(0), c = nbv(0), d = nbv(1);
+  while (u.signum() != 0) {
+    while (u.isEven()) {
+      u.rShiftTo(1, u);
+      if (ac) {
+        if (!a.isEven() || !b.isEven()) {
+          a.addTo(this, a);
+          b.subTo(m, b);
+        }
+        a.rShiftTo(1, a);
+      } else if (!b.isEven()) b.subTo(m, b);
+      b.rShiftTo(1, b);
+    }
+    while (v.isEven()) {
+      v.rShiftTo(1, v);
+      if (ac) {
+        if (!c.isEven() || !d.isEven()) {
+          c.addTo(this, c);
+          d.subTo(m, d);
+        }
+        c.rShiftTo(1, c);
+      } else if (!d.isEven()) d.subTo(m, d);
+      d.rShiftTo(1, d);
+    }
+    if (u.compareTo(v) >= 0) {
+      u.subTo(v, u);
+      if (ac) a.subTo(c, a);
+      b.subTo(d, b);
+    } else {
+      v.subTo(u, v);
+      if (ac) c.subTo(a, c);
+      d.subTo(b, d);
     }
   }
-  return !0;
+  if (v.compareTo(BigInteger$4.ONE) != 0) return BigInteger$4.ZERO;
+  if (d.compareTo(m) >= 0) return d.subtract(m);
+  if (d.signum() < 0) d.addTo(m, d);
+  else return d;
+  if (d.signum() < 0) return d.add(m);
+  else return d;
 }
-function No() {
+var lowprimes = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157, 163, 167, 173, 179, 181, 191, 193, 197, 199, 211, 223, 227, 229, 233, 239, 241, 251, 257, 263, 269, 271, 277, 281, 283, 293, 307, 311, 313, 317, 331, 337, 347, 349, 353, 359, 367, 373, 379, 383, 389, 397, 401, 409, 419, 421, 431, 433, 439, 443, 449, 457, 461, 463, 467, 479, 487, 491, 499, 503, 509, 521, 523, 541, 547, 557, 563, 569, 571, 577, 587, 593, 599, 601, 607, 613, 617, 619, 631, 641, 643, 647, 653, 659, 661, 673, 677, 683, 691, 701, 709, 719, 727, 733, 739, 743, 751, 757, 761, 769, 773, 787, 797, 809, 811, 821, 823, 827, 829, 839, 853, 857, 859, 863, 877, 881, 883, 887, 907, 911, 919, 929, 937, 941, 947, 953, 967, 971, 977, 983, 991, 997];
+var lplim = (1 << 26) / lowprimes[lowprimes.length - 1];
+function bnIsProbablePrime(t) {
+  var i, x = this.abs();
+  if (x.t == 1 && x.data[0] <= lowprimes[lowprimes.length - 1]) {
+    for (i = 0; i < lowprimes.length; ++i)
+      if (x.data[0] == lowprimes[i]) return true;
+    return false;
+  }
+  if (x.isEven()) return false;
+  i = 1;
+  while (i < lowprimes.length) {
+    var m = lowprimes[i], j = i + 1;
+    while (j < lowprimes.length && m < lplim) m *= lowprimes[j++];
+    m = x.modInt(m);
+    while (i < j) if (m % lowprimes[i++] == 0) return false;
+  }
+  return x.millerRabin(t);
+}
+function bnpMillerRabin(t) {
+  var n1 = this.subtract(BigInteger$4.ONE);
+  var k = n1.getLowestSetBit();
+  if (k <= 0) return false;
+  var r = n1.shiftRight(k);
+  var prng2 = bnGetPrng();
+  var a;
+  for (var i = 0; i < t; ++i) {
+    do {
+      a = new BigInteger$4(this.bitLength(), prng2);
+    } while (a.compareTo(BigInteger$4.ONE) <= 0 || a.compareTo(n1) >= 0);
+    var y = a.modPow(r, this);
+    if (y.compareTo(BigInteger$4.ONE) != 0 && y.compareTo(n1) != 0) {
+      var j = 1;
+      while (j++ < k && y.compareTo(n1) != 0) {
+        y = y.modPowInt(2, this);
+        if (y.compareTo(BigInteger$4.ONE) == 0) return false;
+      }
+      if (y.compareTo(n1) != 0) return false;
+    }
+  }
+  return true;
+}
+function bnGetPrng() {
   return {
     // x is an array to fill with bytes
-    nextBytes: function(e) {
-      for (var t = 0; t < e.length; ++t)
-        e[t] = Math.floor(Math.random() * 256);
+    nextBytes: function(x) {
+      for (var i = 0; i < x.length; ++i) {
+        x[i] = Math.floor(Math.random() * 256);
+      }
     }
   };
 }
-B.prototype.chunkSize = _s;
-B.prototype.toRadix = Rs;
-B.prototype.fromRadix = ws;
-B.prototype.fromNumber = Ls;
-B.prototype.bitwiseTo = Vs;
-B.prototype.changeBit = js;
-B.prototype.addTo = to;
-B.prototype.dMultiply = lo;
-B.prototype.dAddOffset = fo;
-B.prototype.multiplyLowerTo = vo;
-B.prototype.multiplyUpperTo = yo;
-B.prototype.modInt = Io;
-B.prototype.millerRabin = _o;
-B.prototype.clone = Is;
-B.prototype.intValue = As;
-B.prototype.byteValue = Bs;
-B.prototype.shortValue = bs;
-B.prototype.signum = Ns;
-B.prototype.toByteArray = ks;
-B.prototype.equals = Ds;
-B.prototype.min = Us;
-B.prototype.max = Ps;
-B.prototype.and = Fs;
-B.prototype.or = Ks;
-B.prototype.xor = Ms;
-B.prototype.andNot = Hs;
-B.prototype.not = Gs;
-B.prototype.shiftLeft = qs;
-B.prototype.shiftRight = Qs;
-B.prototype.getLowestSetBit = Ys;
-B.prototype.bitCount = Ws;
-B.prototype.testBit = Xs;
-B.prototype.setBit = Zs;
-B.prototype.clearBit = Js;
-B.prototype.flipBit = eo;
-B.prototype.add = ro;
-B.prototype.subtract = ao;
-B.prototype.multiply = no;
-B.prototype.divide = so;
-B.prototype.remainder = oo;
-B.prototype.divideAndRemainder = uo;
-B.prototype.modPow = So;
-B.prototype.modInverse = Ao;
-B.prototype.pow = po;
-B.prototype.gcd = To;
-B.prototype.isProbablePrime = bo;
-B.prototype.square = io;
-var lt = z, _n = lt.sha1 = lt.sha1 || {};
-lt.md.sha1 = lt.md.algorithms.sha1 = _n;
-_n.create = function() {
-  Nn || Ro();
-  var e = null, t = lt.util.createBuffer(), a = new Array(80), r = {
+BigInteger$4.prototype.chunkSize = bnpChunkSize;
+BigInteger$4.prototype.toRadix = bnpToRadix;
+BigInteger$4.prototype.fromRadix = bnpFromRadix;
+BigInteger$4.prototype.fromNumber = bnpFromNumber;
+BigInteger$4.prototype.bitwiseTo = bnpBitwiseTo;
+BigInteger$4.prototype.changeBit = bnpChangeBit;
+BigInteger$4.prototype.addTo = bnpAddTo;
+BigInteger$4.prototype.dMultiply = bnpDMultiply;
+BigInteger$4.prototype.dAddOffset = bnpDAddOffset;
+BigInteger$4.prototype.multiplyLowerTo = bnpMultiplyLowerTo;
+BigInteger$4.prototype.multiplyUpperTo = bnpMultiplyUpperTo;
+BigInteger$4.prototype.modInt = bnpModInt;
+BigInteger$4.prototype.millerRabin = bnpMillerRabin;
+BigInteger$4.prototype.clone = bnClone;
+BigInteger$4.prototype.intValue = bnIntValue;
+BigInteger$4.prototype.byteValue = bnByteValue;
+BigInteger$4.prototype.shortValue = bnShortValue;
+BigInteger$4.prototype.signum = bnSigNum;
+BigInteger$4.prototype.toByteArray = bnToByteArray;
+BigInteger$4.prototype.equals = bnEquals;
+BigInteger$4.prototype.min = bnMin;
+BigInteger$4.prototype.max = bnMax;
+BigInteger$4.prototype.and = bnAnd;
+BigInteger$4.prototype.or = bnOr;
+BigInteger$4.prototype.xor = bnXor;
+BigInteger$4.prototype.andNot = bnAndNot;
+BigInteger$4.prototype.not = bnNot;
+BigInteger$4.prototype.shiftLeft = bnShiftLeft;
+BigInteger$4.prototype.shiftRight = bnShiftRight;
+BigInteger$4.prototype.getLowestSetBit = bnGetLowestSetBit;
+BigInteger$4.prototype.bitCount = bnBitCount;
+BigInteger$4.prototype.testBit = bnTestBit;
+BigInteger$4.prototype.setBit = bnSetBit;
+BigInteger$4.prototype.clearBit = bnClearBit;
+BigInteger$4.prototype.flipBit = bnFlipBit;
+BigInteger$4.prototype.add = bnAdd;
+BigInteger$4.prototype.subtract = bnSubtract;
+BigInteger$4.prototype.multiply = bnMultiply;
+BigInteger$4.prototype.divide = bnDivide;
+BigInteger$4.prototype.remainder = bnRemainder;
+BigInteger$4.prototype.divideAndRemainder = bnDivideAndRemainder;
+BigInteger$4.prototype.modPow = bnModPow;
+BigInteger$4.prototype.modInverse = bnModInverse;
+BigInteger$4.prototype.pow = bnPow;
+BigInteger$4.prototype.gcd = bnGCD;
+BigInteger$4.prototype.isProbablePrime = bnIsProbablePrime;
+BigInteger$4.prototype.square = bnSquare;
+var forge$k = forge$C;
+var sha1 = forge$k.sha1 = forge$k.sha1 || {};
+forge$k.md.sha1 = forge$k.md.algorithms.sha1 = sha1;
+sha1.create = function() {
+  if (!_initialized$1) {
+    _init$1();
+  }
+  var _state = null;
+  var _input = forge$k.util.createBuffer();
+  var _w = new Array(80);
+  var md = {
     algorithm: "sha1",
     blockLength: 64,
     digestLength: 20,
@@ -4094,562 +6506,993 @@ _n.create = function() {
     // size of message length in bytes
     messageLengthSize: 8
   };
-  return r.start = function() {
-    r.messageLength = 0, r.fullMessageLength = r.messageLength64 = [];
-    for (var n = r.messageLengthSize / 4, s = 0; s < n; ++s)
-      r.fullMessageLength.push(0);
-    return t = lt.util.createBuffer(), e = {
+  md.start = function() {
+    md.messageLength = 0;
+    md.fullMessageLength = md.messageLength64 = [];
+    var int32s = md.messageLengthSize / 4;
+    for (var i = 0; i < int32s; ++i) {
+      md.fullMessageLength.push(0);
+    }
+    _input = forge$k.util.createBuffer();
+    _state = {
       h0: 1732584193,
       h1: 4023233417,
       h2: 2562383102,
       h3: 271733878,
       h4: 3285377520
-    }, r;
-  }, r.start(), r.update = function(n, s) {
-    s === "utf8" && (n = lt.util.encodeUtf8(n));
-    var i = n.length;
-    r.messageLength += i, i = [i / 4294967296 >>> 0, i >>> 0];
-    for (var o = r.fullMessageLength.length - 1; o >= 0; --o)
-      r.fullMessageLength[o] += i[1], i[1] = i[0] + (r.fullMessageLength[o] / 4294967296 >>> 0), r.fullMessageLength[o] = r.fullMessageLength[o] >>> 0, i[0] = i[1] / 4294967296 >>> 0;
-    return t.putBytes(n), za(e, a, t), (t.read > 2048 || t.length() === 0) && t.compact(), r;
-  }, r.digest = function() {
-    var n = lt.util.createBuffer();
-    n.putBytes(t.bytes());
-    var s = r.fullMessageLength[r.fullMessageLength.length - 1] + r.messageLengthSize, i = s & r.blockLength - 1;
-    n.putBytes(aa.substr(0, r.blockLength - i));
-    for (var o, l, u = r.fullMessageLength[0] * 8, f = 0; f < r.fullMessageLength.length - 1; ++f)
-      o = r.fullMessageLength[f + 1] * 8, l = o / 4294967296 >>> 0, u += l, n.putInt32(u >>> 0), u = o >>> 0;
-    n.putInt32(u);
-    var c = {
-      h0: e.h0,
-      h1: e.h1,
-      h2: e.h2,
-      h3: e.h3,
-      h4: e.h4
     };
-    za(c, a, n);
-    var v = lt.util.createBuffer();
-    return v.putInt32(c.h0), v.putInt32(c.h1), v.putInt32(c.h2), v.putInt32(c.h3), v.putInt32(c.h4), v;
-  }, r;
-};
-var aa = null, Nn = !1;
-function Ro() {
-  aa = "", aa += lt.util.fillString("\0", 64), Nn = !0;
-}
-function za(e, t, a) {
-  for (var r, n, s, i, o, l, u, f, c = a.length(); c >= 64; ) {
-    for (n = e.h0, s = e.h1, i = e.h2, o = e.h3, l = e.h4, f = 0; f < 16; ++f)
-      r = a.getInt32(), t[f] = r, u = o ^ s & (i ^ o), r = (n << 5 | n >>> 27) + u + l + 1518500249 + r, l = o, o = i, i = (s << 30 | s >>> 2) >>> 0, s = n, n = r;
-    for (; f < 20; ++f)
-      r = t[f - 3] ^ t[f - 8] ^ t[f - 14] ^ t[f - 16], r = r << 1 | r >>> 31, t[f] = r, u = o ^ s & (i ^ o), r = (n << 5 | n >>> 27) + u + l + 1518500249 + r, l = o, o = i, i = (s << 30 | s >>> 2) >>> 0, s = n, n = r;
-    for (; f < 32; ++f)
-      r = t[f - 3] ^ t[f - 8] ^ t[f - 14] ^ t[f - 16], r = r << 1 | r >>> 31, t[f] = r, u = s ^ i ^ o, r = (n << 5 | n >>> 27) + u + l + 1859775393 + r, l = o, o = i, i = (s << 30 | s >>> 2) >>> 0, s = n, n = r;
-    for (; f < 40; ++f)
-      r = t[f - 6] ^ t[f - 16] ^ t[f - 28] ^ t[f - 32], r = r << 2 | r >>> 30, t[f] = r, u = s ^ i ^ o, r = (n << 5 | n >>> 27) + u + l + 1859775393 + r, l = o, o = i, i = (s << 30 | s >>> 2) >>> 0, s = n, n = r;
-    for (; f < 60; ++f)
-      r = t[f - 6] ^ t[f - 16] ^ t[f - 28] ^ t[f - 32], r = r << 2 | r >>> 30, t[f] = r, u = s & i | o & (s ^ i), r = (n << 5 | n >>> 27) + u + l + 2400959708 + r, l = o, o = i, i = (s << 30 | s >>> 2) >>> 0, s = n, n = r;
-    for (; f < 80; ++f)
-      r = t[f - 6] ^ t[f - 16] ^ t[f - 28] ^ t[f - 32], r = r << 2 | r >>> 30, t[f] = r, u = s ^ i ^ o, r = (n << 5 | n >>> 27) + u + l + 3395469782 + r, l = o, o = i, i = (s << 30 | s >>> 2) >>> 0, s = n, n = r;
-    e.h0 = e.h0 + n | 0, e.h1 = e.h1 + s | 0, e.h2 = e.h2 + i | 0, e.h3 = e.h3 + o | 0, e.h4 = e.h4 + l | 0, c -= 64;
-  }
-}
-var ct = z, Rn = ct.pkcs1 = ct.pkcs1 || {};
-Rn.encode_rsa_oaep = function(e, t, a) {
-  var r, n, s, i;
-  typeof a == "string" ? (r = a, n = arguments[3] || void 0, s = arguments[4] || void 0) : a && (r = a.label || void 0, n = a.seed || void 0, s = a.md || void 0, a.mgf1 && a.mgf1.md && (i = a.mgf1.md)), s ? s.start() : s = ct.md.sha1.create(), i || (i = s);
-  var o = Math.ceil(e.n.bitLength() / 8), l = o - 2 * s.digestLength - 2;
-  if (t.length > l) {
-    var u = new Error("RSAES-OAEP input message length is too long.");
-    throw u.length = t.length, u.maxLength = l, u;
-  }
-  r || (r = ""), s.update(r, "raw");
-  for (var f = s.digest(), c = "", v = l - t.length, m = 0; m < v; m++)
-    c += "\0";
-  var y = f.getBytes() + c + "" + t;
-  if (!n)
-    n = ct.random.getBytes(s.digestLength);
-  else if (n.length !== s.digestLength) {
-    var u = new Error("Invalid RSAES-OAEP seed. The seed length must match the digest length.");
-    throw u.seedLength = n.length, u.digestLength = s.digestLength, u;
-  }
-  var x = Ar(n, o - s.digestLength - 1, i), S = ct.util.xorBytes(y, x, y.length), I = Ar(S, s.digestLength, i), b = ct.util.xorBytes(n, I, n.length);
-  return "\0" + b + S;
-};
-Rn.decode_rsa_oaep = function(e, t, a) {
-  var r, n, s;
-  typeof a == "string" ? (r = a, n = arguments[3] || void 0) : a && (r = a.label || void 0, n = a.md || void 0, a.mgf1 && a.mgf1.md && (s = a.mgf1.md));
-  var i = Math.ceil(e.n.bitLength() / 8);
-  if (t.length !== i) {
-    var S = new Error("RSAES-OAEP encoded message length is invalid.");
-    throw S.length = t.length, S.expectedLength = i, S;
-  }
-  if (n === void 0 ? n = ct.md.sha1.create() : n.start(), s || (s = n), i < 2 * n.digestLength + 2)
-    throw new Error("RSAES-OAEP key is too short for the hash function.");
-  r || (r = ""), n.update(r, "raw");
-  for (var o = n.digest().getBytes(), l = t.charAt(0), u = t.substring(1, n.digestLength + 1), f = t.substring(1 + n.digestLength), c = Ar(f, n.digestLength, s), v = ct.util.xorBytes(u, c, u.length), m = Ar(v, i - n.digestLength - 1, s), y = ct.util.xorBytes(f, m, f.length), x = y.substring(0, n.digestLength), S = l !== "\0", I = 0; I < n.digestLength; ++I)
-    S |= o.charAt(I) !== x.charAt(I);
-  for (var b = 1, _ = n.digestLength, V = n.digestLength; V < y.length; V++) {
-    var k = y.charCodeAt(V), w = k & 1 ^ 1, G = b ? 65534 : 0;
-    S |= k & G, b = b & w, _ += b;
-  }
-  if (S || y.charCodeAt(_) !== 1)
-    throw new Error("Invalid RSAES-OAEP padding.");
-  return y.substring(_ + 1);
-};
-function Ar(e, t, a) {
-  a || (a = ct.md.sha1.create());
-  for (var r = "", n = Math.ceil(t / a.digestLength), s = 0; s < n; ++s) {
-    var i = String.fromCharCode(
-      s >> 24 & 255,
-      s >> 16 & 255,
-      s >> 8 & 255,
-      s & 255
-    );
-    a.start(), a.update(e + i), r += a.digest().getBytes();
-  }
-  return r.substring(0, t);
-}
-var wt = z;
-(function() {
-  if (wt.prime)
-    return;
-  var e = wt.prime = wt.prime || {}, t = wt.jsbn.BigInteger, a = [6, 4, 2, 4, 2, 4, 6, 2], r = new t(null);
-  r.fromInt(30);
-  var n = function(c, v) {
-    return c | v;
+    return md;
   };
-  e.generateProbablePrime = function(c, v, m) {
-    typeof v == "function" && (m = v, v = {}), v = v || {};
-    var y = v.algorithm || "PRIMEINC";
-    typeof y == "string" && (y = { name: y }), y.options = y.options || {};
-    var x = v.prng || wt.random, S = {
+  md.start();
+  md.update = function(msg, encoding) {
+    if (encoding === "utf8") {
+      msg = forge$k.util.encodeUtf8(msg);
+    }
+    var len = msg.length;
+    md.messageLength += len;
+    len = [len / 4294967296 >>> 0, len >>> 0];
+    for (var i = md.fullMessageLength.length - 1; i >= 0; --i) {
+      md.fullMessageLength[i] += len[1];
+      len[1] = len[0] + (md.fullMessageLength[i] / 4294967296 >>> 0);
+      md.fullMessageLength[i] = md.fullMessageLength[i] >>> 0;
+      len[0] = len[1] / 4294967296 >>> 0;
+    }
+    _input.putBytes(msg);
+    _update$1(_state, _w, _input);
+    if (_input.read > 2048 || _input.length() === 0) {
+      _input.compact();
+    }
+    return md;
+  };
+  md.digest = function() {
+    var finalBlock = forge$k.util.createBuffer();
+    finalBlock.putBytes(_input.bytes());
+    var remaining = md.fullMessageLength[md.fullMessageLength.length - 1] + md.messageLengthSize;
+    var overflow = remaining & md.blockLength - 1;
+    finalBlock.putBytes(_padding$1.substr(0, md.blockLength - overflow));
+    var next, carry;
+    var bits = md.fullMessageLength[0] * 8;
+    for (var i = 0; i < md.fullMessageLength.length - 1; ++i) {
+      next = md.fullMessageLength[i + 1] * 8;
+      carry = next / 4294967296 >>> 0;
+      bits += carry;
+      finalBlock.putInt32(bits >>> 0);
+      bits = next >>> 0;
+    }
+    finalBlock.putInt32(bits);
+    var s2 = {
+      h0: _state.h0,
+      h1: _state.h1,
+      h2: _state.h2,
+      h3: _state.h3,
+      h4: _state.h4
+    };
+    _update$1(s2, _w, finalBlock);
+    var rval = forge$k.util.createBuffer();
+    rval.putInt32(s2.h0);
+    rval.putInt32(s2.h1);
+    rval.putInt32(s2.h2);
+    rval.putInt32(s2.h3);
+    rval.putInt32(s2.h4);
+    return rval;
+  };
+  return md;
+};
+var _padding$1 = null;
+var _initialized$1 = false;
+function _init$1() {
+  _padding$1 = String.fromCharCode(128);
+  _padding$1 += forge$k.util.fillString(String.fromCharCode(0), 64);
+  _initialized$1 = true;
+}
+function _update$1(s2, w, bytes) {
+  var t, a, b, c, d, e, f, i;
+  var len = bytes.length();
+  while (len >= 64) {
+    a = s2.h0;
+    b = s2.h1;
+    c = s2.h2;
+    d = s2.h3;
+    e = s2.h4;
+    for (i = 0; i < 16; ++i) {
+      t = bytes.getInt32();
+      w[i] = t;
+      f = d ^ b & (c ^ d);
+      t = (a << 5 | a >>> 27) + f + e + 1518500249 + t;
+      e = d;
+      d = c;
+      c = (b << 30 | b >>> 2) >>> 0;
+      b = a;
+      a = t;
+    }
+    for (; i < 20; ++i) {
+      t = w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16];
+      t = t << 1 | t >>> 31;
+      w[i] = t;
+      f = d ^ b & (c ^ d);
+      t = (a << 5 | a >>> 27) + f + e + 1518500249 + t;
+      e = d;
+      d = c;
+      c = (b << 30 | b >>> 2) >>> 0;
+      b = a;
+      a = t;
+    }
+    for (; i < 32; ++i) {
+      t = w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16];
+      t = t << 1 | t >>> 31;
+      w[i] = t;
+      f = b ^ c ^ d;
+      t = (a << 5 | a >>> 27) + f + e + 1859775393 + t;
+      e = d;
+      d = c;
+      c = (b << 30 | b >>> 2) >>> 0;
+      b = a;
+      a = t;
+    }
+    for (; i < 40; ++i) {
+      t = w[i - 6] ^ w[i - 16] ^ w[i - 28] ^ w[i - 32];
+      t = t << 2 | t >>> 30;
+      w[i] = t;
+      f = b ^ c ^ d;
+      t = (a << 5 | a >>> 27) + f + e + 1859775393 + t;
+      e = d;
+      d = c;
+      c = (b << 30 | b >>> 2) >>> 0;
+      b = a;
+      a = t;
+    }
+    for (; i < 60; ++i) {
+      t = w[i - 6] ^ w[i - 16] ^ w[i - 28] ^ w[i - 32];
+      t = t << 2 | t >>> 30;
+      w[i] = t;
+      f = b & c | d & (b ^ c);
+      t = (a << 5 | a >>> 27) + f + e + 2400959708 + t;
+      e = d;
+      d = c;
+      c = (b << 30 | b >>> 2) >>> 0;
+      b = a;
+      a = t;
+    }
+    for (; i < 80; ++i) {
+      t = w[i - 6] ^ w[i - 16] ^ w[i - 28] ^ w[i - 32];
+      t = t << 2 | t >>> 30;
+      w[i] = t;
+      f = b ^ c ^ d;
+      t = (a << 5 | a >>> 27) + f + e + 3395469782 + t;
+      e = d;
+      d = c;
+      c = (b << 30 | b >>> 2) >>> 0;
+      b = a;
+      a = t;
+    }
+    s2.h0 = s2.h0 + a | 0;
+    s2.h1 = s2.h1 + b | 0;
+    s2.h2 = s2.h2 + c | 0;
+    s2.h3 = s2.h3 + d | 0;
+    s2.h4 = s2.h4 + e | 0;
+    len -= 64;
+  }
+}
+var forge$j = forge$C;
+var pkcs1 = forge$j.pkcs1 = forge$j.pkcs1 || {};
+pkcs1.encode_rsa_oaep = function(key, message, options) {
+  var label;
+  var seed;
+  var md;
+  var mgf1Md;
+  if (typeof options === "string") {
+    label = options;
+    seed = arguments[3] || void 0;
+    md = arguments[4] || void 0;
+  } else if (options) {
+    label = options.label || void 0;
+    seed = options.seed || void 0;
+    md = options.md || void 0;
+    if (options.mgf1 && options.mgf1.md) {
+      mgf1Md = options.mgf1.md;
+    }
+  }
+  if (!md) {
+    md = forge$j.md.sha1.create();
+  } else {
+    md.start();
+  }
+  if (!mgf1Md) {
+    mgf1Md = md;
+  }
+  var keyLength = Math.ceil(key.n.bitLength() / 8);
+  var maxLength = keyLength - 2 * md.digestLength - 2;
+  if (message.length > maxLength) {
+    var error = new Error("RSAES-OAEP input message length is too long.");
+    error.length = message.length;
+    error.maxLength = maxLength;
+    throw error;
+  }
+  if (!label) {
+    label = "";
+  }
+  md.update(label, "raw");
+  var lHash = md.digest();
+  var PS = "";
+  var PS_length = maxLength - message.length;
+  for (var i = 0; i < PS_length; i++) {
+    PS += "\0";
+  }
+  var DB = lHash.getBytes() + PS + "" + message;
+  if (!seed) {
+    seed = forge$j.random.getBytes(md.digestLength);
+  } else if (seed.length !== md.digestLength) {
+    var error = new Error("Invalid RSAES-OAEP seed. The seed length must match the digest length.");
+    error.seedLength = seed.length;
+    error.digestLength = md.digestLength;
+    throw error;
+  }
+  var dbMask = rsa_mgf1(seed, keyLength - md.digestLength - 1, mgf1Md);
+  var maskedDB = forge$j.util.xorBytes(DB, dbMask, DB.length);
+  var seedMask = rsa_mgf1(maskedDB, md.digestLength, mgf1Md);
+  var maskedSeed = forge$j.util.xorBytes(seed, seedMask, seed.length);
+  return "\0" + maskedSeed + maskedDB;
+};
+pkcs1.decode_rsa_oaep = function(key, em, options) {
+  var label;
+  var md;
+  var mgf1Md;
+  if (typeof options === "string") {
+    label = options;
+    md = arguments[3] || void 0;
+  } else if (options) {
+    label = options.label || void 0;
+    md = options.md || void 0;
+    if (options.mgf1 && options.mgf1.md) {
+      mgf1Md = options.mgf1.md;
+    }
+  }
+  var keyLength = Math.ceil(key.n.bitLength() / 8);
+  if (em.length !== keyLength) {
+    var error = new Error("RSAES-OAEP encoded message length is invalid.");
+    error.length = em.length;
+    error.expectedLength = keyLength;
+    throw error;
+  }
+  if (md === void 0) {
+    md = forge$j.md.sha1.create();
+  } else {
+    md.start();
+  }
+  if (!mgf1Md) {
+    mgf1Md = md;
+  }
+  if (keyLength < 2 * md.digestLength + 2) {
+    throw new Error("RSAES-OAEP key is too short for the hash function.");
+  }
+  if (!label) {
+    label = "";
+  }
+  md.update(label, "raw");
+  var lHash = md.digest().getBytes();
+  var y = em.charAt(0);
+  var maskedSeed = em.substring(1, md.digestLength + 1);
+  var maskedDB = em.substring(1 + md.digestLength);
+  var seedMask = rsa_mgf1(maskedDB, md.digestLength, mgf1Md);
+  var seed = forge$j.util.xorBytes(maskedSeed, seedMask, maskedSeed.length);
+  var dbMask = rsa_mgf1(seed, keyLength - md.digestLength - 1, mgf1Md);
+  var db = forge$j.util.xorBytes(maskedDB, dbMask, maskedDB.length);
+  var lHashPrime = db.substring(0, md.digestLength);
+  var error = y !== "\0";
+  for (var i = 0; i < md.digestLength; ++i) {
+    error |= lHash.charAt(i) !== lHashPrime.charAt(i);
+  }
+  var in_ps = 1;
+  var index = md.digestLength;
+  for (var j = md.digestLength; j < db.length; j++) {
+    var code = db.charCodeAt(j);
+    var is_0 = code & 1 ^ 1;
+    var error_mask = in_ps ? 65534 : 0;
+    error |= code & error_mask;
+    in_ps = in_ps & is_0;
+    index += in_ps;
+  }
+  if (error || db.charCodeAt(index) !== 1) {
+    throw new Error("Invalid RSAES-OAEP padding.");
+  }
+  return db.substring(index + 1);
+};
+function rsa_mgf1(seed, maskLength, hash2) {
+  if (!hash2) {
+    hash2 = forge$j.md.sha1.create();
+  }
+  var t = "";
+  var count = Math.ceil(maskLength / hash2.digestLength);
+  for (var i = 0; i < count; ++i) {
+    var c = String.fromCharCode(
+      i >> 24 & 255,
+      i >> 16 & 255,
+      i >> 8 & 255,
+      i & 255
+    );
+    hash2.start();
+    hash2.update(seed + c);
+    t += hash2.digest().getBytes();
+  }
+  return t.substring(0, maskLength);
+}
+var forge$i = forge$C;
+(function() {
+  if (forge$i.prime) {
+    return;
+  }
+  var prime = forge$i.prime = forge$i.prime || {};
+  var BigInteger2 = forge$i.jsbn.BigInteger;
+  var GCD_30_DELTA2 = [6, 4, 2, 4, 2, 4, 6, 2];
+  var THIRTY = new BigInteger2(null);
+  THIRTY.fromInt(30);
+  var op_or2 = function(x, y) {
+    return x | y;
+  };
+  prime.generateProbablePrime = function(bits, options, callback) {
+    if (typeof options === "function") {
+      callback = options;
+      options = {};
+    }
+    options = options || {};
+    var algorithm = options.algorithm || "PRIMEINC";
+    if (typeof algorithm === "string") {
+      algorithm = { name: algorithm };
+    }
+    algorithm.options = algorithm.options || {};
+    var prng2 = options.prng || forge$i.random;
+    var rng = {
       // x is an array to fill with bytes
-      nextBytes: function(I) {
-        for (var b = x.getBytesSync(I.length), _ = 0; _ < I.length; ++_)
-          I[_] = b.charCodeAt(_);
+      nextBytes: function(x) {
+        var b = prng2.getBytesSync(x.length);
+        for (var i = 0; i < x.length; ++i) {
+          x[i] = b.charCodeAt(i);
+        }
       }
     };
-    if (y.name === "PRIMEINC")
-      return s(c, S, y.options, m);
-    throw new Error("Invalid prime generation algorithm: " + y.name);
+    if (algorithm.name === "PRIMEINC") {
+      return primeincFindPrime(bits, rng, algorithm.options, callback);
+    }
+    throw new Error("Invalid prime generation algorithm: " + algorithm.name);
   };
-  function s(c, v, m, y) {
-    return "workers" in m ? l(c, v, m, y) : i(c, v, m, y);
+  function primeincFindPrime(bits, rng, options, callback) {
+    if ("workers" in options) {
+      return primeincFindPrimeWithWorkers(bits, rng, options, callback);
+    }
+    return primeincFindPrimeWithoutWorkers(bits, rng, options, callback);
   }
-  function i(c, v, m, y) {
-    var x = u(c, v), S = 0, I = f(x.bitLength());
-    "millerRabinTests" in m && (I = m.millerRabinTests);
-    var b = 10;
-    "maxBlockTime" in m && (b = m.maxBlockTime), o(x, c, v, S, I, b, y);
+  function primeincFindPrimeWithoutWorkers(bits, rng, options, callback) {
+    var num = generateRandom(bits, rng);
+    var deltaIdx = 0;
+    var mrTests = getMillerRabinTests(num.bitLength());
+    if ("millerRabinTests" in options) {
+      mrTests = options.millerRabinTests;
+    }
+    var maxBlockTime = 10;
+    if ("maxBlockTime" in options) {
+      maxBlockTime = options.maxBlockTime;
+    }
+    _primeinc(num, bits, rng, deltaIdx, mrTests, maxBlockTime, callback);
   }
-  function o(c, v, m, y, x, S, I) {
-    var b = +/* @__PURE__ */ new Date();
+  function _primeinc(num, bits, rng, deltaIdx, mrTests, maxBlockTime, callback) {
+    var start = +/* @__PURE__ */ new Date();
     do {
-      if (c.bitLength() > v && (c = u(v, m)), c.isProbablePrime(x))
-        return I(null, c);
-      c.dAddOffset(a[y++ % 8], 0);
-    } while (S < 0 || +/* @__PURE__ */ new Date() - b < S);
-    wt.util.setImmediate(function() {
-      o(c, v, m, y, x, S, I);
+      if (num.bitLength() > bits) {
+        num = generateRandom(bits, rng);
+      }
+      if (num.isProbablePrime(mrTests)) {
+        return callback(null, num);
+      }
+      num.dAddOffset(GCD_30_DELTA2[deltaIdx++ % 8], 0);
+    } while (maxBlockTime < 0 || +/* @__PURE__ */ new Date() - start < maxBlockTime);
+    forge$i.util.setImmediate(function() {
+      _primeinc(num, bits, rng, deltaIdx, mrTests, maxBlockTime, callback);
     });
   }
-  function l(c, v, m, y) {
-    if (typeof Worker > "u")
-      return i(c, v, m, y);
-    var x = u(c, v), S = m.workers, I = m.workLoad || 100, b = I * 30 / 8, _ = m.workerScript || "forge/prime.worker.js";
-    if (S === -1)
-      return wt.util.estimateCores(function(k, w) {
-        k && (w = 2), S = w - 1, V();
-      });
-    V();
-    function V() {
-      S = Math.max(1, S);
-      for (var k = [], w = 0; w < S; ++w)
-        k[w] = new Worker(_);
-      for (var w = 0; w < S; ++w)
-        k[w].addEventListener("message", Y);
-      var G = !1;
-      function Y(re) {
-        if (!G) {
-          var ae = re.data;
-          if (ae.found) {
-            for (var ne = 0; ne < k.length; ++ne)
-              k[ne].terminate();
-            return G = !0, y(null, new t(ae.prime, 16));
-          }
-          x.bitLength() > c && (x = u(c, v));
-          var he = x.toString(16);
-          re.target.postMessage({
-            hex: he,
-            workLoad: I
-          }), x.dAddOffset(b, 0);
+  function primeincFindPrimeWithWorkers(bits, rng, options, callback) {
+    if (typeof Worker === "undefined") {
+      return primeincFindPrimeWithoutWorkers(bits, rng, options, callback);
+    }
+    var num = generateRandom(bits, rng);
+    var numWorkers = options.workers;
+    var workLoad = options.workLoad || 100;
+    var range = workLoad * 30 / 8;
+    var workerScript = options.workerScript || "forge/prime.worker.js";
+    if (numWorkers === -1) {
+      return forge$i.util.estimateCores(function(err, cores) {
+        if (err) {
+          cores = 2;
         }
+        numWorkers = cores - 1;
+        generate();
+      });
+    }
+    generate();
+    function generate() {
+      numWorkers = Math.max(1, numWorkers);
+      var workers = [];
+      for (var i = 0; i < numWorkers; ++i) {
+        workers[i] = new Worker(workerScript);
+      }
+      for (var i = 0; i < numWorkers; ++i) {
+        workers[i].addEventListener("message", workerMessage);
+      }
+      var found = false;
+      function workerMessage(e) {
+        if (found) {
+          return;
+        }
+        var data = e.data;
+        if (data.found) {
+          for (var i2 = 0; i2 < workers.length; ++i2) {
+            workers[i2].terminate();
+          }
+          found = true;
+          return callback(null, new BigInteger2(data.prime, 16));
+        }
+        if (num.bitLength() > bits) {
+          num = generateRandom(bits, rng);
+        }
+        var hex = num.toString(16);
+        e.target.postMessage({
+          hex,
+          workLoad
+        });
+        num.dAddOffset(range, 0);
       }
     }
   }
-  function u(c, v) {
-    var m = new t(c, v), y = c - 1;
-    return m.testBit(y) || m.bitwiseTo(t.ONE.shiftLeft(y), n, m), m.dAddOffset(31 - m.mod(r).byteValue(), 0), m;
+  function generateRandom(bits, rng) {
+    var num = new BigInteger2(bits, rng);
+    var bits1 = bits - 1;
+    if (!num.testBit(bits1)) {
+      num.bitwiseTo(BigInteger2.ONE.shiftLeft(bits1), op_or2, num);
+    }
+    num.dAddOffset(31 - num.mod(THIRTY).byteValue(), 0);
+    return num;
   }
-  function f(c) {
-    return c <= 100 ? 27 : c <= 150 ? 18 : c <= 200 ? 15 : c <= 250 ? 12 : c <= 300 ? 9 : c <= 350 ? 8 : c <= 400 ? 7 : c <= 500 ? 6 : c <= 600 ? 5 : c <= 800 ? 4 : c <= 1250 ? 3 : 2;
+  function getMillerRabinTests(bits) {
+    if (bits <= 100) return 27;
+    if (bits <= 150) return 18;
+    if (bits <= 200) return 15;
+    if (bits <= 250) return 12;
+    if (bits <= 300) return 9;
+    if (bits <= 350) return 8;
+    if (bits <= 400) return 7;
+    if (bits <= 500) return 6;
+    if (bits <= 600) return 5;
+    if (bits <= 800) return 4;
+    if (bits <= 1250) return 3;
+    return 2;
   }
 })();
-var M = z;
-if (typeof ee > "u")
-  var ee = M.jsbn.BigInteger;
-var na = M.util.isNodejs ? va : null, T = M.asn1, Je = M.util;
-M.pki = M.pki || {};
-M.pki.rsa = M.rsa = M.rsa || {};
-var q = M.pki, wo = [6, 4, 2, 4, 2, 4, 6, 2], Lo = {
+var forge$h = forge$C;
+if (typeof BigInteger$3 === "undefined") {
+  var BigInteger$3 = forge$h.jsbn.BigInteger;
+}
+var _crypto = forge$h.util.isNodejs ? require$$4 : null;
+var asn1$7 = forge$h.asn1;
+var util = forge$h.util;
+forge$h.pki = forge$h.pki || {};
+forge$h.pki.rsa = forge$h.rsa = forge$h.rsa || {};
+var pki$4 = forge$h.pki;
+var GCD_30_DELTA = [6, 4, 2, 4, 2, 4, 6, 2];
+var privateKeyValidator$1 = {
   // PrivateKeyInfo
   name: "PrivateKeyInfo",
-  tagClass: T.Class.UNIVERSAL,
-  type: T.Type.SEQUENCE,
-  constructed: !0,
+  tagClass: asn1$7.Class.UNIVERSAL,
+  type: asn1$7.Type.SEQUENCE,
+  constructed: true,
   value: [{
     // Version (INTEGER)
     name: "PrivateKeyInfo.version",
-    tagClass: T.Class.UNIVERSAL,
-    type: T.Type.INTEGER,
-    constructed: !1,
+    tagClass: asn1$7.Class.UNIVERSAL,
+    type: asn1$7.Type.INTEGER,
+    constructed: false,
     capture: "privateKeyVersion"
   }, {
     // privateKeyAlgorithm
     name: "PrivateKeyInfo.privateKeyAlgorithm",
-    tagClass: T.Class.UNIVERSAL,
-    type: T.Type.SEQUENCE,
-    constructed: !0,
+    tagClass: asn1$7.Class.UNIVERSAL,
+    type: asn1$7.Type.SEQUENCE,
+    constructed: true,
     value: [{
       name: "AlgorithmIdentifier.algorithm",
-      tagClass: T.Class.UNIVERSAL,
-      type: T.Type.OID,
-      constructed: !1,
+      tagClass: asn1$7.Class.UNIVERSAL,
+      type: asn1$7.Type.OID,
+      constructed: false,
       capture: "privateKeyOid"
     }]
   }, {
     // PrivateKey
     name: "PrivateKeyInfo",
-    tagClass: T.Class.UNIVERSAL,
-    type: T.Type.OCTETSTRING,
-    constructed: !1,
+    tagClass: asn1$7.Class.UNIVERSAL,
+    type: asn1$7.Type.OCTETSTRING,
+    constructed: false,
     capture: "privateKey"
   }]
-}, ko = {
+};
+var rsaPrivateKeyValidator = {
   // RSAPrivateKey
   name: "RSAPrivateKey",
-  tagClass: T.Class.UNIVERSAL,
-  type: T.Type.SEQUENCE,
-  constructed: !0,
+  tagClass: asn1$7.Class.UNIVERSAL,
+  type: asn1$7.Type.SEQUENCE,
+  constructed: true,
   value: [{
     // Version (INTEGER)
     name: "RSAPrivateKey.version",
-    tagClass: T.Class.UNIVERSAL,
-    type: T.Type.INTEGER,
-    constructed: !1,
+    tagClass: asn1$7.Class.UNIVERSAL,
+    type: asn1$7.Type.INTEGER,
+    constructed: false,
     capture: "privateKeyVersion"
   }, {
     // modulus (n)
     name: "RSAPrivateKey.modulus",
-    tagClass: T.Class.UNIVERSAL,
-    type: T.Type.INTEGER,
-    constructed: !1,
+    tagClass: asn1$7.Class.UNIVERSAL,
+    type: asn1$7.Type.INTEGER,
+    constructed: false,
     capture: "privateKeyModulus"
   }, {
     // publicExponent (e)
     name: "RSAPrivateKey.publicExponent",
-    tagClass: T.Class.UNIVERSAL,
-    type: T.Type.INTEGER,
-    constructed: !1,
+    tagClass: asn1$7.Class.UNIVERSAL,
+    type: asn1$7.Type.INTEGER,
+    constructed: false,
     capture: "privateKeyPublicExponent"
   }, {
     // privateExponent (d)
     name: "RSAPrivateKey.privateExponent",
-    tagClass: T.Class.UNIVERSAL,
-    type: T.Type.INTEGER,
-    constructed: !1,
+    tagClass: asn1$7.Class.UNIVERSAL,
+    type: asn1$7.Type.INTEGER,
+    constructed: false,
     capture: "privateKeyPrivateExponent"
   }, {
     // prime1 (p)
     name: "RSAPrivateKey.prime1",
-    tagClass: T.Class.UNIVERSAL,
-    type: T.Type.INTEGER,
-    constructed: !1,
+    tagClass: asn1$7.Class.UNIVERSAL,
+    type: asn1$7.Type.INTEGER,
+    constructed: false,
     capture: "privateKeyPrime1"
   }, {
     // prime2 (q)
     name: "RSAPrivateKey.prime2",
-    tagClass: T.Class.UNIVERSAL,
-    type: T.Type.INTEGER,
-    constructed: !1,
+    tagClass: asn1$7.Class.UNIVERSAL,
+    type: asn1$7.Type.INTEGER,
+    constructed: false,
     capture: "privateKeyPrime2"
   }, {
     // exponent1 (d mod (p-1))
     name: "RSAPrivateKey.exponent1",
-    tagClass: T.Class.UNIVERSAL,
-    type: T.Type.INTEGER,
-    constructed: !1,
+    tagClass: asn1$7.Class.UNIVERSAL,
+    type: asn1$7.Type.INTEGER,
+    constructed: false,
     capture: "privateKeyExponent1"
   }, {
     // exponent2 (d mod (q-1))
     name: "RSAPrivateKey.exponent2",
-    tagClass: T.Class.UNIVERSAL,
-    type: T.Type.INTEGER,
-    constructed: !1,
+    tagClass: asn1$7.Class.UNIVERSAL,
+    type: asn1$7.Type.INTEGER,
+    constructed: false,
     capture: "privateKeyExponent2"
   }, {
     // coefficient ((inverse of q) mod p)
     name: "RSAPrivateKey.coefficient",
-    tagClass: T.Class.UNIVERSAL,
-    type: T.Type.INTEGER,
-    constructed: !1,
+    tagClass: asn1$7.Class.UNIVERSAL,
+    type: asn1$7.Type.INTEGER,
+    constructed: false,
     capture: "privateKeyCoefficient"
   }]
-}, Do = {
+};
+var rsaPublicKeyValidator = {
   // RSAPublicKey
   name: "RSAPublicKey",
-  tagClass: T.Class.UNIVERSAL,
-  type: T.Type.SEQUENCE,
-  constructed: !0,
+  tagClass: asn1$7.Class.UNIVERSAL,
+  type: asn1$7.Type.SEQUENCE,
+  constructed: true,
   value: [{
     // modulus (n)
     name: "RSAPublicKey.modulus",
-    tagClass: T.Class.UNIVERSAL,
-    type: T.Type.INTEGER,
-    constructed: !1,
+    tagClass: asn1$7.Class.UNIVERSAL,
+    type: asn1$7.Type.INTEGER,
+    constructed: false,
     capture: "publicKeyModulus"
   }, {
     // publicExponent (e)
     name: "RSAPublicKey.exponent",
-    tagClass: T.Class.UNIVERSAL,
-    type: T.Type.INTEGER,
-    constructed: !1,
+    tagClass: asn1$7.Class.UNIVERSAL,
+    type: asn1$7.Type.INTEGER,
+    constructed: false,
     capture: "publicKeyExponent"
   }]
-}, Uo = M.pki.rsa.publicKeyValidator = {
+};
+var publicKeyValidator$2 = forge$h.pki.rsa.publicKeyValidator = {
   name: "SubjectPublicKeyInfo",
-  tagClass: T.Class.UNIVERSAL,
-  type: T.Type.SEQUENCE,
-  constructed: !0,
+  tagClass: asn1$7.Class.UNIVERSAL,
+  type: asn1$7.Type.SEQUENCE,
+  constructed: true,
   captureAsn1: "subjectPublicKeyInfo",
   value: [{
     name: "SubjectPublicKeyInfo.AlgorithmIdentifier",
-    tagClass: T.Class.UNIVERSAL,
-    type: T.Type.SEQUENCE,
-    constructed: !0,
+    tagClass: asn1$7.Class.UNIVERSAL,
+    type: asn1$7.Type.SEQUENCE,
+    constructed: true,
     value: [{
       name: "AlgorithmIdentifier.algorithm",
-      tagClass: T.Class.UNIVERSAL,
-      type: T.Type.OID,
-      constructed: !1,
+      tagClass: asn1$7.Class.UNIVERSAL,
+      type: asn1$7.Type.OID,
+      constructed: false,
       capture: "publicKeyOid"
     }]
   }, {
     // subjectPublicKey
     name: "SubjectPublicKeyInfo.subjectPublicKey",
-    tagClass: T.Class.UNIVERSAL,
-    type: T.Type.BITSTRING,
-    constructed: !1,
+    tagClass: asn1$7.Class.UNIVERSAL,
+    type: asn1$7.Type.BITSTRING,
+    constructed: false,
     value: [{
       // RSAPublicKey
       name: "SubjectPublicKeyInfo.subjectPublicKey.RSAPublicKey",
-      tagClass: T.Class.UNIVERSAL,
-      type: T.Type.SEQUENCE,
-      constructed: !0,
-      optional: !0,
+      tagClass: asn1$7.Class.UNIVERSAL,
+      type: asn1$7.Type.SEQUENCE,
+      constructed: true,
+      optional: true,
       captureAsn1: "rsaPublicKey"
     }]
   }]
-}, Po = {
+};
+var digestInfoValidator = {
   name: "DigestInfo",
-  tagClass: T.Class.UNIVERSAL,
-  type: T.Type.SEQUENCE,
-  constructed: !0,
+  tagClass: asn1$7.Class.UNIVERSAL,
+  type: asn1$7.Type.SEQUENCE,
+  constructed: true,
   value: [{
     name: "DigestInfo.DigestAlgorithm",
-    tagClass: T.Class.UNIVERSAL,
-    type: T.Type.SEQUENCE,
-    constructed: !0,
+    tagClass: asn1$7.Class.UNIVERSAL,
+    type: asn1$7.Type.SEQUENCE,
+    constructed: true,
     value: [{
       name: "DigestInfo.DigestAlgorithm.algorithmIdentifier",
-      tagClass: T.Class.UNIVERSAL,
-      type: T.Type.OID,
-      constructed: !1,
+      tagClass: asn1$7.Class.UNIVERSAL,
+      type: asn1$7.Type.OID,
+      constructed: false,
       capture: "algorithmIdentifier"
     }, {
       // NULL parameters
       name: "DigestInfo.DigestAlgorithm.parameters",
-      tagClass: T.Class.UNIVERSAL,
-      type: T.Type.NULL,
+      tagClass: asn1$7.Class.UNIVERSAL,
+      type: asn1$7.Type.NULL,
       // captured only to check existence for md2 and md5
       capture: "parameters",
-      optional: !0,
-      constructed: !1
+      optional: true,
+      constructed: false
     }]
   }, {
     // digest
     name: "DigestInfo.digest",
-    tagClass: T.Class.UNIVERSAL,
-    type: T.Type.OCTETSTRING,
-    constructed: !1,
+    tagClass: asn1$7.Class.UNIVERSAL,
+    type: asn1$7.Type.OCTETSTRING,
+    constructed: false,
     capture: "digest"
   }]
-}, Vo = function(e) {
-  var t;
-  if (e.algorithm in q.oids)
-    t = q.oids[e.algorithm];
-  else {
-    var a = new Error("Unknown message digest algorithm.");
-    throw a.algorithm = e.algorithm, a;
+};
+var emsaPkcs1v15encode = function(md) {
+  var oid;
+  if (md.algorithm in pki$4.oids) {
+    oid = pki$4.oids[md.algorithm];
+  } else {
+    var error = new Error("Unknown message digest algorithm.");
+    error.algorithm = md.algorithm;
+    throw error;
   }
-  var r = T.oidToDer(t).getBytes(), n = T.create(
-    T.Class.UNIVERSAL,
-    T.Type.SEQUENCE,
-    !0,
-    []
-  ), s = T.create(
-    T.Class.UNIVERSAL,
-    T.Type.SEQUENCE,
-    !0,
+  var oidBytes = asn1$7.oidToDer(oid).getBytes();
+  var digestInfo = asn1$7.create(
+    asn1$7.Class.UNIVERSAL,
+    asn1$7.Type.SEQUENCE,
+    true,
     []
   );
-  s.value.push(T.create(
-    T.Class.UNIVERSAL,
-    T.Type.OID,
-    !1,
-    r
-  )), s.value.push(T.create(
-    T.Class.UNIVERSAL,
-    T.Type.NULL,
-    !1,
+  var digestAlgorithm = asn1$7.create(
+    asn1$7.Class.UNIVERSAL,
+    asn1$7.Type.SEQUENCE,
+    true,
+    []
+  );
+  digestAlgorithm.value.push(asn1$7.create(
+    asn1$7.Class.UNIVERSAL,
+    asn1$7.Type.OID,
+    false,
+    oidBytes
+  ));
+  digestAlgorithm.value.push(asn1$7.create(
+    asn1$7.Class.UNIVERSAL,
+    asn1$7.Type.NULL,
+    false,
     ""
   ));
-  var i = T.create(
-    T.Class.UNIVERSAL,
-    T.Type.OCTETSTRING,
-    !1,
-    e.digest().getBytes()
+  var digest = asn1$7.create(
+    asn1$7.Class.UNIVERSAL,
+    asn1$7.Type.OCTETSTRING,
+    false,
+    md.digest().getBytes()
   );
-  return n.value.push(s), n.value.push(i), T.toDer(n).getBytes();
-}, wn = function(e, t, a) {
-  if (a)
-    return e.modPow(t.e, t.n);
-  if (!t.p || !t.q)
-    return e.modPow(t.d, t.n);
-  t.dP || (t.dP = t.d.mod(t.p.subtract(ee.ONE))), t.dQ || (t.dQ = t.d.mod(t.q.subtract(ee.ONE))), t.qInv || (t.qInv = t.q.modInverse(t.p));
+  digestInfo.value.push(digestAlgorithm);
+  digestInfo.value.push(digest);
+  return asn1$7.toDer(digestInfo).getBytes();
+};
+var _modPow = function(x, key, pub) {
+  if (pub) {
+    return x.modPow(key.e, key.n);
+  }
+  if (!key.p || !key.q) {
+    return x.modPow(key.d, key.n);
+  }
+  if (!key.dP) {
+    key.dP = key.d.mod(key.p.subtract(BigInteger$3.ONE));
+  }
+  if (!key.dQ) {
+    key.dQ = key.d.mod(key.q.subtract(BigInteger$3.ONE));
+  }
+  if (!key.qInv) {
+    key.qInv = key.q.modInverse(key.p);
+  }
   var r;
-  do
-    r = new ee(
-      M.util.bytesToHex(M.random.getBytes(t.n.bitLength() / 8)),
+  do {
+    r = new BigInteger$3(
+      forge$h.util.bytesToHex(forge$h.random.getBytes(key.n.bitLength() / 8)),
       16
     );
-  while (r.compareTo(t.n) >= 0 || !r.gcd(t.n).equals(ee.ONE));
-  e = e.multiply(r.modPow(t.e, t.n)).mod(t.n);
-  for (var n = e.mod(t.p).modPow(t.dP, t.p), s = e.mod(t.q).modPow(t.dQ, t.q); n.compareTo(s) < 0; )
-    n = n.add(t.p);
-  var i = n.subtract(s).multiply(t.qInv).mod(t.p).multiply(t.q).add(s);
-  return i = i.multiply(r.modInverse(t.n)).mod(t.n), i;
-};
-q.rsa.encrypt = function(e, t, a) {
-  var r = a, n, s = Math.ceil(t.n.bitLength() / 8);
-  a !== !1 && a !== !0 ? (r = a === 2, n = Ln(e, t, a)) : (n = M.util.createBuffer(), n.putBytes(e));
-  for (var i = new ee(n.toHex(), 16), o = wn(i, t, r), l = o.toString(16), u = M.util.createBuffer(), f = s - Math.ceil(l.length / 2); f > 0; )
-    u.putByte(0), --f;
-  return u.putBytes(M.util.hexToBytes(l)), u.getBytes();
-};
-q.rsa.decrypt = function(e, t, a, r) {
-  var n = Math.ceil(t.n.bitLength() / 8);
-  if (e.length !== n) {
-    var s = new Error("Encrypted message length is invalid.");
-    throw s.length = e.length, s.expected = n, s;
+  } while (r.compareTo(key.n) >= 0 || !r.gcd(key.n).equals(BigInteger$3.ONE));
+  x = x.multiply(r.modPow(key.e, key.n)).mod(key.n);
+  var xp = x.mod(key.p).modPow(key.dP, key.p);
+  var xq = x.mod(key.q).modPow(key.dQ, key.q);
+  while (xp.compareTo(xq) < 0) {
+    xp = xp.add(key.p);
   }
-  var i = new ee(M.util.createBuffer(e).toHex(), 16);
-  if (i.compareTo(t.n) >= 0)
-    throw new Error("Encrypted message is invalid.");
-  for (var o = wn(i, t, a), l = o.toString(16), u = M.util.createBuffer(), f = n - Math.ceil(l.length / 2); f > 0; )
-    u.putByte(0), --f;
-  return u.putBytes(M.util.hexToBytes(l)), r !== !1 ? Br(u.getBytes(), t, a) : u.getBytes();
+  var y = xp.subtract(xq).multiply(key.qInv).mod(key.p).multiply(key.q).add(xq);
+  y = y.multiply(r.modInverse(key.n)).mod(key.n);
+  return y;
 };
-q.rsa.createKeyPairGenerationState = function(e, t, a) {
-  typeof e == "string" && (e = parseInt(e, 10)), e = e || 2048, a = a || {};
-  var r = a.prng || M.random, n = {
+pki$4.rsa.encrypt = function(m, key, bt) {
+  var pub = bt;
+  var eb;
+  var k = Math.ceil(key.n.bitLength() / 8);
+  if (bt !== false && bt !== true) {
+    pub = bt === 2;
+    eb = _encodePkcs1_v1_5(m, key, bt);
+  } else {
+    eb = forge$h.util.createBuffer();
+    eb.putBytes(m);
+  }
+  var x = new BigInteger$3(eb.toHex(), 16);
+  var y = _modPow(x, key, pub);
+  var yhex = y.toString(16);
+  var ed = forge$h.util.createBuffer();
+  var zeros = k - Math.ceil(yhex.length / 2);
+  while (zeros > 0) {
+    ed.putByte(0);
+    --zeros;
+  }
+  ed.putBytes(forge$h.util.hexToBytes(yhex));
+  return ed.getBytes();
+};
+pki$4.rsa.decrypt = function(ed, key, pub, ml) {
+  var k = Math.ceil(key.n.bitLength() / 8);
+  if (ed.length !== k) {
+    var error = new Error("Encrypted message length is invalid.");
+    error.length = ed.length;
+    error.expected = k;
+    throw error;
+  }
+  var y = new BigInteger$3(forge$h.util.createBuffer(ed).toHex(), 16);
+  if (y.compareTo(key.n) >= 0) {
+    throw new Error("Encrypted message is invalid.");
+  }
+  var x = _modPow(y, key, pub);
+  var xhex = x.toString(16);
+  var eb = forge$h.util.createBuffer();
+  var zeros = k - Math.ceil(xhex.length / 2);
+  while (zeros > 0) {
+    eb.putByte(0);
+    --zeros;
+  }
+  eb.putBytes(forge$h.util.hexToBytes(xhex));
+  if (ml !== false) {
+    return _decodePkcs1_v1_5(eb.getBytes(), key, pub);
+  }
+  return eb.getBytes();
+};
+pki$4.rsa.createKeyPairGenerationState = function(bits, e, options) {
+  if (typeof bits === "string") {
+    bits = parseInt(bits, 10);
+  }
+  bits = bits || 2048;
+  options = options || {};
+  var prng2 = options.prng || forge$h.random;
+  var rng = {
     // x is an array to fill with bytes
-    nextBytes: function(o) {
-      for (var l = r.getBytesSync(o.length), u = 0; u < o.length; ++u)
-        o[u] = l.charCodeAt(u);
+    nextBytes: function(x) {
+      var b = prng2.getBytesSync(x.length);
+      for (var i = 0; i < x.length; ++i) {
+        x[i] = b.charCodeAt(i);
+      }
     }
-  }, s = a.algorithm || "PRIMEINC", i;
-  if (s === "PRIMEINC")
-    i = {
-      algorithm: s,
+  };
+  var algorithm = options.algorithm || "PRIMEINC";
+  var rval;
+  if (algorithm === "PRIMEINC") {
+    rval = {
+      algorithm,
       state: 0,
-      bits: e,
-      rng: n,
-      eInt: t || 65537,
-      e: new ee(null),
+      bits,
+      rng,
+      eInt: e || 65537,
+      e: new BigInteger$3(null),
       p: null,
       q: null,
-      qBits: e >> 1,
-      pBits: e - (e >> 1),
+      qBits: bits >> 1,
+      pBits: bits - (bits >> 1),
       pqState: 0,
       num: null,
       keys: null
-    }, i.e.fromInt(i.eInt);
-  else
-    throw new Error("Invalid key generation algorithm: " + s);
-  return i;
+    };
+    rval.e.fromInt(rval.eInt);
+  } else {
+    throw new Error("Invalid key generation algorithm: " + algorithm);
+  }
+  return rval;
 };
-q.rsa.stepKeyPairGenerationState = function(e, t) {
-  "algorithm" in e || (e.algorithm = "PRIMEINC");
-  var a = new ee(null);
-  a.fromInt(30);
-  for (var r = 0, n = function(c, v) {
-    return c | v;
-  }, s = +/* @__PURE__ */ new Date(), i, o = 0; e.keys === null && (t <= 0 || o < t); ) {
-    if (e.state === 0) {
-      var l = e.p === null ? e.pBits : e.qBits, u = l - 1;
-      e.pqState === 0 ? (e.num = new ee(l, e.rng), e.num.testBit(u) || e.num.bitwiseTo(
-        ee.ONE.shiftLeft(u),
-        n,
-        e.num
-      ), e.num.dAddOffset(31 - e.num.mod(a).byteValue(), 0), r = 0, ++e.pqState) : e.pqState === 1 ? e.num.bitLength() > l ? e.pqState = 0 : e.num.isProbablePrime(
-        Fo(e.num.bitLength())
-      ) ? ++e.pqState : e.num.dAddOffset(wo[r++ % 8], 0) : e.pqState === 2 ? e.pqState = e.num.subtract(ee.ONE).gcd(e.e).compareTo(ee.ONE) === 0 ? 3 : 0 : e.pqState === 3 && (e.pqState = 0, e.p === null ? e.p = e.num : e.q = e.num, e.p !== null && e.q !== null && ++e.state, e.num = null);
-    } else if (e.state === 1)
-      e.p.compareTo(e.q) < 0 && (e.num = e.p, e.p = e.q, e.q = e.num), ++e.state;
-    else if (e.state === 2)
-      e.p1 = e.p.subtract(ee.ONE), e.q1 = e.q.subtract(ee.ONE), e.phi = e.p1.multiply(e.q1), ++e.state;
-    else if (e.state === 3)
-      e.phi.gcd(e.e).compareTo(ee.ONE) === 0 ? ++e.state : (e.p = null, e.q = null, e.state = 0);
-    else if (e.state === 4)
-      e.n = e.p.multiply(e.q), e.n.bitLength() === e.bits ? ++e.state : (e.q = null, e.state = 0);
-    else if (e.state === 5) {
-      var f = e.e.modInverse(e.phi);
-      e.keys = {
-        privateKey: q.rsa.setPrivateKey(
-          e.n,
-          e.e,
-          f,
-          e.p,
-          e.q,
-          f.mod(e.p1),
-          f.mod(e.q1),
-          e.q.modInverse(e.p)
+pki$4.rsa.stepKeyPairGenerationState = function(state, n) {
+  if (!("algorithm" in state)) {
+    state.algorithm = "PRIMEINC";
+  }
+  var THIRTY = new BigInteger$3(null);
+  THIRTY.fromInt(30);
+  var deltaIdx = 0;
+  var op_or2 = function(x, y) {
+    return x | y;
+  };
+  var t1 = +/* @__PURE__ */ new Date();
+  var t2;
+  var total = 0;
+  while (state.keys === null && (n <= 0 || total < n)) {
+    if (state.state === 0) {
+      var bits = state.p === null ? state.pBits : state.qBits;
+      var bits1 = bits - 1;
+      if (state.pqState === 0) {
+        state.num = new BigInteger$3(bits, state.rng);
+        if (!state.num.testBit(bits1)) {
+          state.num.bitwiseTo(
+            BigInteger$3.ONE.shiftLeft(bits1),
+            op_or2,
+            state.num
+          );
+        }
+        state.num.dAddOffset(31 - state.num.mod(THIRTY).byteValue(), 0);
+        deltaIdx = 0;
+        ++state.pqState;
+      } else if (state.pqState === 1) {
+        if (state.num.bitLength() > bits) {
+          state.pqState = 0;
+        } else if (state.num.isProbablePrime(
+          _getMillerRabinTests(state.num.bitLength())
+        )) {
+          ++state.pqState;
+        } else {
+          state.num.dAddOffset(GCD_30_DELTA[deltaIdx++ % 8], 0);
+        }
+      } else if (state.pqState === 2) {
+        state.pqState = state.num.subtract(BigInteger$3.ONE).gcd(state.e).compareTo(BigInteger$3.ONE) === 0 ? 3 : 0;
+      } else if (state.pqState === 3) {
+        state.pqState = 0;
+        if (state.p === null) {
+          state.p = state.num;
+        } else {
+          state.q = state.num;
+        }
+        if (state.p !== null && state.q !== null) {
+          ++state.state;
+        }
+        state.num = null;
+      }
+    } else if (state.state === 1) {
+      if (state.p.compareTo(state.q) < 0) {
+        state.num = state.p;
+        state.p = state.q;
+        state.q = state.num;
+      }
+      ++state.state;
+    } else if (state.state === 2) {
+      state.p1 = state.p.subtract(BigInteger$3.ONE);
+      state.q1 = state.q.subtract(BigInteger$3.ONE);
+      state.phi = state.p1.multiply(state.q1);
+      ++state.state;
+    } else if (state.state === 3) {
+      if (state.phi.gcd(state.e).compareTo(BigInteger$3.ONE) === 0) {
+        ++state.state;
+      } else {
+        state.p = null;
+        state.q = null;
+        state.state = 0;
+      }
+    } else if (state.state === 4) {
+      state.n = state.p.multiply(state.q);
+      if (state.n.bitLength() === state.bits) {
+        ++state.state;
+      } else {
+        state.q = null;
+        state.state = 0;
+      }
+    } else if (state.state === 5) {
+      var d = state.e.modInverse(state.phi);
+      state.keys = {
+        privateKey: pki$4.rsa.setPrivateKey(
+          state.n,
+          state.e,
+          d,
+          state.p,
+          state.q,
+          d.mod(state.p1),
+          d.mod(state.q1),
+          state.q.modInverse(state.p)
         ),
-        publicKey: q.rsa.setPublicKey(e.n, e.e)
+        publicKey: pki$4.rsa.setPublicKey(state.n, state.e)
       };
     }
-    i = +/* @__PURE__ */ new Date(), o += i - s, s = i;
+    t2 = +/* @__PURE__ */ new Date();
+    total += t2 - t1;
+    t1 = t2;
   }
-  return e.keys !== null;
+  return state.keys !== null;
 };
-q.rsa.generateKeyPair = function(e, t, a, r) {
-  if (arguments.length === 1 ? typeof e == "object" ? (a = e, e = void 0) : typeof e == "function" && (r = e, e = void 0) : arguments.length === 2 ? typeof e == "number" ? typeof t == "function" ? (r = t, t = void 0) : typeof t != "number" && (a = t, t = void 0) : (a = e, r = t, e = void 0, t = void 0) : arguments.length === 3 && (typeof t == "number" ? typeof a == "function" && (r = a, a = void 0) : (r = a, a = t, t = void 0)), a = a || {}, e === void 0 && (e = a.bits || 2048), t === void 0 && (t = a.e || 65537), !a.prng && e >= 256 && e <= 16384 && (t === 65537 || t === 3)) {
-    if (r) {
-      if (Ya("generateKeyPair"))
-        return na.generateKeyPair("rsa", {
-          modulusLength: e,
-          publicExponent: t,
+pki$4.rsa.generateKeyPair = function(bits, e, options, callback) {
+  if (arguments.length === 1) {
+    if (typeof bits === "object") {
+      options = bits;
+      bits = void 0;
+    } else if (typeof bits === "function") {
+      callback = bits;
+      bits = void 0;
+    }
+  } else if (arguments.length === 2) {
+    if (typeof bits === "number") {
+      if (typeof e === "function") {
+        callback = e;
+        e = void 0;
+      } else if (typeof e !== "number") {
+        options = e;
+        e = void 0;
+      }
+    } else {
+      options = bits;
+      callback = e;
+      bits = void 0;
+      e = void 0;
+    }
+  } else if (arguments.length === 3) {
+    if (typeof e === "number") {
+      if (typeof options === "function") {
+        callback = options;
+        options = void 0;
+      }
+    } else {
+      callback = options;
+      options = e;
+      e = void 0;
+    }
+  }
+  options = options || {};
+  if (bits === void 0) {
+    bits = options.bits || 2048;
+  }
+  if (e === void 0) {
+    e = options.e || 65537;
+  }
+  if (!options.prng && bits >= 256 && bits <= 16384 && (e === 65537 || e === 3)) {
+    if (callback) {
+      if (_detectNodeCrypto("generateKeyPair")) {
+        return _crypto.generateKeyPair("rsa", {
+          modulusLength: bits,
+          publicExponent: e,
           publicKeyEncoding: {
             type: "spki",
             format: "pem"
@@ -4658,1147 +7501,1473 @@ q.rsa.generateKeyPair = function(e, t, a, r) {
             type: "pkcs8",
             format: "pem"
           }
-        }, function(o, l, u) {
-          if (o)
-            return r(o);
-          r(null, {
-            privateKey: q.privateKeyFromPem(u),
-            publicKey: q.publicKeyFromPem(l)
+        }, function(err, pub, priv) {
+          if (err) {
+            return callback(err);
+          }
+          callback(null, {
+            privateKey: pki$4.privateKeyFromPem(priv),
+            publicKey: pki$4.publicKeyFromPem(pub)
           });
         });
-      if ($a("generateKey") && $a("exportKey"))
-        return Je.globalScope.crypto.subtle.generateKey({
+      }
+      if (_detectSubtleCrypto("generateKey") && _detectSubtleCrypto("exportKey")) {
+        return util.globalScope.crypto.subtle.generateKey({
           name: "RSASSA-PKCS1-v1_5",
-          modulusLength: e,
-          publicExponent: Xa(t),
+          modulusLength: bits,
+          publicExponent: _intToUint8Array(e),
           hash: { name: "SHA-256" }
-        }, !0, ["sign", "verify"]).then(function(o) {
-          return Je.globalScope.crypto.subtle.exportKey(
+        }, true, ["sign", "verify"]).then(function(pair) {
+          return util.globalScope.crypto.subtle.exportKey(
             "pkcs8",
-            o.privateKey
+            pair.privateKey
           );
-        }).then(void 0, function(o) {
-          r(o);
-        }).then(function(o) {
-          if (o) {
-            var l = q.privateKeyFromAsn1(
-              T.fromDer(M.util.createBuffer(o))
+        }).then(void 0, function(err) {
+          callback(err);
+        }).then(function(pkcs8) {
+          if (pkcs8) {
+            var privateKey = pki$4.privateKeyFromAsn1(
+              asn1$7.fromDer(forge$h.util.createBuffer(pkcs8))
             );
-            r(null, {
-              privateKey: l,
-              publicKey: q.setRsaPublicKey(l.n, l.e)
+            callback(null, {
+              privateKey,
+              publicKey: pki$4.setRsaPublicKey(privateKey.n, privateKey.e)
             });
           }
         });
-      if (Wa("generateKey") && Wa("exportKey")) {
-        var n = Je.globalScope.msCrypto.subtle.generateKey({
+      }
+      if (_detectSubtleMsCrypto("generateKey") && _detectSubtleMsCrypto("exportKey")) {
+        var genOp = util.globalScope.msCrypto.subtle.generateKey({
           name: "RSASSA-PKCS1-v1_5",
-          modulusLength: e,
-          publicExponent: Xa(t),
+          modulusLength: bits,
+          publicExponent: _intToUint8Array(e),
           hash: { name: "SHA-256" }
-        }, !0, ["sign", "verify"]);
-        n.oncomplete = function(o) {
-          var l = o.target.result, u = Je.globalScope.msCrypto.subtle.exportKey(
+        }, true, ["sign", "verify"]);
+        genOp.oncomplete = function(e2) {
+          var pair = e2.target.result;
+          var exportOp = util.globalScope.msCrypto.subtle.exportKey(
             "pkcs8",
-            l.privateKey
+            pair.privateKey
           );
-          u.oncomplete = function(f) {
-            var c = f.target.result, v = q.privateKeyFromAsn1(
-              T.fromDer(M.util.createBuffer(c))
+          exportOp.oncomplete = function(e3) {
+            var pkcs8 = e3.target.result;
+            var privateKey = pki$4.privateKeyFromAsn1(
+              asn1$7.fromDer(forge$h.util.createBuffer(pkcs8))
             );
-            r(null, {
-              privateKey: v,
-              publicKey: q.setRsaPublicKey(v.n, v.e)
+            callback(null, {
+              privateKey,
+              publicKey: pki$4.setRsaPublicKey(privateKey.n, privateKey.e)
             });
-          }, u.onerror = function(f) {
-            r(f);
           };
-        }, n.onerror = function(o) {
-          r(o);
+          exportOp.onerror = function(err) {
+            callback(err);
+          };
+        };
+        genOp.onerror = function(err) {
+          callback(err);
         };
         return;
       }
-    } else if (Ya("generateKeyPairSync")) {
-      var s = na.generateKeyPairSync("rsa", {
-        modulusLength: e,
-        publicExponent: t,
-        publicKeyEncoding: {
-          type: "spki",
-          format: "pem"
-        },
-        privateKeyEncoding: {
-          type: "pkcs8",
-          format: "pem"
-        }
-      });
-      return {
-        privateKey: q.privateKeyFromPem(s.privateKey),
-        publicKey: q.publicKeyFromPem(s.publicKey)
-      };
+    } else {
+      if (_detectNodeCrypto("generateKeyPairSync")) {
+        var keypair = _crypto.generateKeyPairSync("rsa", {
+          modulusLength: bits,
+          publicExponent: e,
+          publicKeyEncoding: {
+            type: "spki",
+            format: "pem"
+          },
+          privateKeyEncoding: {
+            type: "pkcs8",
+            format: "pem"
+          }
+        });
+        return {
+          privateKey: pki$4.privateKeyFromPem(keypair.privateKey),
+          publicKey: pki$4.publicKeyFromPem(keypair.publicKey)
+        };
+      }
     }
   }
-  var i = q.rsa.createKeyPairGenerationState(e, t, a);
-  if (!r)
-    return q.rsa.stepKeyPairGenerationState(i, 0), i.keys;
-  Oo(i, a, r);
+  var state = pki$4.rsa.createKeyPairGenerationState(bits, e, options);
+  if (!callback) {
+    pki$4.rsa.stepKeyPairGenerationState(state, 0);
+    return state.keys;
+  }
+  _generateKeyPair(state, options, callback);
 };
-q.setRsaPublicKey = q.rsa.setPublicKey = function(e, t) {
-  var a = {
-    n: e,
-    e: t
+pki$4.setRsaPublicKey = pki$4.rsa.setPublicKey = function(n, e) {
+  var key = {
+    n,
+    e
   };
-  return a.encrypt = function(r, n, s) {
-    if (typeof n == "string" ? n = n.toUpperCase() : n === void 0 && (n = "RSAES-PKCS1-V1_5"), n === "RSAES-PKCS1-V1_5")
-      n = {
-        encode: function(o, l, u) {
-          return Ln(o, l, 2).getBytes();
+  key.encrypt = function(data, scheme, schemeOptions) {
+    if (typeof scheme === "string") {
+      scheme = scheme.toUpperCase();
+    } else if (scheme === void 0) {
+      scheme = "RSAES-PKCS1-V1_5";
+    }
+    if (scheme === "RSAES-PKCS1-V1_5") {
+      scheme = {
+        encode: function(m, key2, pub) {
+          return _encodePkcs1_v1_5(m, key2, 2).getBytes();
         }
       };
-    else if (n === "RSA-OAEP" || n === "RSAES-OAEP")
-      n = {
-        encode: function(o, l) {
-          return M.pkcs1.encode_rsa_oaep(l, o, s);
+    } else if (scheme === "RSA-OAEP" || scheme === "RSAES-OAEP") {
+      scheme = {
+        encode: function(m, key2) {
+          return forge$h.pkcs1.encode_rsa_oaep(key2, m, schemeOptions);
         }
       };
-    else if (["RAW", "NONE", "NULL", null].indexOf(n) !== -1)
-      n = { encode: function(o) {
-        return o;
+    } else if (["RAW", "NONE", "NULL", null].indexOf(scheme) !== -1) {
+      scheme = { encode: function(e3) {
+        return e3;
       } };
-    else if (typeof n == "string")
-      throw new Error('Unsupported encryption scheme: "' + n + '".');
-    var i = n.encode(r, a, !0);
-    return q.rsa.encrypt(i, a, !0);
-  }, a.verify = function(r, n, s, i) {
-    typeof s == "string" ? s = s.toUpperCase() : s === void 0 && (s = "RSASSA-PKCS1-V1_5"), i === void 0 && (i = {
-      _parseAllDigestBytes: !0,
-      _skipPaddingChecks: !1
-    }), "_parseAllDigestBytes" in i || (i._parseAllDigestBytes = !0), "_skipPaddingChecks" in i || (i._skipPaddingChecks = !1), s === "RSASSA-PKCS1-V1_5" ? s = {
-      verify: function(l, u) {
-        u = Br(u, a, !0, void 0, i);
-        var f = T.fromDer(u, {
-          parseAllBytes: i._parseAllDigestBytes
-        }), c = {}, v = [];
-        if (!T.validate(f, Po, c, v) || f.value.length !== 2) {
-          var m = new Error(
-            "ASN.1 object does not contain a valid RSASSA-PKCS1-v1_5 DigestInfo value."
-          );
-          throw m.errors = v, m;
-        }
-        var y = T.derToOid(c.algorithmIdentifier);
-        if (!(y === M.oids.md2 || y === M.oids.md5 || y === M.oids.sha1 || y === M.oids.sha224 || y === M.oids.sha256 || y === M.oids.sha384 || y === M.oids.sha512 || y === M.oids["sha512-224"] || y === M.oids["sha512-256"])) {
-          var m = new Error(
-            "Unknown RSASSA-PKCS1-v1_5 DigestAlgorithm identifier."
-          );
-          throw m.oid = y, m;
-        }
-        if ((y === M.oids.md2 || y === M.oids.md5) && !("parameters" in c))
-          throw new Error(
-            "ASN.1 object does not contain a valid RSASSA-PKCS1-v1_5 DigestInfo value. Missing algorithm identifier NULL parameters."
-          );
-        return l === c.digest;
-      }
-    } : (s === "NONE" || s === "NULL" || s === null) && (s = {
-      verify: function(l, u) {
-        return u = Br(u, a, !0, void 0, i), l === u;
-      }
-    });
-    var o = q.rsa.decrypt(n, a, !0, !1);
-    return s.verify(r, o, a.n.bitLength());
-  }, a;
-};
-q.setRsaPrivateKey = q.rsa.setPrivateKey = function(e, t, a, r, n, s, i, o) {
-  var l = {
-    n: e,
-    e: t,
-    d: a,
-    p: r,
-    q: n,
-    dP: s,
-    dQ: i,
-    qInv: o
+    } else if (typeof scheme === "string") {
+      throw new Error('Unsupported encryption scheme: "' + scheme + '".');
+    }
+    var e2 = scheme.encode(data, key, true);
+    return pki$4.rsa.encrypt(e2, key, true);
   };
-  return l.decrypt = function(u, f, c) {
-    typeof f == "string" ? f = f.toUpperCase() : f === void 0 && (f = "RSAES-PKCS1-V1_5");
-    var v = q.rsa.decrypt(u, l, !1, !1);
-    if (f === "RSAES-PKCS1-V1_5")
-      f = { decode: Br };
-    else if (f === "RSA-OAEP" || f === "RSAES-OAEP")
-      f = {
-        decode: function(m, y) {
-          return M.pkcs1.decode_rsa_oaep(y, m, c);
+  key.verify = function(digest, signature, scheme, options) {
+    if (typeof scheme === "string") {
+      scheme = scheme.toUpperCase();
+    } else if (scheme === void 0) {
+      scheme = "RSASSA-PKCS1-V1_5";
+    }
+    if (options === void 0) {
+      options = {
+        _parseAllDigestBytes: true,
+        _skipPaddingChecks: false
+      };
+    }
+    if (!("_parseAllDigestBytes" in options)) {
+      options._parseAllDigestBytes = true;
+    }
+    if (!("_skipPaddingChecks" in options)) {
+      options._skipPaddingChecks = false;
+    }
+    if (scheme === "RSASSA-PKCS1-V1_5") {
+      scheme = {
+        verify: function(digest2, d2) {
+          d2 = _decodePkcs1_v1_5(d2, key, true, void 0, options);
+          var obj = asn1$7.fromDer(d2, {
+            parseAllBytes: options._parseAllDigestBytes
+          });
+          var capture = {};
+          var errors = [];
+          if (!asn1$7.validate(obj, digestInfoValidator, capture, errors) || obj.value.length !== 2) {
+            var error = new Error(
+              "ASN.1 object does not contain a valid RSASSA-PKCS1-v1_5 DigestInfo value."
+            );
+            error.errors = errors;
+            throw error;
+          }
+          var oid = asn1$7.derToOid(capture.algorithmIdentifier);
+          if (!(oid === forge$h.oids.md2 || oid === forge$h.oids.md5 || oid === forge$h.oids.sha1 || oid === forge$h.oids.sha224 || oid === forge$h.oids.sha256 || oid === forge$h.oids.sha384 || oid === forge$h.oids.sha512 || oid === forge$h.oids["sha512-224"] || oid === forge$h.oids["sha512-256"])) {
+            var error = new Error(
+              "Unknown RSASSA-PKCS1-v1_5 DigestAlgorithm identifier."
+            );
+            error.oid = oid;
+            throw error;
+          }
+          if (oid === forge$h.oids.md2 || oid === forge$h.oids.md5) {
+            if (!("parameters" in capture)) {
+              throw new Error(
+                "ASN.1 object does not contain a valid RSASSA-PKCS1-v1_5 DigestInfo value. Missing algorithm identifier NULL parameters."
+              );
+            }
+          }
+          return digest2 === capture.digest;
         }
       };
-    else if (["RAW", "NONE", "NULL", null].indexOf(f) !== -1)
-      f = { decode: function(m) {
-        return m;
-      } };
-    else
-      throw new Error('Unsupported encryption scheme: "' + f + '".');
-    return f.decode(v, l, !1);
-  }, l.sign = function(u, f) {
-    var c = !1;
-    typeof f == "string" && (f = f.toUpperCase()), f === void 0 || f === "RSASSA-PKCS1-V1_5" ? (f = { encode: Vo }, c = 1) : (f === "NONE" || f === "NULL" || f === null) && (f = { encode: function() {
-      return u;
-    } }, c = 1);
-    var v = f.encode(u, l.n.bitLength());
-    return q.rsa.encrypt(v, l, c);
-  }, l;
+    } else if (scheme === "NONE" || scheme === "NULL" || scheme === null) {
+      scheme = {
+        verify: function(digest2, d2) {
+          d2 = _decodePkcs1_v1_5(d2, key, true, void 0, options);
+          return digest2 === d2;
+        }
+      };
+    }
+    var d = pki$4.rsa.decrypt(signature, key, true, false);
+    return scheme.verify(digest, d, key.n.bitLength());
+  };
+  return key;
 };
-q.wrapRsaPrivateKey = function(e) {
-  return T.create(T.Class.UNIVERSAL, T.Type.SEQUENCE, !0, [
+pki$4.setRsaPrivateKey = pki$4.rsa.setPrivateKey = function(n, e, d, p, q, dP, dQ, qInv) {
+  var key = {
+    n,
+    e,
+    d,
+    p,
+    q,
+    dP,
+    dQ,
+    qInv
+  };
+  key.decrypt = function(data, scheme, schemeOptions) {
+    if (typeof scheme === "string") {
+      scheme = scheme.toUpperCase();
+    } else if (scheme === void 0) {
+      scheme = "RSAES-PKCS1-V1_5";
+    }
+    var d2 = pki$4.rsa.decrypt(data, key, false, false);
+    if (scheme === "RSAES-PKCS1-V1_5") {
+      scheme = { decode: _decodePkcs1_v1_5 };
+    } else if (scheme === "RSA-OAEP" || scheme === "RSAES-OAEP") {
+      scheme = {
+        decode: function(d3, key2) {
+          return forge$h.pkcs1.decode_rsa_oaep(key2, d3, schemeOptions);
+        }
+      };
+    } else if (["RAW", "NONE", "NULL", null].indexOf(scheme) !== -1) {
+      scheme = { decode: function(d3) {
+        return d3;
+      } };
+    } else {
+      throw new Error('Unsupported encryption scheme: "' + scheme + '".');
+    }
+    return scheme.decode(d2, key, false);
+  };
+  key.sign = function(md, scheme) {
+    var bt = false;
+    if (typeof scheme === "string") {
+      scheme = scheme.toUpperCase();
+    }
+    if (scheme === void 0 || scheme === "RSASSA-PKCS1-V1_5") {
+      scheme = { encode: emsaPkcs1v15encode };
+      bt = 1;
+    } else if (scheme === "NONE" || scheme === "NULL" || scheme === null) {
+      scheme = { encode: function() {
+        return md;
+      } };
+      bt = 1;
+    }
+    var d2 = scheme.encode(md, key.n.bitLength());
+    return pki$4.rsa.encrypt(d2, key, bt);
+  };
+  return key;
+};
+pki$4.wrapRsaPrivateKey = function(rsaKey) {
+  return asn1$7.create(asn1$7.Class.UNIVERSAL, asn1$7.Type.SEQUENCE, true, [
     // version (0)
-    T.create(
-      T.Class.UNIVERSAL,
-      T.Type.INTEGER,
-      !1,
-      T.integerToDer(0).getBytes()
+    asn1$7.create(
+      asn1$7.Class.UNIVERSAL,
+      asn1$7.Type.INTEGER,
+      false,
+      asn1$7.integerToDer(0).getBytes()
     ),
     // privateKeyAlgorithm
-    T.create(T.Class.UNIVERSAL, T.Type.SEQUENCE, !0, [
-      T.create(
-        T.Class.UNIVERSAL,
-        T.Type.OID,
-        !1,
-        T.oidToDer(q.oids.rsaEncryption).getBytes()
+    asn1$7.create(asn1$7.Class.UNIVERSAL, asn1$7.Type.SEQUENCE, true, [
+      asn1$7.create(
+        asn1$7.Class.UNIVERSAL,
+        asn1$7.Type.OID,
+        false,
+        asn1$7.oidToDer(pki$4.oids.rsaEncryption).getBytes()
       ),
-      T.create(T.Class.UNIVERSAL, T.Type.NULL, !1, "")
+      asn1$7.create(asn1$7.Class.UNIVERSAL, asn1$7.Type.NULL, false, "")
     ]),
     // PrivateKey
-    T.create(
-      T.Class.UNIVERSAL,
-      T.Type.OCTETSTRING,
-      !1,
-      T.toDer(e).getBytes()
+    asn1$7.create(
+      asn1$7.Class.UNIVERSAL,
+      asn1$7.Type.OCTETSTRING,
+      false,
+      asn1$7.toDer(rsaKey).getBytes()
     )
   ]);
 };
-q.privateKeyFromAsn1 = function(e) {
-  var t = {}, a = [];
-  if (T.validate(e, Lo, t, a) && (e = T.fromDer(M.util.createBuffer(t.privateKey))), t = {}, a = [], !T.validate(e, ko, t, a)) {
-    var r = new Error("Cannot read private key. ASN.1 object does not contain an RSAPrivateKey.");
-    throw r.errors = a, r;
+pki$4.privateKeyFromAsn1 = function(obj) {
+  var capture = {};
+  var errors = [];
+  if (asn1$7.validate(obj, privateKeyValidator$1, capture, errors)) {
+    obj = asn1$7.fromDer(forge$h.util.createBuffer(capture.privateKey));
   }
-  var n, s, i, o, l, u, f, c;
-  return n = M.util.createBuffer(t.privateKeyModulus).toHex(), s = M.util.createBuffer(t.privateKeyPublicExponent).toHex(), i = M.util.createBuffer(t.privateKeyPrivateExponent).toHex(), o = M.util.createBuffer(t.privateKeyPrime1).toHex(), l = M.util.createBuffer(t.privateKeyPrime2).toHex(), u = M.util.createBuffer(t.privateKeyExponent1).toHex(), f = M.util.createBuffer(t.privateKeyExponent2).toHex(), c = M.util.createBuffer(t.privateKeyCoefficient).toHex(), q.setRsaPrivateKey(
-    new ee(n, 16),
-    new ee(s, 16),
-    new ee(i, 16),
-    new ee(o, 16),
-    new ee(l, 16),
-    new ee(u, 16),
-    new ee(f, 16),
-    new ee(c, 16)
+  capture = {};
+  errors = [];
+  if (!asn1$7.validate(obj, rsaPrivateKeyValidator, capture, errors)) {
+    var error = new Error("Cannot read private key. ASN.1 object does not contain an RSAPrivateKey.");
+    error.errors = errors;
+    throw error;
+  }
+  var n, e, d, p, q, dP, dQ, qInv;
+  n = forge$h.util.createBuffer(capture.privateKeyModulus).toHex();
+  e = forge$h.util.createBuffer(capture.privateKeyPublicExponent).toHex();
+  d = forge$h.util.createBuffer(capture.privateKeyPrivateExponent).toHex();
+  p = forge$h.util.createBuffer(capture.privateKeyPrime1).toHex();
+  q = forge$h.util.createBuffer(capture.privateKeyPrime2).toHex();
+  dP = forge$h.util.createBuffer(capture.privateKeyExponent1).toHex();
+  dQ = forge$h.util.createBuffer(capture.privateKeyExponent2).toHex();
+  qInv = forge$h.util.createBuffer(capture.privateKeyCoefficient).toHex();
+  return pki$4.setRsaPrivateKey(
+    new BigInteger$3(n, 16),
+    new BigInteger$3(e, 16),
+    new BigInteger$3(d, 16),
+    new BigInteger$3(p, 16),
+    new BigInteger$3(q, 16),
+    new BigInteger$3(dP, 16),
+    new BigInteger$3(dQ, 16),
+    new BigInteger$3(qInv, 16)
   );
 };
-q.privateKeyToAsn1 = q.privateKeyToRSAPrivateKey = function(e) {
-  return T.create(T.Class.UNIVERSAL, T.Type.SEQUENCE, !0, [
+pki$4.privateKeyToAsn1 = pki$4.privateKeyToRSAPrivateKey = function(key) {
+  return asn1$7.create(asn1$7.Class.UNIVERSAL, asn1$7.Type.SEQUENCE, true, [
     // version (0 = only 2 primes, 1 multiple primes)
-    T.create(
-      T.Class.UNIVERSAL,
-      T.Type.INTEGER,
-      !1,
-      T.integerToDer(0).getBytes()
+    asn1$7.create(
+      asn1$7.Class.UNIVERSAL,
+      asn1$7.Type.INTEGER,
+      false,
+      asn1$7.integerToDer(0).getBytes()
     ),
     // modulus (n)
-    T.create(
-      T.Class.UNIVERSAL,
-      T.Type.INTEGER,
-      !1,
-      it(e.n)
+    asn1$7.create(
+      asn1$7.Class.UNIVERSAL,
+      asn1$7.Type.INTEGER,
+      false,
+      _bnToBytes(key.n)
     ),
     // publicExponent (e)
-    T.create(
-      T.Class.UNIVERSAL,
-      T.Type.INTEGER,
-      !1,
-      it(e.e)
+    asn1$7.create(
+      asn1$7.Class.UNIVERSAL,
+      asn1$7.Type.INTEGER,
+      false,
+      _bnToBytes(key.e)
     ),
     // privateExponent (d)
-    T.create(
-      T.Class.UNIVERSAL,
-      T.Type.INTEGER,
-      !1,
-      it(e.d)
+    asn1$7.create(
+      asn1$7.Class.UNIVERSAL,
+      asn1$7.Type.INTEGER,
+      false,
+      _bnToBytes(key.d)
     ),
     // privateKeyPrime1 (p)
-    T.create(
-      T.Class.UNIVERSAL,
-      T.Type.INTEGER,
-      !1,
-      it(e.p)
+    asn1$7.create(
+      asn1$7.Class.UNIVERSAL,
+      asn1$7.Type.INTEGER,
+      false,
+      _bnToBytes(key.p)
     ),
     // privateKeyPrime2 (q)
-    T.create(
-      T.Class.UNIVERSAL,
-      T.Type.INTEGER,
-      !1,
-      it(e.q)
+    asn1$7.create(
+      asn1$7.Class.UNIVERSAL,
+      asn1$7.Type.INTEGER,
+      false,
+      _bnToBytes(key.q)
     ),
     // privateKeyExponent1 (dP)
-    T.create(
-      T.Class.UNIVERSAL,
-      T.Type.INTEGER,
-      !1,
-      it(e.dP)
+    asn1$7.create(
+      asn1$7.Class.UNIVERSAL,
+      asn1$7.Type.INTEGER,
+      false,
+      _bnToBytes(key.dP)
     ),
     // privateKeyExponent2 (dQ)
-    T.create(
-      T.Class.UNIVERSAL,
-      T.Type.INTEGER,
-      !1,
-      it(e.dQ)
+    asn1$7.create(
+      asn1$7.Class.UNIVERSAL,
+      asn1$7.Type.INTEGER,
+      false,
+      _bnToBytes(key.dQ)
     ),
     // coefficient (qInv)
-    T.create(
-      T.Class.UNIVERSAL,
-      T.Type.INTEGER,
-      !1,
-      it(e.qInv)
+    asn1$7.create(
+      asn1$7.Class.UNIVERSAL,
+      asn1$7.Type.INTEGER,
+      false,
+      _bnToBytes(key.qInv)
     )
   ]);
 };
-q.publicKeyFromAsn1 = function(e) {
-  var t = {}, a = [];
-  if (T.validate(e, Uo, t, a)) {
-    var r = T.derToOid(t.publicKeyOid);
-    if (r !== q.oids.rsaEncryption) {
-      var n = new Error("Cannot read public key. Unknown OID.");
-      throw n.oid = r, n;
+pki$4.publicKeyFromAsn1 = function(obj) {
+  var capture = {};
+  var errors = [];
+  if (asn1$7.validate(obj, publicKeyValidator$2, capture, errors)) {
+    var oid = asn1$7.derToOid(capture.publicKeyOid);
+    if (oid !== pki$4.oids.rsaEncryption) {
+      var error = new Error("Cannot read public key. Unknown OID.");
+      error.oid = oid;
+      throw error;
     }
-    e = t.rsaPublicKey;
+    obj = capture.rsaPublicKey;
   }
-  if (a = [], !T.validate(e, Do, t, a)) {
-    var n = new Error("Cannot read public key. ASN.1 object does not contain an RSAPublicKey.");
-    throw n.errors = a, n;
+  errors = [];
+  if (!asn1$7.validate(obj, rsaPublicKeyValidator, capture, errors)) {
+    var error = new Error("Cannot read public key. ASN.1 object does not contain an RSAPublicKey.");
+    error.errors = errors;
+    throw error;
   }
-  var s = M.util.createBuffer(t.publicKeyModulus).toHex(), i = M.util.createBuffer(t.publicKeyExponent).toHex();
-  return q.setRsaPublicKey(
-    new ee(s, 16),
-    new ee(i, 16)
+  var n = forge$h.util.createBuffer(capture.publicKeyModulus).toHex();
+  var e = forge$h.util.createBuffer(capture.publicKeyExponent).toHex();
+  return pki$4.setRsaPublicKey(
+    new BigInteger$3(n, 16),
+    new BigInteger$3(e, 16)
   );
 };
-q.publicKeyToAsn1 = q.publicKeyToSubjectPublicKeyInfo = function(e) {
-  return T.create(T.Class.UNIVERSAL, T.Type.SEQUENCE, !0, [
+pki$4.publicKeyToAsn1 = pki$4.publicKeyToSubjectPublicKeyInfo = function(key) {
+  return asn1$7.create(asn1$7.Class.UNIVERSAL, asn1$7.Type.SEQUENCE, true, [
     // AlgorithmIdentifier
-    T.create(T.Class.UNIVERSAL, T.Type.SEQUENCE, !0, [
+    asn1$7.create(asn1$7.Class.UNIVERSAL, asn1$7.Type.SEQUENCE, true, [
       // algorithm
-      T.create(
-        T.Class.UNIVERSAL,
-        T.Type.OID,
-        !1,
-        T.oidToDer(q.oids.rsaEncryption).getBytes()
+      asn1$7.create(
+        asn1$7.Class.UNIVERSAL,
+        asn1$7.Type.OID,
+        false,
+        asn1$7.oidToDer(pki$4.oids.rsaEncryption).getBytes()
       ),
       // parameters (null)
-      T.create(T.Class.UNIVERSAL, T.Type.NULL, !1, "")
+      asn1$7.create(asn1$7.Class.UNIVERSAL, asn1$7.Type.NULL, false, "")
     ]),
     // subjectPublicKey
-    T.create(T.Class.UNIVERSAL, T.Type.BITSTRING, !1, [
-      q.publicKeyToRSAPublicKey(e)
+    asn1$7.create(asn1$7.Class.UNIVERSAL, asn1$7.Type.BITSTRING, false, [
+      pki$4.publicKeyToRSAPublicKey(key)
     ])
   ]);
 };
-q.publicKeyToRSAPublicKey = function(e) {
-  return T.create(T.Class.UNIVERSAL, T.Type.SEQUENCE, !0, [
+pki$4.publicKeyToRSAPublicKey = function(key) {
+  return asn1$7.create(asn1$7.Class.UNIVERSAL, asn1$7.Type.SEQUENCE, true, [
     // modulus (n)
-    T.create(
-      T.Class.UNIVERSAL,
-      T.Type.INTEGER,
-      !1,
-      it(e.n)
+    asn1$7.create(
+      asn1$7.Class.UNIVERSAL,
+      asn1$7.Type.INTEGER,
+      false,
+      _bnToBytes(key.n)
     ),
     // publicExponent (e)
-    T.create(
-      T.Class.UNIVERSAL,
-      T.Type.INTEGER,
-      !1,
-      it(e.e)
+    asn1$7.create(
+      asn1$7.Class.UNIVERSAL,
+      asn1$7.Type.INTEGER,
+      false,
+      _bnToBytes(key.e)
     )
   ]);
 };
-function Ln(e, t, a) {
-  var r = M.util.createBuffer(), n = Math.ceil(t.n.bitLength() / 8);
-  if (e.length > n - 11) {
-    var s = new Error("Message is too long for PKCS#1 v1.5 padding.");
-    throw s.length = e.length, s.max = n - 11, s;
+function _encodePkcs1_v1_5(m, key, bt) {
+  var eb = forge$h.util.createBuffer();
+  var k = Math.ceil(key.n.bitLength() / 8);
+  if (m.length > k - 11) {
+    var error = new Error("Message is too long for PKCS#1 v1.5 padding.");
+    error.length = m.length;
+    error.max = k - 11;
+    throw error;
   }
-  r.putByte(0), r.putByte(a);
-  var i = n - 3 - e.length, o;
-  if (a === 0 || a === 1) {
-    o = a === 0 ? 0 : 255;
-    for (var l = 0; l < i; ++l)
-      r.putByte(o);
-  } else
-    for (; i > 0; ) {
-      for (var u = 0, f = M.random.getBytes(i), l = 0; l < i; ++l)
-        o = f.charCodeAt(l), o === 0 ? ++u : r.putByte(o);
-      i = u;
+  eb.putByte(0);
+  eb.putByte(bt);
+  var padNum = k - 3 - m.length;
+  var padByte;
+  if (bt === 0 || bt === 1) {
+    padByte = bt === 0 ? 0 : 255;
+    for (var i = 0; i < padNum; ++i) {
+      eb.putByte(padByte);
     }
-  return r.putByte(0), r.putBytes(e), r;
+  } else {
+    while (padNum > 0) {
+      var numZeros = 0;
+      var padBytes = forge$h.random.getBytes(padNum);
+      for (var i = 0; i < padNum; ++i) {
+        padByte = padBytes.charCodeAt(i);
+        if (padByte === 0) {
+          ++numZeros;
+        } else {
+          eb.putByte(padByte);
+        }
+      }
+      padNum = numZeros;
+    }
+  }
+  eb.putByte(0);
+  eb.putBytes(m);
+  return eb;
 }
-function Br(e, t, a, r, n) {
-  var s = Math.ceil(t.n.bitLength() / 8), i = M.util.createBuffer(e), o = i.getByte(), l = i.getByte();
-  if (o !== 0 || a && l !== 0 && l !== 1 || !a && l !== 2 || a && l === 0 && typeof r > "u")
+function _decodePkcs1_v1_5(em, key, pub, ml, options) {
+  var k = Math.ceil(key.n.bitLength() / 8);
+  var eb = forge$h.util.createBuffer(em);
+  var first = eb.getByte();
+  var bt = eb.getByte();
+  if (first !== 0 || pub && bt !== 0 && bt !== 1 || !pub && bt !== 2 || pub && bt === 0 && typeof ml === "undefined") {
     throw new Error("Encryption block is invalid.");
-  var u = 0;
-  if (l === 0) {
-    u = s - 3 - r;
-    for (var f = 0; f < u; ++f)
-      if (i.getByte() !== 0)
+  }
+  var padNum = 0;
+  if (bt === 0) {
+    padNum = k - 3 - ml;
+    for (var i = 0; i < padNum; ++i) {
+      if (eb.getByte() !== 0) {
         throw new Error("Encryption block is invalid.");
-  } else if (l === 1) {
-    for (u = 0; i.length() > 1; ) {
-      if (i.getByte() !== 255) {
-        --i.read;
+      }
+    }
+  } else if (bt === 1) {
+    padNum = 0;
+    while (eb.length() > 1) {
+      if (eb.getByte() !== 255) {
+        --eb.read;
         break;
       }
-      ++u;
+      ++padNum;
     }
-    if (u < 8 && !(n && n._skipPaddingChecks))
+    if (padNum < 8 && !(options ? options._skipPaddingChecks : false)) {
       throw new Error("Encryption block is invalid.");
-  } else if (l === 2) {
-    for (u = 0; i.length() > 1; ) {
-      if (i.getByte() === 0) {
-        --i.read;
+    }
+  } else if (bt === 2) {
+    padNum = 0;
+    while (eb.length() > 1) {
+      if (eb.getByte() === 0) {
+        --eb.read;
         break;
       }
-      ++u;
+      ++padNum;
     }
-    if (u < 8 && !(n && n._skipPaddingChecks))
+    if (padNum < 8 && !(options ? options._skipPaddingChecks : false)) {
       throw new Error("Encryption block is invalid.");
+    }
   }
-  var c = i.getByte();
-  if (c !== 0 || u !== s - 3 - i.length())
+  var zero = eb.getByte();
+  if (zero !== 0 || padNum !== k - 3 - eb.length()) {
     throw new Error("Encryption block is invalid.");
-  return i.getBytes();
+  }
+  return eb.getBytes();
 }
-function Oo(e, t, a) {
-  typeof t == "function" && (a = t, t = {}), t = t || {};
-  var r = {
+function _generateKeyPair(state, options, callback) {
+  if (typeof options === "function") {
+    callback = options;
+    options = {};
+  }
+  options = options || {};
+  var opts = {
     algorithm: {
-      name: t.algorithm || "PRIMEINC",
+      name: options.algorithm || "PRIMEINC",
       options: {
-        workers: t.workers || 2,
-        workLoad: t.workLoad || 100,
-        workerScript: t.workerScript
+        workers: options.workers || 2,
+        workLoad: options.workLoad || 100,
+        workerScript: options.workerScript
       }
     }
   };
-  "prng" in t && (r.prng = t.prng), n();
-  function n() {
-    s(e.pBits, function(o, l) {
-      if (o)
-        return a(o);
-      if (e.p = l, e.q !== null)
-        return i(o, e.q);
-      s(e.qBits, i);
+  if ("prng" in options) {
+    opts.prng = options.prng;
+  }
+  generate();
+  function generate() {
+    getPrime(state.pBits, function(err, num) {
+      if (err) {
+        return callback(err);
+      }
+      state.p = num;
+      if (state.q !== null) {
+        return finish(err, state.q);
+      }
+      getPrime(state.qBits, finish);
     });
   }
-  function s(o, l) {
-    M.prime.generateProbablePrime(o, r, l);
+  function getPrime(bits, callback2) {
+    forge$h.prime.generateProbablePrime(bits, opts, callback2);
   }
-  function i(o, l) {
-    if (o)
-      return a(o);
-    if (e.q = l, e.p.compareTo(e.q) < 0) {
-      var u = e.p;
-      e.p = e.q, e.q = u;
+  function finish(err, num) {
+    if (err) {
+      return callback(err);
     }
-    if (e.p.subtract(ee.ONE).gcd(e.e).compareTo(ee.ONE) !== 0) {
-      e.p = null, n();
+    state.q = num;
+    if (state.p.compareTo(state.q) < 0) {
+      var tmp = state.p;
+      state.p = state.q;
+      state.q = tmp;
+    }
+    if (state.p.subtract(BigInteger$3.ONE).gcd(state.e).compareTo(BigInteger$3.ONE) !== 0) {
+      state.p = null;
+      generate();
       return;
     }
-    if (e.q.subtract(ee.ONE).gcd(e.e).compareTo(ee.ONE) !== 0) {
-      e.q = null, s(e.qBits, i);
+    if (state.q.subtract(BigInteger$3.ONE).gcd(state.e).compareTo(BigInteger$3.ONE) !== 0) {
+      state.q = null;
+      getPrime(state.qBits, finish);
       return;
     }
-    if (e.p1 = e.p.subtract(ee.ONE), e.q1 = e.q.subtract(ee.ONE), e.phi = e.p1.multiply(e.q1), e.phi.gcd(e.e).compareTo(ee.ONE) !== 0) {
-      e.p = e.q = null, n();
+    state.p1 = state.p.subtract(BigInteger$3.ONE);
+    state.q1 = state.q.subtract(BigInteger$3.ONE);
+    state.phi = state.p1.multiply(state.q1);
+    if (state.phi.gcd(state.e).compareTo(BigInteger$3.ONE) !== 0) {
+      state.p = state.q = null;
+      generate();
       return;
     }
-    if (e.n = e.p.multiply(e.q), e.n.bitLength() !== e.bits) {
-      e.q = null, s(e.qBits, i);
+    state.n = state.p.multiply(state.q);
+    if (state.n.bitLength() !== state.bits) {
+      state.q = null;
+      getPrime(state.qBits, finish);
       return;
     }
-    var f = e.e.modInverse(e.phi);
-    e.keys = {
-      privateKey: q.rsa.setPrivateKey(
-        e.n,
-        e.e,
-        f,
-        e.p,
-        e.q,
-        f.mod(e.p1),
-        f.mod(e.q1),
-        e.q.modInverse(e.p)
+    var d = state.e.modInverse(state.phi);
+    state.keys = {
+      privateKey: pki$4.rsa.setPrivateKey(
+        state.n,
+        state.e,
+        d,
+        state.p,
+        state.q,
+        d.mod(state.p1),
+        d.mod(state.q1),
+        state.q.modInverse(state.p)
       ),
-      publicKey: q.rsa.setPublicKey(e.n, e.e)
-    }, a(null, e.keys);
+      publicKey: pki$4.rsa.setPublicKey(state.n, state.e)
+    };
+    callback(null, state.keys);
   }
 }
-function it(e) {
-  var t = e.toString(16);
-  t[0] >= "8" && (t = "00" + t);
-  var a = M.util.hexToBytes(t);
-  return a.length > 1 && // leading 0x00 for positive integer
-  (a.charCodeAt(0) === 0 && !(a.charCodeAt(1) & 128) || // leading 0xFF for negative integer
-  a.charCodeAt(0) === 255 && (a.charCodeAt(1) & 128) === 128) ? a.substr(1) : a;
+function _bnToBytes(b) {
+  var hex = b.toString(16);
+  if (hex[0] >= "8") {
+    hex = "00" + hex;
+  }
+  var bytes = forge$h.util.hexToBytes(hex);
+  if (bytes.length > 1 && // leading 0x00 for positive integer
+  (bytes.charCodeAt(0) === 0 && (bytes.charCodeAt(1) & 128) === 0 || // leading 0xFF for negative integer
+  bytes.charCodeAt(0) === 255 && (bytes.charCodeAt(1) & 128) === 128)) {
+    return bytes.substr(1);
+  }
+  return bytes;
 }
-function Fo(e) {
-  return e <= 100 ? 27 : e <= 150 ? 18 : e <= 200 ? 15 : e <= 250 ? 12 : e <= 300 ? 9 : e <= 350 ? 8 : e <= 400 ? 7 : e <= 500 ? 6 : e <= 600 ? 5 : e <= 800 ? 4 : e <= 1250 ? 3 : 2;
+function _getMillerRabinTests(bits) {
+  if (bits <= 100) return 27;
+  if (bits <= 150) return 18;
+  if (bits <= 200) return 15;
+  if (bits <= 250) return 12;
+  if (bits <= 300) return 9;
+  if (bits <= 350) return 8;
+  if (bits <= 400) return 7;
+  if (bits <= 500) return 6;
+  if (bits <= 600) return 5;
+  if (bits <= 800) return 4;
+  if (bits <= 1250) return 3;
+  return 2;
 }
-function Ya(e) {
-  return M.util.isNodejs && typeof na[e] == "function";
+function _detectNodeCrypto(fn) {
+  return forge$h.util.isNodejs && typeof _crypto[fn] === "function";
 }
-function $a(e) {
-  return typeof Je.globalScope < "u" && typeof Je.globalScope.crypto == "object" && typeof Je.globalScope.crypto.subtle == "object" && typeof Je.globalScope.crypto.subtle[e] == "function";
+function _detectSubtleCrypto(fn) {
+  return typeof util.globalScope !== "undefined" && typeof util.globalScope.crypto === "object" && typeof util.globalScope.crypto.subtle === "object" && typeof util.globalScope.crypto.subtle[fn] === "function";
 }
-function Wa(e) {
-  return typeof Je.globalScope < "u" && typeof Je.globalScope.msCrypto == "object" && typeof Je.globalScope.msCrypto.subtle == "object" && typeof Je.globalScope.msCrypto.subtle[e] == "function";
+function _detectSubtleMsCrypto(fn) {
+  return typeof util.globalScope !== "undefined" && typeof util.globalScope.msCrypto === "object" && typeof util.globalScope.msCrypto.subtle === "object" && typeof util.globalScope.msCrypto.subtle[fn] === "function";
 }
-function Xa(e) {
-  for (var t = M.util.hexToBytes(e.toString(16)), a = new Uint8Array(t.length), r = 0; r < t.length; ++r)
-    a[r] = t.charCodeAt(r);
-  return a;
+function _intToUint8Array(x) {
+  var bytes = forge$h.util.hexToBytes(x.toString(16));
+  var buffer = new Uint8Array(bytes.length);
+  for (var i = 0; i < bytes.length; ++i) {
+    buffer[i] = bytes.charCodeAt(i);
+  }
+  return buffer;
 }
-var O = z;
-if (typeof Ko > "u")
-  var Ko = O.jsbn.BigInteger;
-var A = O.asn1, Q = O.pki = O.pki || {};
-Q.pbe = O.pbe = O.pbe || {};
-var Lt = Q.oids, Mo = {
+var forge$g = forge$C;
+if (typeof BigInteger$2 === "undefined") {
+  var BigInteger$2 = forge$g.jsbn.BigInteger;
+}
+var asn1$6 = forge$g.asn1;
+var pki$3 = forge$g.pki = forge$g.pki || {};
+pki$3.pbe = forge$g.pbe = forge$g.pbe || {};
+var oids$1 = pki$3.oids;
+var encryptedPrivateKeyValidator = {
   name: "EncryptedPrivateKeyInfo",
-  tagClass: A.Class.UNIVERSAL,
-  type: A.Type.SEQUENCE,
-  constructed: !0,
+  tagClass: asn1$6.Class.UNIVERSAL,
+  type: asn1$6.Type.SEQUENCE,
+  constructed: true,
   value: [{
     name: "EncryptedPrivateKeyInfo.encryptionAlgorithm",
-    tagClass: A.Class.UNIVERSAL,
-    type: A.Type.SEQUENCE,
-    constructed: !0,
+    tagClass: asn1$6.Class.UNIVERSAL,
+    type: asn1$6.Type.SEQUENCE,
+    constructed: true,
     value: [{
       name: "AlgorithmIdentifier.algorithm",
-      tagClass: A.Class.UNIVERSAL,
-      type: A.Type.OID,
-      constructed: !1,
+      tagClass: asn1$6.Class.UNIVERSAL,
+      type: asn1$6.Type.OID,
+      constructed: false,
       capture: "encryptionOid"
     }, {
       name: "AlgorithmIdentifier.parameters",
-      tagClass: A.Class.UNIVERSAL,
-      type: A.Type.SEQUENCE,
-      constructed: !0,
+      tagClass: asn1$6.Class.UNIVERSAL,
+      type: asn1$6.Type.SEQUENCE,
+      constructed: true,
       captureAsn1: "encryptionParams"
     }]
   }, {
     // encryptedData
     name: "EncryptedPrivateKeyInfo.encryptedData",
-    tagClass: A.Class.UNIVERSAL,
-    type: A.Type.OCTETSTRING,
-    constructed: !1,
+    tagClass: asn1$6.Class.UNIVERSAL,
+    type: asn1$6.Type.OCTETSTRING,
+    constructed: false,
     capture: "encryptedData"
   }]
-}, Ho = {
+};
+var PBES2AlgorithmsValidator = {
   name: "PBES2Algorithms",
-  tagClass: A.Class.UNIVERSAL,
-  type: A.Type.SEQUENCE,
-  constructed: !0,
+  tagClass: asn1$6.Class.UNIVERSAL,
+  type: asn1$6.Type.SEQUENCE,
+  constructed: true,
   value: [{
     name: "PBES2Algorithms.keyDerivationFunc",
-    tagClass: A.Class.UNIVERSAL,
-    type: A.Type.SEQUENCE,
-    constructed: !0,
+    tagClass: asn1$6.Class.UNIVERSAL,
+    type: asn1$6.Type.SEQUENCE,
+    constructed: true,
     value: [{
       name: "PBES2Algorithms.keyDerivationFunc.oid",
-      tagClass: A.Class.UNIVERSAL,
-      type: A.Type.OID,
-      constructed: !1,
+      tagClass: asn1$6.Class.UNIVERSAL,
+      type: asn1$6.Type.OID,
+      constructed: false,
       capture: "kdfOid"
     }, {
       name: "PBES2Algorithms.params",
-      tagClass: A.Class.UNIVERSAL,
-      type: A.Type.SEQUENCE,
-      constructed: !0,
+      tagClass: asn1$6.Class.UNIVERSAL,
+      type: asn1$6.Type.SEQUENCE,
+      constructed: true,
       value: [{
         name: "PBES2Algorithms.params.salt",
-        tagClass: A.Class.UNIVERSAL,
-        type: A.Type.OCTETSTRING,
-        constructed: !1,
+        tagClass: asn1$6.Class.UNIVERSAL,
+        type: asn1$6.Type.OCTETSTRING,
+        constructed: false,
         capture: "kdfSalt"
       }, {
         name: "PBES2Algorithms.params.iterationCount",
-        tagClass: A.Class.UNIVERSAL,
-        type: A.Type.INTEGER,
-        constructed: !1,
+        tagClass: asn1$6.Class.UNIVERSAL,
+        type: asn1$6.Type.INTEGER,
+        constructed: false,
         capture: "kdfIterationCount"
       }, {
         name: "PBES2Algorithms.params.keyLength",
-        tagClass: A.Class.UNIVERSAL,
-        type: A.Type.INTEGER,
-        constructed: !1,
-        optional: !0,
+        tagClass: asn1$6.Class.UNIVERSAL,
+        type: asn1$6.Type.INTEGER,
+        constructed: false,
+        optional: true,
         capture: "keyLength"
       }, {
         // prf
         name: "PBES2Algorithms.params.prf",
-        tagClass: A.Class.UNIVERSAL,
-        type: A.Type.SEQUENCE,
-        constructed: !0,
-        optional: !0,
+        tagClass: asn1$6.Class.UNIVERSAL,
+        type: asn1$6.Type.SEQUENCE,
+        constructed: true,
+        optional: true,
         value: [{
           name: "PBES2Algorithms.params.prf.algorithm",
-          tagClass: A.Class.UNIVERSAL,
-          type: A.Type.OID,
-          constructed: !1,
+          tagClass: asn1$6.Class.UNIVERSAL,
+          type: asn1$6.Type.OID,
+          constructed: false,
           capture: "prfOid"
         }]
       }]
     }]
   }, {
     name: "PBES2Algorithms.encryptionScheme",
-    tagClass: A.Class.UNIVERSAL,
-    type: A.Type.SEQUENCE,
-    constructed: !0,
+    tagClass: asn1$6.Class.UNIVERSAL,
+    type: asn1$6.Type.SEQUENCE,
+    constructed: true,
     value: [{
       name: "PBES2Algorithms.encryptionScheme.oid",
-      tagClass: A.Class.UNIVERSAL,
-      type: A.Type.OID,
-      constructed: !1,
+      tagClass: asn1$6.Class.UNIVERSAL,
+      type: asn1$6.Type.OID,
+      constructed: false,
       capture: "encOid"
     }, {
       name: "PBES2Algorithms.encryptionScheme.iv",
-      tagClass: A.Class.UNIVERSAL,
-      type: A.Type.OCTETSTRING,
-      constructed: !1,
+      tagClass: asn1$6.Class.UNIVERSAL,
+      type: asn1$6.Type.OCTETSTRING,
+      constructed: false,
       capture: "encIv"
     }]
   }]
-}, Go = {
+};
+var pkcs12PbeParamsValidator = {
   name: "pkcs-12PbeParams",
-  tagClass: A.Class.UNIVERSAL,
-  type: A.Type.SEQUENCE,
-  constructed: !0,
+  tagClass: asn1$6.Class.UNIVERSAL,
+  type: asn1$6.Type.SEQUENCE,
+  constructed: true,
   value: [{
     name: "pkcs-12PbeParams.salt",
-    tagClass: A.Class.UNIVERSAL,
-    type: A.Type.OCTETSTRING,
-    constructed: !1,
+    tagClass: asn1$6.Class.UNIVERSAL,
+    type: asn1$6.Type.OCTETSTRING,
+    constructed: false,
     capture: "salt"
   }, {
     name: "pkcs-12PbeParams.iterations",
-    tagClass: A.Class.UNIVERSAL,
-    type: A.Type.INTEGER,
-    constructed: !1,
+    tagClass: asn1$6.Class.UNIVERSAL,
+    type: asn1$6.Type.INTEGER,
+    constructed: false,
     capture: "iterations"
   }]
 };
-Q.encryptPrivateKeyInfo = function(e, t, a) {
-  a = a || {}, a.saltSize = a.saltSize || 8, a.count = a.count || 2048, a.algorithm = a.algorithm || "aes128", a.prfAlgorithm = a.prfAlgorithm || "sha1";
-  var r = O.random.getBytesSync(a.saltSize), n = a.count, s = A.integerToDer(n), i, o, l;
-  if (a.algorithm.indexOf("aes") === 0 || a.algorithm === "des") {
-    var u, f, c;
-    switch (a.algorithm) {
+pki$3.encryptPrivateKeyInfo = function(obj, password, options) {
+  options = options || {};
+  options.saltSize = options.saltSize || 8;
+  options.count = options.count || 2048;
+  options.algorithm = options.algorithm || "aes128";
+  options.prfAlgorithm = options.prfAlgorithm || "sha1";
+  var salt = forge$g.random.getBytesSync(options.saltSize);
+  var count = options.count;
+  var countBytes = asn1$6.integerToDer(count);
+  var dkLen;
+  var encryptionAlgorithm;
+  var encryptedData;
+  if (options.algorithm.indexOf("aes") === 0 || options.algorithm === "des") {
+    var ivLen, encOid, cipherFn;
+    switch (options.algorithm) {
       case "aes128":
-        i = 16, u = 16, f = Lt["aes128-CBC"], c = O.aes.createEncryptionCipher;
+        dkLen = 16;
+        ivLen = 16;
+        encOid = oids$1["aes128-CBC"];
+        cipherFn = forge$g.aes.createEncryptionCipher;
         break;
       case "aes192":
-        i = 24, u = 16, f = Lt["aes192-CBC"], c = O.aes.createEncryptionCipher;
+        dkLen = 24;
+        ivLen = 16;
+        encOid = oids$1["aes192-CBC"];
+        cipherFn = forge$g.aes.createEncryptionCipher;
         break;
       case "aes256":
-        i = 32, u = 16, f = Lt["aes256-CBC"], c = O.aes.createEncryptionCipher;
+        dkLen = 32;
+        ivLen = 16;
+        encOid = oids$1["aes256-CBC"];
+        cipherFn = forge$g.aes.createEncryptionCipher;
         break;
       case "des":
-        i = 8, u = 8, f = Lt.desCBC, c = O.des.createEncryptionCipher;
+        dkLen = 8;
+        ivLen = 8;
+        encOid = oids$1["desCBC"];
+        cipherFn = forge$g.des.createEncryptionCipher;
         break;
       default:
-        var v = new Error("Cannot encrypt private key. Unknown encryption algorithm.");
-        throw v.algorithm = a.algorithm, v;
+        var error = new Error("Cannot encrypt private key. Unknown encryption algorithm.");
+        error.algorithm = options.algorithm;
+        throw error;
     }
-    var m = "hmacWith" + a.prfAlgorithm.toUpperCase(), y = Dn(m), x = O.pkcs5.pbkdf2(t, r, n, i, y), S = O.random.getBytesSync(u), I = c(x);
-    I.start(S), I.update(A.toDer(e)), I.finish(), l = I.output.getBytes();
-    var b = qo(r, s, i, m);
-    o = A.create(
-      A.Class.UNIVERSAL,
-      A.Type.SEQUENCE,
-      !0,
+    var prfAlgorithm = "hmacWith" + options.prfAlgorithm.toUpperCase();
+    var md = prfAlgorithmToMessageDigest(prfAlgorithm);
+    var dk = forge$g.pkcs5.pbkdf2(password, salt, count, dkLen, md);
+    var iv = forge$g.random.getBytesSync(ivLen);
+    var cipher = cipherFn(dk);
+    cipher.start(iv);
+    cipher.update(asn1$6.toDer(obj));
+    cipher.finish();
+    encryptedData = cipher.output.getBytes();
+    var params = createPbkdf2Params(salt, countBytes, dkLen, prfAlgorithm);
+    encryptionAlgorithm = asn1$6.create(
+      asn1$6.Class.UNIVERSAL,
+      asn1$6.Type.SEQUENCE,
+      true,
       [
-        A.create(
-          A.Class.UNIVERSAL,
-          A.Type.OID,
-          !1,
-          A.oidToDer(Lt.pkcs5PBES2).getBytes()
+        asn1$6.create(
+          asn1$6.Class.UNIVERSAL,
+          asn1$6.Type.OID,
+          false,
+          asn1$6.oidToDer(oids$1["pkcs5PBES2"]).getBytes()
         ),
-        A.create(A.Class.UNIVERSAL, A.Type.SEQUENCE, !0, [
+        asn1$6.create(asn1$6.Class.UNIVERSAL, asn1$6.Type.SEQUENCE, true, [
           // keyDerivationFunc
-          A.create(A.Class.UNIVERSAL, A.Type.SEQUENCE, !0, [
-            A.create(
-              A.Class.UNIVERSAL,
-              A.Type.OID,
-              !1,
-              A.oidToDer(Lt.pkcs5PBKDF2).getBytes()
+          asn1$6.create(asn1$6.Class.UNIVERSAL, asn1$6.Type.SEQUENCE, true, [
+            asn1$6.create(
+              asn1$6.Class.UNIVERSAL,
+              asn1$6.Type.OID,
+              false,
+              asn1$6.oidToDer(oids$1["pkcs5PBKDF2"]).getBytes()
             ),
             // PBKDF2-params
-            b
+            params
           ]),
           // encryptionScheme
-          A.create(A.Class.UNIVERSAL, A.Type.SEQUENCE, !0, [
-            A.create(
-              A.Class.UNIVERSAL,
-              A.Type.OID,
-              !1,
-              A.oidToDer(f).getBytes()
+          asn1$6.create(asn1$6.Class.UNIVERSAL, asn1$6.Type.SEQUENCE, true, [
+            asn1$6.create(
+              asn1$6.Class.UNIVERSAL,
+              asn1$6.Type.OID,
+              false,
+              asn1$6.oidToDer(encOid).getBytes()
             ),
             // iv
-            A.create(
-              A.Class.UNIVERSAL,
-              A.Type.OCTETSTRING,
-              !1,
-              S
+            asn1$6.create(
+              asn1$6.Class.UNIVERSAL,
+              asn1$6.Type.OCTETSTRING,
+              false,
+              iv
             )
           ])
         ])
       ]
     );
-  } else if (a.algorithm === "3des") {
-    i = 24;
-    var _ = new O.util.ByteBuffer(r), x = Q.pbe.generatePkcs12Key(t, _, 1, n, i), S = Q.pbe.generatePkcs12Key(t, _, 2, n, i), I = O.des.createEncryptionCipher(x);
-    I.start(S), I.update(A.toDer(e)), I.finish(), l = I.output.getBytes(), o = A.create(
-      A.Class.UNIVERSAL,
-      A.Type.SEQUENCE,
-      !0,
+  } else if (options.algorithm === "3des") {
+    dkLen = 24;
+    var saltBytes = new forge$g.util.ByteBuffer(salt);
+    var dk = pki$3.pbe.generatePkcs12Key(password, saltBytes, 1, count, dkLen);
+    var iv = pki$3.pbe.generatePkcs12Key(password, saltBytes, 2, count, dkLen);
+    var cipher = forge$g.des.createEncryptionCipher(dk);
+    cipher.start(iv);
+    cipher.update(asn1$6.toDer(obj));
+    cipher.finish();
+    encryptedData = cipher.output.getBytes();
+    encryptionAlgorithm = asn1$6.create(
+      asn1$6.Class.UNIVERSAL,
+      asn1$6.Type.SEQUENCE,
+      true,
       [
-        A.create(
-          A.Class.UNIVERSAL,
-          A.Type.OID,
-          !1,
-          A.oidToDer(Lt["pbeWithSHAAnd3-KeyTripleDES-CBC"]).getBytes()
+        asn1$6.create(
+          asn1$6.Class.UNIVERSAL,
+          asn1$6.Type.OID,
+          false,
+          asn1$6.oidToDer(oids$1["pbeWithSHAAnd3-KeyTripleDES-CBC"]).getBytes()
         ),
         // pkcs-12PbeParams
-        A.create(A.Class.UNIVERSAL, A.Type.SEQUENCE, !0, [
+        asn1$6.create(asn1$6.Class.UNIVERSAL, asn1$6.Type.SEQUENCE, true, [
           // salt
-          A.create(A.Class.UNIVERSAL, A.Type.OCTETSTRING, !1, r),
+          asn1$6.create(asn1$6.Class.UNIVERSAL, asn1$6.Type.OCTETSTRING, false, salt),
           // iteration count
-          A.create(
-            A.Class.UNIVERSAL,
-            A.Type.INTEGER,
-            !1,
-            s.getBytes()
+          asn1$6.create(
+            asn1$6.Class.UNIVERSAL,
+            asn1$6.Type.INTEGER,
+            false,
+            countBytes.getBytes()
           )
         ])
       ]
     );
   } else {
-    var v = new Error("Cannot encrypt private key. Unknown encryption algorithm.");
-    throw v.algorithm = a.algorithm, v;
+    var error = new Error("Cannot encrypt private key. Unknown encryption algorithm.");
+    error.algorithm = options.algorithm;
+    throw error;
   }
-  var V = A.create(A.Class.UNIVERSAL, A.Type.SEQUENCE, !0, [
+  var rval = asn1$6.create(asn1$6.Class.UNIVERSAL, asn1$6.Type.SEQUENCE, true, [
     // encryptionAlgorithm
-    o,
+    encryptionAlgorithm,
     // encryptedData
-    A.create(
-      A.Class.UNIVERSAL,
-      A.Type.OCTETSTRING,
-      !1,
-      l
+    asn1$6.create(
+      asn1$6.Class.UNIVERSAL,
+      asn1$6.Type.OCTETSTRING,
+      false,
+      encryptedData
     )
   ]);
-  return V;
+  return rval;
 };
-Q.decryptPrivateKeyInfo = function(e, t) {
-  var a = null, r = {}, n = [];
-  if (!A.validate(e, Mo, r, n)) {
-    var s = new Error("Cannot read encrypted private key. ASN.1 object is not a supported EncryptedPrivateKeyInfo.");
-    throw s.errors = n, s;
+pki$3.decryptPrivateKeyInfo = function(obj, password) {
+  var rval = null;
+  var capture = {};
+  var errors = [];
+  if (!asn1$6.validate(obj, encryptedPrivateKeyValidator, capture, errors)) {
+    var error = new Error("Cannot read encrypted private key. ASN.1 object is not a supported EncryptedPrivateKeyInfo.");
+    error.errors = errors;
+    throw error;
   }
-  var i = A.derToOid(r.encryptionOid), o = Q.pbe.getCipher(i, r.encryptionParams, t), l = O.util.createBuffer(r.encryptedData);
-  return o.update(l), o.finish() && (a = A.fromDer(o.output)), a;
+  var oid = asn1$6.derToOid(capture.encryptionOid);
+  var cipher = pki$3.pbe.getCipher(oid, capture.encryptionParams, password);
+  var encrypted = forge$g.util.createBuffer(capture.encryptedData);
+  cipher.update(encrypted);
+  if (cipher.finish()) {
+    rval = asn1$6.fromDer(cipher.output);
+  }
+  return rval;
 };
-Q.encryptedPrivateKeyToPem = function(e, t) {
-  var a = {
+pki$3.encryptedPrivateKeyToPem = function(epki, maxline) {
+  var msg = {
     type: "ENCRYPTED PRIVATE KEY",
-    body: A.toDer(e).getBytes()
+    body: asn1$6.toDer(epki).getBytes()
   };
-  return O.pem.encode(a, { maxline: t });
+  return forge$g.pem.encode(msg, { maxline });
 };
-Q.encryptedPrivateKeyFromPem = function(e) {
-  var t = O.pem.decode(e)[0];
-  if (t.type !== "ENCRYPTED PRIVATE KEY") {
-    var a = new Error('Could not convert encrypted private key from PEM; PEM header type is "ENCRYPTED PRIVATE KEY".');
-    throw a.headerType = t.type, a;
+pki$3.encryptedPrivateKeyFromPem = function(pem2) {
+  var msg = forge$g.pem.decode(pem2)[0];
+  if (msg.type !== "ENCRYPTED PRIVATE KEY") {
+    var error = new Error('Could not convert encrypted private key from PEM; PEM header type is "ENCRYPTED PRIVATE KEY".');
+    error.headerType = msg.type;
+    throw error;
   }
-  if (t.procType && t.procType.type === "ENCRYPTED")
+  if (msg.procType && msg.procType.type === "ENCRYPTED") {
     throw new Error("Could not convert encrypted private key from PEM; PEM is encrypted.");
-  return A.fromDer(t.body);
-};
-Q.encryptRsaPrivateKey = function(e, t, a) {
-  if (a = a || {}, !a.legacy) {
-    var r = Q.wrapRsaPrivateKey(Q.privateKeyToAsn1(e));
-    return r = Q.encryptPrivateKeyInfo(r, t, a), Q.encryptedPrivateKeyToPem(r);
   }
-  var n, s, i, o;
-  switch (a.algorithm) {
+  return asn1$6.fromDer(msg.body);
+};
+pki$3.encryptRsaPrivateKey = function(rsaKey, password, options) {
+  options = options || {};
+  if (!options.legacy) {
+    var rval = pki$3.wrapRsaPrivateKey(pki$3.privateKeyToAsn1(rsaKey));
+    rval = pki$3.encryptPrivateKeyInfo(rval, password, options);
+    return pki$3.encryptedPrivateKeyToPem(rval);
+  }
+  var algorithm;
+  var iv;
+  var dkLen;
+  var cipherFn;
+  switch (options.algorithm) {
     case "aes128":
-      n = "AES-128-CBC", i = 16, s = O.random.getBytesSync(16), o = O.aes.createEncryptionCipher;
+      algorithm = "AES-128-CBC";
+      dkLen = 16;
+      iv = forge$g.random.getBytesSync(16);
+      cipherFn = forge$g.aes.createEncryptionCipher;
       break;
     case "aes192":
-      n = "AES-192-CBC", i = 24, s = O.random.getBytesSync(16), o = O.aes.createEncryptionCipher;
+      algorithm = "AES-192-CBC";
+      dkLen = 24;
+      iv = forge$g.random.getBytesSync(16);
+      cipherFn = forge$g.aes.createEncryptionCipher;
       break;
     case "aes256":
-      n = "AES-256-CBC", i = 32, s = O.random.getBytesSync(16), o = O.aes.createEncryptionCipher;
+      algorithm = "AES-256-CBC";
+      dkLen = 32;
+      iv = forge$g.random.getBytesSync(16);
+      cipherFn = forge$g.aes.createEncryptionCipher;
       break;
     case "3des":
-      n = "DES-EDE3-CBC", i = 24, s = O.random.getBytesSync(8), o = O.des.createEncryptionCipher;
+      algorithm = "DES-EDE3-CBC";
+      dkLen = 24;
+      iv = forge$g.random.getBytesSync(8);
+      cipherFn = forge$g.des.createEncryptionCipher;
       break;
     case "des":
-      n = "DES-CBC", i = 8, s = O.random.getBytesSync(8), o = O.des.createEncryptionCipher;
+      algorithm = "DES-CBC";
+      dkLen = 8;
+      iv = forge$g.random.getBytesSync(8);
+      cipherFn = forge$g.des.createEncryptionCipher;
       break;
     default:
-      var l = new Error('Could not encrypt RSA private key; unsupported encryption algorithm "' + a.algorithm + '".');
-      throw l.algorithm = a.algorithm, l;
+      var error = new Error('Could not encrypt RSA private key; unsupported encryption algorithm "' + options.algorithm + '".');
+      error.algorithm = options.algorithm;
+      throw error;
   }
-  var u = O.pbe.opensslDeriveBytes(t, s.substr(0, 8), i), f = o(u);
-  f.start(s), f.update(A.toDer(Q.privateKeyToAsn1(e))), f.finish();
-  var c = {
+  var dk = forge$g.pbe.opensslDeriveBytes(password, iv.substr(0, 8), dkLen);
+  var cipher = cipherFn(dk);
+  cipher.start(iv);
+  cipher.update(asn1$6.toDer(pki$3.privateKeyToAsn1(rsaKey)));
+  cipher.finish();
+  var msg = {
     type: "RSA PRIVATE KEY",
     procType: {
       version: "4",
       type: "ENCRYPTED"
     },
     dekInfo: {
-      algorithm: n,
-      parameters: O.util.bytesToHex(s).toUpperCase()
+      algorithm,
+      parameters: forge$g.util.bytesToHex(iv).toUpperCase()
     },
-    body: f.output.getBytes()
+    body: cipher.output.getBytes()
   };
-  return O.pem.encode(c);
+  return forge$g.pem.encode(msg);
 };
-Q.decryptRsaPrivateKey = function(e, t) {
-  var a = null, r = O.pem.decode(e)[0];
-  if (r.type !== "ENCRYPTED PRIVATE KEY" && r.type !== "PRIVATE KEY" && r.type !== "RSA PRIVATE KEY") {
-    var n = new Error('Could not convert private key from PEM; PEM header type is not "ENCRYPTED PRIVATE KEY", "PRIVATE KEY", or "RSA PRIVATE KEY".');
-    throw n.headerType = n, n;
+pki$3.decryptRsaPrivateKey = function(pem2, password) {
+  var rval = null;
+  var msg = forge$g.pem.decode(pem2)[0];
+  if (msg.type !== "ENCRYPTED PRIVATE KEY" && msg.type !== "PRIVATE KEY" && msg.type !== "RSA PRIVATE KEY") {
+    var error = new Error('Could not convert private key from PEM; PEM header type is not "ENCRYPTED PRIVATE KEY", "PRIVATE KEY", or "RSA PRIVATE KEY".');
+    error.headerType = error;
+    throw error;
   }
-  if (r.procType && r.procType.type === "ENCRYPTED") {
-    var s, i;
-    switch (r.dekInfo.algorithm) {
+  if (msg.procType && msg.procType.type === "ENCRYPTED") {
+    var dkLen;
+    var cipherFn;
+    switch (msg.dekInfo.algorithm) {
       case "DES-CBC":
-        s = 8, i = O.des.createDecryptionCipher;
+        dkLen = 8;
+        cipherFn = forge$g.des.createDecryptionCipher;
         break;
       case "DES-EDE3-CBC":
-        s = 24, i = O.des.createDecryptionCipher;
+        dkLen = 24;
+        cipherFn = forge$g.des.createDecryptionCipher;
         break;
       case "AES-128-CBC":
-        s = 16, i = O.aes.createDecryptionCipher;
+        dkLen = 16;
+        cipherFn = forge$g.aes.createDecryptionCipher;
         break;
       case "AES-192-CBC":
-        s = 24, i = O.aes.createDecryptionCipher;
+        dkLen = 24;
+        cipherFn = forge$g.aes.createDecryptionCipher;
         break;
       case "AES-256-CBC":
-        s = 32, i = O.aes.createDecryptionCipher;
+        dkLen = 32;
+        cipherFn = forge$g.aes.createDecryptionCipher;
         break;
       case "RC2-40-CBC":
-        s = 5, i = function(c) {
-          return O.rc2.createDecryptionCipher(c, 40);
+        dkLen = 5;
+        cipherFn = function(key) {
+          return forge$g.rc2.createDecryptionCipher(key, 40);
         };
         break;
       case "RC2-64-CBC":
-        s = 8, i = function(c) {
-          return O.rc2.createDecryptionCipher(c, 64);
+        dkLen = 8;
+        cipherFn = function(key) {
+          return forge$g.rc2.createDecryptionCipher(key, 64);
         };
         break;
       case "RC2-128-CBC":
-        s = 16, i = function(c) {
-          return O.rc2.createDecryptionCipher(c, 128);
+        dkLen = 16;
+        cipherFn = function(key) {
+          return forge$g.rc2.createDecryptionCipher(key, 128);
         };
         break;
       default:
-        var n = new Error('Could not decrypt private key; unsupported encryption algorithm "' + r.dekInfo.algorithm + '".');
-        throw n.algorithm = r.dekInfo.algorithm, n;
+        var error = new Error('Could not decrypt private key; unsupported encryption algorithm "' + msg.dekInfo.algorithm + '".');
+        error.algorithm = msg.dekInfo.algorithm;
+        throw error;
     }
-    var o = O.util.hexToBytes(r.dekInfo.parameters), l = O.pbe.opensslDeriveBytes(t, o.substr(0, 8), s), u = i(l);
-    if (u.start(o), u.update(O.util.createBuffer(r.body)), u.finish())
-      a = u.output.getBytes();
-    else
-      return a;
-  } else
-    a = r.body;
-  return r.type === "ENCRYPTED PRIVATE KEY" ? a = Q.decryptPrivateKeyInfo(A.fromDer(a), t) : a = A.fromDer(a), a !== null && (a = Q.privateKeyFromAsn1(a)), a;
+    var iv = forge$g.util.hexToBytes(msg.dekInfo.parameters);
+    var dk = forge$g.pbe.opensslDeriveBytes(password, iv.substr(0, 8), dkLen);
+    var cipher = cipherFn(dk);
+    cipher.start(iv);
+    cipher.update(forge$g.util.createBuffer(msg.body));
+    if (cipher.finish()) {
+      rval = cipher.output.getBytes();
+    } else {
+      return rval;
+    }
+  } else {
+    rval = msg.body;
+  }
+  if (msg.type === "ENCRYPTED PRIVATE KEY") {
+    rval = pki$3.decryptPrivateKeyInfo(asn1$6.fromDer(rval), password);
+  } else {
+    rval = asn1$6.fromDer(rval);
+  }
+  if (rval !== null) {
+    rval = pki$3.privateKeyFromAsn1(rval);
+  }
+  return rval;
 };
-Q.pbe.generatePkcs12Key = function(e, t, a, r, n, s) {
-  var i, o;
-  if (typeof s > "u" || s === null) {
-    if (!("sha1" in O.md))
+pki$3.pbe.generatePkcs12Key = function(password, salt, id, iter, n, md) {
+  var j, l;
+  if (typeof md === "undefined" || md === null) {
+    if (!("sha1" in forge$g.md)) {
       throw new Error('"sha1" hash algorithm unavailable.');
-    s = O.md.sha1.create();
-  }
-  var l = s.digestLength, u = s.blockLength, f = new O.util.ByteBuffer(), c = new O.util.ByteBuffer();
-  if (e != null) {
-    for (o = 0; o < e.length; o++)
-      c.putInt16(e.charCodeAt(o));
-    c.putInt16(0);
-  }
-  var v = c.length(), m = t.length(), y = new O.util.ByteBuffer();
-  y.fillWithByte(a, u);
-  var x = u * Math.ceil(m / u), S = new O.util.ByteBuffer();
-  for (o = 0; o < x; o++)
-    S.putByte(t.at(o % m));
-  var I = u * Math.ceil(v / u), b = new O.util.ByteBuffer();
-  for (o = 0; o < I; o++)
-    b.putByte(c.at(o % v));
-  var _ = S;
-  _.putBuffer(b);
-  for (var V = Math.ceil(n / l), k = 1; k <= V; k++) {
-    var w = new O.util.ByteBuffer();
-    w.putBytes(y.bytes()), w.putBytes(_.bytes());
-    for (var G = 0; G < r; G++)
-      s.start(), s.update(w.getBytes()), w = s.digest();
-    var Y = new O.util.ByteBuffer();
-    for (o = 0; o < u; o++)
-      Y.putByte(w.at(o % l));
-    var re = Math.ceil(m / u) + Math.ceil(v / u), ae = new O.util.ByteBuffer();
-    for (i = 0; i < re; i++) {
-      var ne = new O.util.ByteBuffer(_.getBytes(u)), he = 511;
-      for (o = Y.length() - 1; o >= 0; o--)
-        he = he >> 8, he += Y.at(o) + ne.at(o), ne.setAt(o, he & 255);
-      ae.putBuffer(ne);
     }
-    _ = ae, f.putBuffer(w);
+    md = forge$g.md.sha1.create();
   }
-  return f.truncate(f.length() - n), f;
+  var u = md.digestLength;
+  var v = md.blockLength;
+  var result = new forge$g.util.ByteBuffer();
+  var passBuf = new forge$g.util.ByteBuffer();
+  if (password !== null && password !== void 0) {
+    for (l = 0; l < password.length; l++) {
+      passBuf.putInt16(password.charCodeAt(l));
+    }
+    passBuf.putInt16(0);
+  }
+  var p = passBuf.length();
+  var s2 = salt.length();
+  var D3 = new forge$g.util.ByteBuffer();
+  D3.fillWithByte(id, v);
+  var Slen = v * Math.ceil(s2 / v);
+  var S2 = new forge$g.util.ByteBuffer();
+  for (l = 0; l < Slen; l++) {
+    S2.putByte(salt.at(l % s2));
+  }
+  var Plen = v * Math.ceil(p / v);
+  var P = new forge$g.util.ByteBuffer();
+  for (l = 0; l < Plen; l++) {
+    P.putByte(passBuf.at(l % p));
+  }
+  var I2 = S2;
+  I2.putBuffer(P);
+  var c = Math.ceil(n / u);
+  for (var i = 1; i <= c; i++) {
+    var buf = new forge$g.util.ByteBuffer();
+    buf.putBytes(D3.bytes());
+    buf.putBytes(I2.bytes());
+    for (var round = 0; round < iter; round++) {
+      md.start();
+      md.update(buf.getBytes());
+      buf = md.digest();
+    }
+    var B = new forge$g.util.ByteBuffer();
+    for (l = 0; l < v; l++) {
+      B.putByte(buf.at(l % u));
+    }
+    var k = Math.ceil(s2 / v) + Math.ceil(p / v);
+    var Inew = new forge$g.util.ByteBuffer();
+    for (j = 0; j < k; j++) {
+      var chunk = new forge$g.util.ByteBuffer(I2.getBytes(v));
+      var x = 511;
+      for (l = B.length() - 1; l >= 0; l--) {
+        x = x >> 8;
+        x += B.at(l) + chunk.at(l);
+        chunk.setAt(l, x & 255);
+      }
+      Inew.putBuffer(chunk);
+    }
+    I2 = Inew;
+    result.putBuffer(buf);
+  }
+  result.truncate(result.length() - n);
+  return result;
 };
-Q.pbe.getCipher = function(e, t, a) {
-  switch (e) {
-    case Q.oids.pkcs5PBES2:
-      return Q.pbe.getCipherForPBES2(e, t, a);
-    case Q.oids["pbeWithSHAAnd3-KeyTripleDES-CBC"]:
-    case Q.oids["pbewithSHAAnd40BitRC2-CBC"]:
-      return Q.pbe.getCipherForPKCS12PBE(e, t, a);
+pki$3.pbe.getCipher = function(oid, params, password) {
+  switch (oid) {
+    case pki$3.oids["pkcs5PBES2"]:
+      return pki$3.pbe.getCipherForPBES2(oid, params, password);
+    case pki$3.oids["pbeWithSHAAnd3-KeyTripleDES-CBC"]:
+    case pki$3.oids["pbewithSHAAnd40BitRC2-CBC"]:
+      return pki$3.pbe.getCipherForPKCS12PBE(oid, params, password);
     default:
-      var r = new Error("Cannot read encrypted PBE data block. Unsupported OID.");
-      throw r.oid = e, r.supportedOids = [
+      var error = new Error("Cannot read encrypted PBE data block. Unsupported OID.");
+      error.oid = oid;
+      error.supportedOids = [
         "pkcs5PBES2",
         "pbeWithSHAAnd3-KeyTripleDES-CBC",
         "pbewithSHAAnd40BitRC2-CBC"
-      ], r;
+      ];
+      throw error;
   }
 };
-Q.pbe.getCipherForPBES2 = function(e, t, a) {
-  var r = {}, n = [];
-  if (!A.validate(t, Ho, r, n)) {
-    var s = new Error("Cannot read password-based-encryption algorithm parameters. ASN.1 object is not a supported EncryptedPrivateKeyInfo.");
-    throw s.errors = n, s;
+pki$3.pbe.getCipherForPBES2 = function(oid, params, password) {
+  var capture = {};
+  var errors = [];
+  if (!asn1$6.validate(params, PBES2AlgorithmsValidator, capture, errors)) {
+    var error = new Error("Cannot read password-based-encryption algorithm parameters. ASN.1 object is not a supported EncryptedPrivateKeyInfo.");
+    error.errors = errors;
+    throw error;
   }
-  if (e = A.derToOid(r.kdfOid), e !== Q.oids.pkcs5PBKDF2) {
-    var s = new Error("Cannot read encrypted private key. Unsupported key derivation function OID.");
-    throw s.oid = e, s.supportedOids = ["pkcs5PBKDF2"], s;
+  oid = asn1$6.derToOid(capture.kdfOid);
+  if (oid !== pki$3.oids["pkcs5PBKDF2"]) {
+    var error = new Error("Cannot read encrypted private key. Unsupported key derivation function OID.");
+    error.oid = oid;
+    error.supportedOids = ["pkcs5PBKDF2"];
+    throw error;
   }
-  if (e = A.derToOid(r.encOid), e !== Q.oids["aes128-CBC"] && e !== Q.oids["aes192-CBC"] && e !== Q.oids["aes256-CBC"] && e !== Q.oids["des-EDE3-CBC"] && e !== Q.oids.desCBC) {
-    var s = new Error("Cannot read encrypted private key. Unsupported encryption scheme OID.");
-    throw s.oid = e, s.supportedOids = [
+  oid = asn1$6.derToOid(capture.encOid);
+  if (oid !== pki$3.oids["aes128-CBC"] && oid !== pki$3.oids["aes192-CBC"] && oid !== pki$3.oids["aes256-CBC"] && oid !== pki$3.oids["des-EDE3-CBC"] && oid !== pki$3.oids["desCBC"]) {
+    var error = new Error("Cannot read encrypted private key. Unsupported encryption scheme OID.");
+    error.oid = oid;
+    error.supportedOids = [
       "aes128-CBC",
       "aes192-CBC",
       "aes256-CBC",
       "des-EDE3-CBC",
       "desCBC"
-    ], s;
+    ];
+    throw error;
   }
-  var i = r.kdfSalt, o = O.util.createBuffer(r.kdfIterationCount);
-  o = o.getInt(o.length() << 3);
-  var l, u;
-  switch (Q.oids[e]) {
+  var salt = capture.kdfSalt;
+  var count = forge$g.util.createBuffer(capture.kdfIterationCount);
+  count = count.getInt(count.length() << 3);
+  var dkLen;
+  var cipherFn;
+  switch (pki$3.oids[oid]) {
     case "aes128-CBC":
-      l = 16, u = O.aes.createDecryptionCipher;
+      dkLen = 16;
+      cipherFn = forge$g.aes.createDecryptionCipher;
       break;
     case "aes192-CBC":
-      l = 24, u = O.aes.createDecryptionCipher;
+      dkLen = 24;
+      cipherFn = forge$g.aes.createDecryptionCipher;
       break;
     case "aes256-CBC":
-      l = 32, u = O.aes.createDecryptionCipher;
+      dkLen = 32;
+      cipherFn = forge$g.aes.createDecryptionCipher;
       break;
     case "des-EDE3-CBC":
-      l = 24, u = O.des.createDecryptionCipher;
+      dkLen = 24;
+      cipherFn = forge$g.des.createDecryptionCipher;
       break;
     case "desCBC":
-      l = 8, u = O.des.createDecryptionCipher;
+      dkLen = 8;
+      cipherFn = forge$g.des.createDecryptionCipher;
       break;
   }
-  var f = kn(r.prfOid), c = O.pkcs5.pbkdf2(a, i, o, l, f), v = r.encIv, m = u(c);
-  return m.start(v), m;
+  var md = prfOidToMessageDigest(capture.prfOid);
+  var dk = forge$g.pkcs5.pbkdf2(password, salt, count, dkLen, md);
+  var iv = capture.encIv;
+  var cipher = cipherFn(dk);
+  cipher.start(iv);
+  return cipher;
 };
-Q.pbe.getCipherForPKCS12PBE = function(e, t, a) {
-  var r = {}, n = [];
-  if (!A.validate(t, Go, r, n)) {
-    var s = new Error("Cannot read password-based-encryption algorithm parameters. ASN.1 object is not a supported EncryptedPrivateKeyInfo.");
-    throw s.errors = n, s;
+pki$3.pbe.getCipherForPKCS12PBE = function(oid, params, password) {
+  var capture = {};
+  var errors = [];
+  if (!asn1$6.validate(params, pkcs12PbeParamsValidator, capture, errors)) {
+    var error = new Error("Cannot read password-based-encryption algorithm parameters. ASN.1 object is not a supported EncryptedPrivateKeyInfo.");
+    error.errors = errors;
+    throw error;
   }
-  var i = O.util.createBuffer(r.salt), o = O.util.createBuffer(r.iterations);
-  o = o.getInt(o.length() << 3);
-  var l, u, f;
-  switch (e) {
-    case Q.oids["pbeWithSHAAnd3-KeyTripleDES-CBC"]:
-      l = 24, u = 8, f = O.des.startDecrypting;
+  var salt = forge$g.util.createBuffer(capture.salt);
+  var count = forge$g.util.createBuffer(capture.iterations);
+  count = count.getInt(count.length() << 3);
+  var dkLen, dIvLen, cipherFn;
+  switch (oid) {
+    case pki$3.oids["pbeWithSHAAnd3-KeyTripleDES-CBC"]:
+      dkLen = 24;
+      dIvLen = 8;
+      cipherFn = forge$g.des.startDecrypting;
       break;
-    case Q.oids["pbewithSHAAnd40BitRC2-CBC"]:
-      l = 5, u = 8, f = function(x, S) {
-        var I = O.rc2.createDecryptionCipher(x, 40);
-        return I.start(S, null), I;
+    case pki$3.oids["pbewithSHAAnd40BitRC2-CBC"]:
+      dkLen = 5;
+      dIvLen = 8;
+      cipherFn = function(key2, iv2) {
+        var cipher = forge$g.rc2.createDecryptionCipher(key2, 40);
+        cipher.start(iv2, null);
+        return cipher;
       };
       break;
     default:
-      var s = new Error("Cannot read PKCS #12 PBE data block. Unsupported OID.");
-      throw s.oid = e, s;
+      var error = new Error("Cannot read PKCS #12 PBE data block. Unsupported OID.");
+      error.oid = oid;
+      throw error;
   }
-  var c = kn(r.prfOid), v = Q.pbe.generatePkcs12Key(a, i, 1, o, l, c);
-  c.start();
-  var m = Q.pbe.generatePkcs12Key(a, i, 2, o, u, c);
-  return f(v, m);
+  var md = prfOidToMessageDigest(capture.prfOid);
+  var key = pki$3.pbe.generatePkcs12Key(password, salt, 1, count, dkLen, md);
+  md.start();
+  var iv = pki$3.pbe.generatePkcs12Key(password, salt, 2, count, dIvLen, md);
+  return cipherFn(key, iv);
 };
-Q.pbe.opensslDeriveBytes = function(e, t, a, r) {
-  if (typeof r > "u" || r === null) {
-    if (!("md5" in O.md))
+pki$3.pbe.opensslDeriveBytes = function(password, salt, dkLen, md) {
+  if (typeof md === "undefined" || md === null) {
+    if (!("md5" in forge$g.md)) {
       throw new Error('"md5" hash algorithm unavailable.');
-    r = O.md.md5.create();
+    }
+    md = forge$g.md.md5.create();
   }
-  t === null && (t = "");
-  for (var n = [ja(r, e + t)], s = 16, i = 1; s < a; ++i, s += 16)
-    n.push(ja(r, n[i - 1] + e + t));
-  return n.join("").substr(0, a);
+  if (salt === null) {
+    salt = "";
+  }
+  var digests = [hash(md, password + salt)];
+  for (var length = 16, i = 1; length < dkLen; ++i, length += 16) {
+    digests.push(hash(md, digests[i - 1] + password + salt));
+  }
+  return digests.join("").substr(0, dkLen);
 };
-function ja(e, t) {
-  return e.start().update(t).digest().getBytes();
+function hash(md, bytes) {
+  return md.start().update(bytes).digest().getBytes();
 }
-function kn(e) {
-  var t;
-  if (!e)
-    t = "hmacWithSHA1";
-  else if (t = Q.oids[A.derToOid(e)], !t) {
-    var a = new Error("Unsupported PRF OID.");
-    throw a.oid = e, a.supported = [
-      "hmacWithSHA1",
-      "hmacWithSHA224",
-      "hmacWithSHA256",
-      "hmacWithSHA384",
-      "hmacWithSHA512"
-    ], a;
-  }
-  return Dn(t);
-}
-function Dn(e) {
-  var t = O.md;
-  switch (e) {
-    case "hmacWithSHA224":
-      t = O.md.sha512;
-    case "hmacWithSHA1":
-    case "hmacWithSHA256":
-    case "hmacWithSHA384":
-    case "hmacWithSHA512":
-      e = e.substr(8).toLowerCase();
-      break;
-    default:
-      var a = new Error("Unsupported PRF algorithm.");
-      throw a.algorithm = e, a.supported = [
+function prfOidToMessageDigest(prfOid) {
+  var prfAlgorithm;
+  if (!prfOid) {
+    prfAlgorithm = "hmacWithSHA1";
+  } else {
+    prfAlgorithm = pki$3.oids[asn1$6.derToOid(prfOid)];
+    if (!prfAlgorithm) {
+      var error = new Error("Unsupported PRF OID.");
+      error.oid = prfOid;
+      error.supported = [
         "hmacWithSHA1",
         "hmacWithSHA224",
         "hmacWithSHA256",
         "hmacWithSHA384",
         "hmacWithSHA512"
-      ], a;
+      ];
+      throw error;
+    }
   }
-  if (!t || !(e in t))
-    throw new Error("Unknown hash algorithm: " + e);
-  return t[e].create();
+  return prfAlgorithmToMessageDigest(prfAlgorithm);
 }
-function qo(e, t, a, r) {
-  var n = A.create(A.Class.UNIVERSAL, A.Type.SEQUENCE, !0, [
+function prfAlgorithmToMessageDigest(prfAlgorithm) {
+  var factory = forge$g.md;
+  switch (prfAlgorithm) {
+    case "hmacWithSHA224":
+      factory = forge$g.md.sha512;
+    case "hmacWithSHA1":
+    case "hmacWithSHA256":
+    case "hmacWithSHA384":
+    case "hmacWithSHA512":
+      prfAlgorithm = prfAlgorithm.substr(8).toLowerCase();
+      break;
+    default:
+      var error = new Error("Unsupported PRF algorithm.");
+      error.algorithm = prfAlgorithm;
+      error.supported = [
+        "hmacWithSHA1",
+        "hmacWithSHA224",
+        "hmacWithSHA256",
+        "hmacWithSHA384",
+        "hmacWithSHA512"
+      ];
+      throw error;
+  }
+  if (!factory || !(prfAlgorithm in factory)) {
+    throw new Error("Unknown hash algorithm: " + prfAlgorithm);
+  }
+  return factory[prfAlgorithm].create();
+}
+function createPbkdf2Params(salt, countBytes, dkLen, prfAlgorithm) {
+  var params = asn1$6.create(asn1$6.Class.UNIVERSAL, asn1$6.Type.SEQUENCE, true, [
     // salt
-    A.create(
-      A.Class.UNIVERSAL,
-      A.Type.OCTETSTRING,
-      !1,
-      e
+    asn1$6.create(
+      asn1$6.Class.UNIVERSAL,
+      asn1$6.Type.OCTETSTRING,
+      false,
+      salt
     ),
     // iteration count
-    A.create(
-      A.Class.UNIVERSAL,
-      A.Type.INTEGER,
-      !1,
-      t.getBytes()
+    asn1$6.create(
+      asn1$6.Class.UNIVERSAL,
+      asn1$6.Type.INTEGER,
+      false,
+      countBytes.getBytes()
     )
   ]);
-  return r !== "hmacWithSHA1" && n.value.push(
-    // key length
-    A.create(
-      A.Class.UNIVERSAL,
-      A.Type.INTEGER,
-      !1,
-      O.util.hexToBytes(a.toString(16))
-    ),
-    // AlgorithmIdentifier
-    A.create(A.Class.UNIVERSAL, A.Type.SEQUENCE, !0, [
-      // algorithm
-      A.create(
-        A.Class.UNIVERSAL,
-        A.Type.OID,
-        !1,
-        A.oidToDer(Q.oids[r]).getBytes()
+  if (prfAlgorithm !== "hmacWithSHA1") {
+    params.value.push(
+      // key length
+      asn1$6.create(
+        asn1$6.Class.UNIVERSAL,
+        asn1$6.Type.INTEGER,
+        false,
+        forge$g.util.hexToBytes(dkLen.toString(16))
       ),
-      // parameters (null)
-      A.create(A.Class.UNIVERSAL, A.Type.NULL, !1, "")
-    ])
-  ), n;
+      // AlgorithmIdentifier
+      asn1$6.create(asn1$6.Class.UNIVERSAL, asn1$6.Type.SEQUENCE, true, [
+        // algorithm
+        asn1$6.create(
+          asn1$6.Class.UNIVERSAL,
+          asn1$6.Type.OID,
+          false,
+          asn1$6.oidToDer(pki$3.oids[prfAlgorithm]).getBytes()
+        ),
+        // parameters (null)
+        asn1$6.create(asn1$6.Class.UNIVERSAL, asn1$6.Type.NULL, false, "")
+      ])
+    );
+  }
+  return params;
 }
-var Wt = z, P = Wt.asn1, tr = Wt.pkcs7asn1 = Wt.pkcs7asn1 || {};
-Wt.pkcs7 = Wt.pkcs7 || {};
-Wt.pkcs7.asn1 = tr;
-var Un = {
+var forge$f = forge$C;
+var asn1$5 = forge$f.asn1;
+var p7v = forge$f.pkcs7asn1 = forge$f.pkcs7asn1 || {};
+forge$f.pkcs7 = forge$f.pkcs7 || {};
+forge$f.pkcs7.asn1 = p7v;
+var contentInfoValidator$1 = {
   name: "ContentInfo",
-  tagClass: P.Class.UNIVERSAL,
-  type: P.Type.SEQUENCE,
-  constructed: !0,
+  tagClass: asn1$5.Class.UNIVERSAL,
+  type: asn1$5.Type.SEQUENCE,
+  constructed: true,
   value: [{
     name: "ContentInfo.ContentType",
-    tagClass: P.Class.UNIVERSAL,
-    type: P.Type.OID,
-    constructed: !1,
+    tagClass: asn1$5.Class.UNIVERSAL,
+    type: asn1$5.Type.OID,
+    constructed: false,
     capture: "contentType"
   }, {
     name: "ContentInfo.content",
-    tagClass: P.Class.CONTEXT_SPECIFIC,
+    tagClass: asn1$5.Class.CONTEXT_SPECIFIC,
     type: 0,
-    constructed: !0,
-    optional: !0,
+    constructed: true,
+    optional: true,
     captureAsn1: "content"
   }]
 };
-tr.contentInfoValidator = Un;
-var Pn = {
+p7v.contentInfoValidator = contentInfoValidator$1;
+var encryptedContentInfoValidator = {
   name: "EncryptedContentInfo",
-  tagClass: P.Class.UNIVERSAL,
-  type: P.Type.SEQUENCE,
-  constructed: !0,
+  tagClass: asn1$5.Class.UNIVERSAL,
+  type: asn1$5.Type.SEQUENCE,
+  constructed: true,
   value: [{
     name: "EncryptedContentInfo.contentType",
-    tagClass: P.Class.UNIVERSAL,
-    type: P.Type.OID,
-    constructed: !1,
+    tagClass: asn1$5.Class.UNIVERSAL,
+    type: asn1$5.Type.OID,
+    constructed: false,
     capture: "contentType"
   }, {
     name: "EncryptedContentInfo.contentEncryptionAlgorithm",
-    tagClass: P.Class.UNIVERSAL,
-    type: P.Type.SEQUENCE,
-    constructed: !0,
+    tagClass: asn1$5.Class.UNIVERSAL,
+    type: asn1$5.Type.SEQUENCE,
+    constructed: true,
     value: [{
       name: "EncryptedContentInfo.contentEncryptionAlgorithm.algorithm",
-      tagClass: P.Class.UNIVERSAL,
-      type: P.Type.OID,
-      constructed: !1,
+      tagClass: asn1$5.Class.UNIVERSAL,
+      type: asn1$5.Type.OID,
+      constructed: false,
       capture: "encAlgorithm"
     }, {
       name: "EncryptedContentInfo.contentEncryptionAlgorithm.parameter",
-      tagClass: P.Class.UNIVERSAL,
+      tagClass: asn1$5.Class.UNIVERSAL,
       captureAsn1: "encParameter"
     }]
   }, {
     name: "EncryptedContentInfo.encryptedContent",
-    tagClass: P.Class.CONTEXT_SPECIFIC,
+    tagClass: asn1$5.Class.CONTEXT_SPECIFIC,
     type: 0,
     /* The PKCS#7 structure output by OpenSSL somewhat differs from what
      * other implementations do generate.
@@ -5830,217 +8999,217 @@ var Pn = {
     captureAsn1: "encryptedContentAsn1"
   }]
 };
-tr.envelopedDataValidator = {
+p7v.envelopedDataValidator = {
   name: "EnvelopedData",
-  tagClass: P.Class.UNIVERSAL,
-  type: P.Type.SEQUENCE,
-  constructed: !0,
+  tagClass: asn1$5.Class.UNIVERSAL,
+  type: asn1$5.Type.SEQUENCE,
+  constructed: true,
   value: [{
     name: "EnvelopedData.Version",
-    tagClass: P.Class.UNIVERSAL,
-    type: P.Type.INTEGER,
-    constructed: !1,
+    tagClass: asn1$5.Class.UNIVERSAL,
+    type: asn1$5.Type.INTEGER,
+    constructed: false,
     capture: "version"
   }, {
     name: "EnvelopedData.RecipientInfos",
-    tagClass: P.Class.UNIVERSAL,
-    type: P.Type.SET,
-    constructed: !0,
+    tagClass: asn1$5.Class.UNIVERSAL,
+    type: asn1$5.Type.SET,
+    constructed: true,
     captureAsn1: "recipientInfos"
-  }].concat(Pn)
+  }].concat(encryptedContentInfoValidator)
 };
-tr.encryptedDataValidator = {
+p7v.encryptedDataValidator = {
   name: "EncryptedData",
-  tagClass: P.Class.UNIVERSAL,
-  type: P.Type.SEQUENCE,
-  constructed: !0,
+  tagClass: asn1$5.Class.UNIVERSAL,
+  type: asn1$5.Type.SEQUENCE,
+  constructed: true,
   value: [{
     name: "EncryptedData.Version",
-    tagClass: P.Class.UNIVERSAL,
-    type: P.Type.INTEGER,
-    constructed: !1,
+    tagClass: asn1$5.Class.UNIVERSAL,
+    type: asn1$5.Type.INTEGER,
+    constructed: false,
     capture: "version"
-  }].concat(Pn)
+  }].concat(encryptedContentInfoValidator)
 };
-var Qo = {
+var signerValidator = {
   name: "SignerInfo",
-  tagClass: P.Class.UNIVERSAL,
-  type: P.Type.SEQUENCE,
-  constructed: !0,
+  tagClass: asn1$5.Class.UNIVERSAL,
+  type: asn1$5.Type.SEQUENCE,
+  constructed: true,
   value: [{
     name: "SignerInfo.version",
-    tagClass: P.Class.UNIVERSAL,
-    type: P.Type.INTEGER,
-    constructed: !1
+    tagClass: asn1$5.Class.UNIVERSAL,
+    type: asn1$5.Type.INTEGER,
+    constructed: false
   }, {
     name: "SignerInfo.issuerAndSerialNumber",
-    tagClass: P.Class.UNIVERSAL,
-    type: P.Type.SEQUENCE,
-    constructed: !0,
+    tagClass: asn1$5.Class.UNIVERSAL,
+    type: asn1$5.Type.SEQUENCE,
+    constructed: true,
     value: [{
       name: "SignerInfo.issuerAndSerialNumber.issuer",
-      tagClass: P.Class.UNIVERSAL,
-      type: P.Type.SEQUENCE,
-      constructed: !0,
+      tagClass: asn1$5.Class.UNIVERSAL,
+      type: asn1$5.Type.SEQUENCE,
+      constructed: true,
       captureAsn1: "issuer"
     }, {
       name: "SignerInfo.issuerAndSerialNumber.serialNumber",
-      tagClass: P.Class.UNIVERSAL,
-      type: P.Type.INTEGER,
-      constructed: !1,
+      tagClass: asn1$5.Class.UNIVERSAL,
+      type: asn1$5.Type.INTEGER,
+      constructed: false,
       capture: "serial"
     }]
   }, {
     name: "SignerInfo.digestAlgorithm",
-    tagClass: P.Class.UNIVERSAL,
-    type: P.Type.SEQUENCE,
-    constructed: !0,
+    tagClass: asn1$5.Class.UNIVERSAL,
+    type: asn1$5.Type.SEQUENCE,
+    constructed: true,
     value: [{
       name: "SignerInfo.digestAlgorithm.algorithm",
-      tagClass: P.Class.UNIVERSAL,
-      type: P.Type.OID,
-      constructed: !1,
+      tagClass: asn1$5.Class.UNIVERSAL,
+      type: asn1$5.Type.OID,
+      constructed: false,
       capture: "digestAlgorithm"
     }, {
       name: "SignerInfo.digestAlgorithm.parameter",
-      tagClass: P.Class.UNIVERSAL,
-      constructed: !1,
+      tagClass: asn1$5.Class.UNIVERSAL,
+      constructed: false,
       captureAsn1: "digestParameter",
-      optional: !0
+      optional: true
     }]
   }, {
     name: "SignerInfo.authenticatedAttributes",
-    tagClass: P.Class.CONTEXT_SPECIFIC,
+    tagClass: asn1$5.Class.CONTEXT_SPECIFIC,
     type: 0,
-    constructed: !0,
-    optional: !0,
+    constructed: true,
+    optional: true,
     capture: "authenticatedAttributes"
   }, {
     name: "SignerInfo.digestEncryptionAlgorithm",
-    tagClass: P.Class.UNIVERSAL,
-    type: P.Type.SEQUENCE,
-    constructed: !0,
+    tagClass: asn1$5.Class.UNIVERSAL,
+    type: asn1$5.Type.SEQUENCE,
+    constructed: true,
     capture: "signatureAlgorithm"
   }, {
     name: "SignerInfo.encryptedDigest",
-    tagClass: P.Class.UNIVERSAL,
-    type: P.Type.OCTETSTRING,
-    constructed: !1,
+    tagClass: asn1$5.Class.UNIVERSAL,
+    type: asn1$5.Type.OCTETSTRING,
+    constructed: false,
     capture: "signature"
   }, {
     name: "SignerInfo.unauthenticatedAttributes",
-    tagClass: P.Class.CONTEXT_SPECIFIC,
+    tagClass: asn1$5.Class.CONTEXT_SPECIFIC,
     type: 1,
-    constructed: !0,
-    optional: !0,
+    constructed: true,
+    optional: true,
     capture: "unauthenticatedAttributes"
   }]
 };
-tr.signedDataValidator = {
+p7v.signedDataValidator = {
   name: "SignedData",
-  tagClass: P.Class.UNIVERSAL,
-  type: P.Type.SEQUENCE,
-  constructed: !0,
+  tagClass: asn1$5.Class.UNIVERSAL,
+  type: asn1$5.Type.SEQUENCE,
+  constructed: true,
   value: [
     {
       name: "SignedData.Version",
-      tagClass: P.Class.UNIVERSAL,
-      type: P.Type.INTEGER,
-      constructed: !1,
+      tagClass: asn1$5.Class.UNIVERSAL,
+      type: asn1$5.Type.INTEGER,
+      constructed: false,
       capture: "version"
     },
     {
       name: "SignedData.DigestAlgorithms",
-      tagClass: P.Class.UNIVERSAL,
-      type: P.Type.SET,
-      constructed: !0,
+      tagClass: asn1$5.Class.UNIVERSAL,
+      type: asn1$5.Type.SET,
+      constructed: true,
       captureAsn1: "digestAlgorithms"
     },
-    Un,
+    contentInfoValidator$1,
     {
       name: "SignedData.Certificates",
-      tagClass: P.Class.CONTEXT_SPECIFIC,
+      tagClass: asn1$5.Class.CONTEXT_SPECIFIC,
       type: 0,
-      optional: !0,
+      optional: true,
       captureAsn1: "certificates"
     },
     {
       name: "SignedData.CertificateRevocationLists",
-      tagClass: P.Class.CONTEXT_SPECIFIC,
+      tagClass: asn1$5.Class.CONTEXT_SPECIFIC,
       type: 1,
-      optional: !0,
+      optional: true,
       captureAsn1: "crls"
     },
     {
       name: "SignedData.SignerInfos",
-      tagClass: P.Class.UNIVERSAL,
-      type: P.Type.SET,
+      tagClass: asn1$5.Class.UNIVERSAL,
+      type: asn1$5.Type.SET,
       capture: "signerInfos",
-      optional: !0,
-      value: [Qo]
+      optional: true,
+      value: [signerValidator]
     }
   ]
 };
-tr.recipientInfoValidator = {
+p7v.recipientInfoValidator = {
   name: "RecipientInfo",
-  tagClass: P.Class.UNIVERSAL,
-  type: P.Type.SEQUENCE,
-  constructed: !0,
+  tagClass: asn1$5.Class.UNIVERSAL,
+  type: asn1$5.Type.SEQUENCE,
+  constructed: true,
   value: [{
     name: "RecipientInfo.version",
-    tagClass: P.Class.UNIVERSAL,
-    type: P.Type.INTEGER,
-    constructed: !1,
+    tagClass: asn1$5.Class.UNIVERSAL,
+    type: asn1$5.Type.INTEGER,
+    constructed: false,
     capture: "version"
   }, {
     name: "RecipientInfo.issuerAndSerial",
-    tagClass: P.Class.UNIVERSAL,
-    type: P.Type.SEQUENCE,
-    constructed: !0,
+    tagClass: asn1$5.Class.UNIVERSAL,
+    type: asn1$5.Type.SEQUENCE,
+    constructed: true,
     value: [{
       name: "RecipientInfo.issuerAndSerial.issuer",
-      tagClass: P.Class.UNIVERSAL,
-      type: P.Type.SEQUENCE,
-      constructed: !0,
+      tagClass: asn1$5.Class.UNIVERSAL,
+      type: asn1$5.Type.SEQUENCE,
+      constructed: true,
       captureAsn1: "issuer"
     }, {
       name: "RecipientInfo.issuerAndSerial.serialNumber",
-      tagClass: P.Class.UNIVERSAL,
-      type: P.Type.INTEGER,
-      constructed: !1,
+      tagClass: asn1$5.Class.UNIVERSAL,
+      type: asn1$5.Type.INTEGER,
+      constructed: false,
       capture: "serial"
     }]
   }, {
     name: "RecipientInfo.keyEncryptionAlgorithm",
-    tagClass: P.Class.UNIVERSAL,
-    type: P.Type.SEQUENCE,
-    constructed: !0,
+    tagClass: asn1$5.Class.UNIVERSAL,
+    type: asn1$5.Type.SEQUENCE,
+    constructed: true,
     value: [{
       name: "RecipientInfo.keyEncryptionAlgorithm.algorithm",
-      tagClass: P.Class.UNIVERSAL,
-      type: P.Type.OID,
-      constructed: !1,
+      tagClass: asn1$5.Class.UNIVERSAL,
+      type: asn1$5.Type.OID,
+      constructed: false,
       capture: "encAlgorithm"
     }, {
       name: "RecipientInfo.keyEncryptionAlgorithm.parameter",
-      tagClass: P.Class.UNIVERSAL,
-      constructed: !1,
+      tagClass: asn1$5.Class.UNIVERSAL,
+      constructed: false,
       captureAsn1: "encParameter",
-      optional: !0
+      optional: true
     }]
   }, {
     name: "RecipientInfo.encryptedKey",
-    tagClass: P.Class.UNIVERSAL,
-    type: P.Type.OCTETSTRING,
-    constructed: !1,
+    tagClass: asn1$5.Class.UNIVERSAL,
+    type: asn1$5.Type.OCTETSTRING,
+    constructed: false,
     capture: "encKey"
   }]
 };
-var Ot = z;
-Ot.mgf = Ot.mgf || {};
-var zo = Ot.mgf.mgf1 = Ot.mgf1 = Ot.mgf1 || {};
-zo.create = function(e) {
-  var t = {
+var forge$e = forge$C;
+forge$e.mgf = forge$e.mgf || {};
+var mgf1 = forge$e.mgf.mgf1 = forge$e.mgf1 = forge$e.mgf1 || {};
+mgf1.create = function(md) {
+  var mgf = {
     /**
      * Generate mask of specified length.
      *
@@ -6048,156 +9217,219 @@ zo.create = function(e) {
      * @param maskLen Number of bytes to generate.
      * @return {String} The generated mask.
      */
-    generate: function(a, r) {
-      for (var n = new Ot.util.ByteBuffer(), s = Math.ceil(r / e.digestLength), i = 0; i < s; i++) {
-        var o = new Ot.util.ByteBuffer();
-        o.putInt32(i), e.start(), e.update(a + o.getBytes()), n.putBuffer(e.digest());
+    generate: function(seed, maskLen) {
+      var t = new forge$e.util.ByteBuffer();
+      var len = Math.ceil(maskLen / md.digestLength);
+      for (var i = 0; i < len; i++) {
+        var c = new forge$e.util.ByteBuffer();
+        c.putInt32(i);
+        md.start();
+        md.update(seed + c.getBytes());
+        t.putBuffer(md.digest());
       }
-      return n.truncate(n.length() - r), n.getBytes();
+      t.truncate(t.length() - maskLen);
+      return t.getBytes();
     }
   };
-  return t;
+  return mgf;
 };
-var br = z;
-br.mgf = br.mgf || {};
-br.mgf.mgf1 = br.mgf1;
-var Dt = z, Yo = Dt.pss = Dt.pss || {};
-Yo.create = function(e) {
-  arguments.length === 3 && (e = {
-    md: arguments[0],
-    mgf: arguments[1],
-    saltLength: arguments[2]
-  });
-  var t = e.md, a = e.mgf, r = t.digestLength, n = e.salt || null;
-  typeof n == "string" && (n = Dt.util.createBuffer(n));
-  var s;
-  if ("saltLength" in e)
-    s = e.saltLength;
-  else if (n !== null)
-    s = n.length();
-  else
+var forge$d = forge$C;
+forge$d.mgf = forge$d.mgf || {};
+forge$d.mgf.mgf1 = forge$d.mgf1;
+var forge$c = forge$C;
+var pss = forge$c.pss = forge$c.pss || {};
+pss.create = function(options) {
+  if (arguments.length === 3) {
+    options = {
+      md: arguments[0],
+      mgf: arguments[1],
+      saltLength: arguments[2]
+    };
+  }
+  var hash2 = options.md;
+  var mgf = options.mgf;
+  var hLen = hash2.digestLength;
+  var salt_ = options.salt || null;
+  if (typeof salt_ === "string") {
+    salt_ = forge$c.util.createBuffer(salt_);
+  }
+  var sLen;
+  if ("saltLength" in options) {
+    sLen = options.saltLength;
+  } else if (salt_ !== null) {
+    sLen = salt_.length();
+  } else {
     throw new Error("Salt length not specified or specific salt not given.");
-  if (n !== null && n.length() !== s)
+  }
+  if (salt_ !== null && salt_.length() !== sLen) {
     throw new Error("Given salt length does not match length of given salt.");
-  var i = e.prng || Dt.random, o = {};
-  return o.encode = function(l, u) {
-    var f, c = u - 1, v = Math.ceil(c / 8), m = l.digest().getBytes();
-    if (v < r + s + 2)
+  }
+  var prng2 = options.prng || forge$c.random;
+  var pssobj = {};
+  pssobj.encode = function(md, modBits) {
+    var i;
+    var emBits = modBits - 1;
+    var emLen = Math.ceil(emBits / 8);
+    var mHash = md.digest().getBytes();
+    if (emLen < hLen + sLen + 2) {
       throw new Error("Message is too long to encrypt.");
-    var y;
-    n === null ? y = i.getBytesSync(s) : y = n.bytes();
-    var x = new Dt.util.ByteBuffer();
-    x.fillWithByte(0, 8), x.putBytes(m), x.putBytes(y), t.start(), t.update(x.getBytes());
-    var S = t.digest().getBytes(), I = new Dt.util.ByteBuffer();
-    I.fillWithByte(0, v - s - r - 2), I.putByte(1), I.putBytes(y);
-    var b = I.getBytes(), _ = v - r - 1, V = a.generate(S, _), k = "";
-    for (f = 0; f < _; f++)
-      k += String.fromCharCode(b.charCodeAt(f) ^ V.charCodeAt(f));
-    var w = 65280 >> 8 * v - c & 255;
-    return k = String.fromCharCode(k.charCodeAt(0) & ~w) + k.substr(1), k + S + "¼";
-  }, o.verify = function(l, u, f) {
-    var c, v = f - 1, m = Math.ceil(v / 8);
-    if (u = u.substr(-m), m < r + s + 2)
+    }
+    var salt;
+    if (salt_ === null) {
+      salt = prng2.getBytesSync(sLen);
+    } else {
+      salt = salt_.bytes();
+    }
+    var m_ = new forge$c.util.ByteBuffer();
+    m_.fillWithByte(0, 8);
+    m_.putBytes(mHash);
+    m_.putBytes(salt);
+    hash2.start();
+    hash2.update(m_.getBytes());
+    var h = hash2.digest().getBytes();
+    var ps = new forge$c.util.ByteBuffer();
+    ps.fillWithByte(0, emLen - sLen - hLen - 2);
+    ps.putByte(1);
+    ps.putBytes(salt);
+    var db = ps.getBytes();
+    var maskLen = emLen - hLen - 1;
+    var dbMask = mgf.generate(h, maskLen);
+    var maskedDB = "";
+    for (i = 0; i < maskLen; i++) {
+      maskedDB += String.fromCharCode(db.charCodeAt(i) ^ dbMask.charCodeAt(i));
+    }
+    var mask = 65280 >> 8 * emLen - emBits & 255;
+    maskedDB = String.fromCharCode(maskedDB.charCodeAt(0) & ~mask) + maskedDB.substr(1);
+    return maskedDB + h + String.fromCharCode(188);
+  };
+  pssobj.verify = function(mHash, em, modBits) {
+    var i;
+    var emBits = modBits - 1;
+    var emLen = Math.ceil(emBits / 8);
+    em = em.substr(-emLen);
+    if (emLen < hLen + sLen + 2) {
       throw new Error("Inconsistent parameters to PSS signature verification.");
-    if (u.charCodeAt(m - 1) !== 188)
+    }
+    if (em.charCodeAt(emLen - 1) !== 188) {
       throw new Error("Encoded message does not end in 0xBC.");
-    var y = m - r - 1, x = u.substr(0, y), S = u.substr(y, r), I = 65280 >> 8 * m - v & 255;
-    if (x.charCodeAt(0) & I)
+    }
+    var maskLen = emLen - hLen - 1;
+    var maskedDB = em.substr(0, maskLen);
+    var h = em.substr(maskLen, hLen);
+    var mask = 65280 >> 8 * emLen - emBits & 255;
+    if ((maskedDB.charCodeAt(0) & mask) !== 0) {
       throw new Error("Bits beyond keysize not zero as expected.");
-    var b = a.generate(S, y), _ = "";
-    for (c = 0; c < y; c++)
-      _ += String.fromCharCode(x.charCodeAt(c) ^ b.charCodeAt(c));
-    _ = String.fromCharCode(_.charCodeAt(0) & ~I) + _.substr(1);
-    var V = m - r - s - 2;
-    for (c = 0; c < V; c++)
-      if (_.charCodeAt(c) !== 0)
+    }
+    var dbMask = mgf.generate(h, maskLen);
+    var db = "";
+    for (i = 0; i < maskLen; i++) {
+      db += String.fromCharCode(maskedDB.charCodeAt(i) ^ dbMask.charCodeAt(i));
+    }
+    db = String.fromCharCode(db.charCodeAt(0) & ~mask) + db.substr(1);
+    var checkLen = emLen - hLen - sLen - 2;
+    for (i = 0; i < checkLen; i++) {
+      if (db.charCodeAt(i) !== 0) {
         throw new Error("Leftmost octets not zero as expected");
-    if (_.charCodeAt(V) !== 1)
+      }
+    }
+    if (db.charCodeAt(checkLen) !== 1) {
       throw new Error("Inconsistent PSS signature, 0x01 marker not found");
-    var k = _.substr(-s), w = new Dt.util.ByteBuffer();
-    w.fillWithByte(0, 8), w.putBytes(l), w.putBytes(k), t.start(), t.update(w.getBytes());
-    var G = t.digest().getBytes();
-    return S === G;
-  }, o;
+    }
+    var salt = db.substr(-sLen);
+    var m_ = new forge$c.util.ByteBuffer();
+    m_.fillWithByte(0, 8);
+    m_.putBytes(mHash);
+    m_.putBytes(salt);
+    hash2.start();
+    hash2.update(m_.getBytes());
+    var h_ = hash2.digest().getBytes();
+    return h === h_;
+  };
+  return pssobj;
 };
-var K = z, h = K.asn1, L = K.pki = K.pki || {}, Z = L.oids, de = {};
-de.CN = Z.commonName;
-de.commonName = "CN";
-de.C = Z.countryName;
-de.countryName = "C";
-de.L = Z.localityName;
-de.localityName = "L";
-de.ST = Z.stateOrProvinceName;
-de.stateOrProvinceName = "ST";
-de.O = Z.organizationName;
-de.organizationName = "O";
-de.OU = Z.organizationalUnitName;
-de.organizationalUnitName = "OU";
-de.E = Z.emailAddress;
-de.emailAddress = "E";
-var Vn = K.pki.rsa.publicKeyValidator, $o = {
+var forge$b = forge$C;
+var asn1$4 = forge$b.asn1;
+var pki$2 = forge$b.pki = forge$b.pki || {};
+var oids = pki$2.oids;
+var _shortNames = {};
+_shortNames["CN"] = oids["commonName"];
+_shortNames["commonName"] = "CN";
+_shortNames["C"] = oids["countryName"];
+_shortNames["countryName"] = "C";
+_shortNames["L"] = oids["localityName"];
+_shortNames["localityName"] = "L";
+_shortNames["ST"] = oids["stateOrProvinceName"];
+_shortNames["stateOrProvinceName"] = "ST";
+_shortNames["O"] = oids["organizationName"];
+_shortNames["organizationName"] = "O";
+_shortNames["OU"] = oids["organizationalUnitName"];
+_shortNames["organizationalUnitName"] = "OU";
+_shortNames["E"] = oids["emailAddress"];
+_shortNames["emailAddress"] = "E";
+var publicKeyValidator$1 = forge$b.pki.rsa.publicKeyValidator;
+var x509CertificateValidator = {
   name: "Certificate",
-  tagClass: h.Class.UNIVERSAL,
-  type: h.Type.SEQUENCE,
-  constructed: !0,
+  tagClass: asn1$4.Class.UNIVERSAL,
+  type: asn1$4.Type.SEQUENCE,
+  constructed: true,
   value: [{
     name: "Certificate.TBSCertificate",
-    tagClass: h.Class.UNIVERSAL,
-    type: h.Type.SEQUENCE,
-    constructed: !0,
+    tagClass: asn1$4.Class.UNIVERSAL,
+    type: asn1$4.Type.SEQUENCE,
+    constructed: true,
     captureAsn1: "tbsCertificate",
     value: [
       {
         name: "Certificate.TBSCertificate.version",
-        tagClass: h.Class.CONTEXT_SPECIFIC,
+        tagClass: asn1$4.Class.CONTEXT_SPECIFIC,
         type: 0,
-        constructed: !0,
-        optional: !0,
+        constructed: true,
+        optional: true,
         value: [{
           name: "Certificate.TBSCertificate.version.integer",
-          tagClass: h.Class.UNIVERSAL,
-          type: h.Type.INTEGER,
-          constructed: !1,
+          tagClass: asn1$4.Class.UNIVERSAL,
+          type: asn1$4.Type.INTEGER,
+          constructed: false,
           capture: "certVersion"
         }]
       },
       {
         name: "Certificate.TBSCertificate.serialNumber",
-        tagClass: h.Class.UNIVERSAL,
-        type: h.Type.INTEGER,
-        constructed: !1,
+        tagClass: asn1$4.Class.UNIVERSAL,
+        type: asn1$4.Type.INTEGER,
+        constructed: false,
         capture: "certSerialNumber"
       },
       {
         name: "Certificate.TBSCertificate.signature",
-        tagClass: h.Class.UNIVERSAL,
-        type: h.Type.SEQUENCE,
-        constructed: !0,
+        tagClass: asn1$4.Class.UNIVERSAL,
+        type: asn1$4.Type.SEQUENCE,
+        constructed: true,
         value: [{
           name: "Certificate.TBSCertificate.signature.algorithm",
-          tagClass: h.Class.UNIVERSAL,
-          type: h.Type.OID,
-          constructed: !1,
+          tagClass: asn1$4.Class.UNIVERSAL,
+          type: asn1$4.Type.OID,
+          constructed: false,
           capture: "certinfoSignatureOid"
         }, {
           name: "Certificate.TBSCertificate.signature.parameters",
-          tagClass: h.Class.UNIVERSAL,
-          optional: !0,
+          tagClass: asn1$4.Class.UNIVERSAL,
+          optional: true,
           captureAsn1: "certinfoSignatureParams"
         }]
       },
       {
         name: "Certificate.TBSCertificate.issuer",
-        tagClass: h.Class.UNIVERSAL,
-        type: h.Type.SEQUENCE,
-        constructed: !0,
+        tagClass: asn1$4.Class.UNIVERSAL,
+        type: asn1$4.Type.SEQUENCE,
+        constructed: true,
         captureAsn1: "certIssuer"
       },
       {
         name: "Certificate.TBSCertificate.validity",
-        tagClass: h.Class.UNIVERSAL,
-        type: h.Type.SEQUENCE,
-        constructed: !0,
+        tagClass: asn1$4.Class.UNIVERSAL,
+        type: asn1$4.Type.SEQUENCE,
+        constructed: true,
         // Note: UTC and generalized times may both appear so the capture
         // names are based on their detected order, the names used below
         // are only for the common case, which validity time really means
@@ -6205,59 +9437,59 @@ var Vn = K.pki.rsa.publicKeyValidator, $o = {
         value: [{
           // notBefore (Time) (UTC time case)
           name: "Certificate.TBSCertificate.validity.notBefore (utc)",
-          tagClass: h.Class.UNIVERSAL,
-          type: h.Type.UTCTIME,
-          constructed: !1,
-          optional: !0,
+          tagClass: asn1$4.Class.UNIVERSAL,
+          type: asn1$4.Type.UTCTIME,
+          constructed: false,
+          optional: true,
           capture: "certValidity1UTCTime"
         }, {
           // notBefore (Time) (generalized time case)
           name: "Certificate.TBSCertificate.validity.notBefore (generalized)",
-          tagClass: h.Class.UNIVERSAL,
-          type: h.Type.GENERALIZEDTIME,
-          constructed: !1,
-          optional: !0,
+          tagClass: asn1$4.Class.UNIVERSAL,
+          type: asn1$4.Type.GENERALIZEDTIME,
+          constructed: false,
+          optional: true,
           capture: "certValidity2GeneralizedTime"
         }, {
           // notAfter (Time) (only UTC time is supported)
           name: "Certificate.TBSCertificate.validity.notAfter (utc)",
-          tagClass: h.Class.UNIVERSAL,
-          type: h.Type.UTCTIME,
-          constructed: !1,
-          optional: !0,
+          tagClass: asn1$4.Class.UNIVERSAL,
+          type: asn1$4.Type.UTCTIME,
+          constructed: false,
+          optional: true,
           capture: "certValidity3UTCTime"
         }, {
           // notAfter (Time) (only UTC time is supported)
           name: "Certificate.TBSCertificate.validity.notAfter (generalized)",
-          tagClass: h.Class.UNIVERSAL,
-          type: h.Type.GENERALIZEDTIME,
-          constructed: !1,
-          optional: !0,
+          tagClass: asn1$4.Class.UNIVERSAL,
+          type: asn1$4.Type.GENERALIZEDTIME,
+          constructed: false,
+          optional: true,
           capture: "certValidity4GeneralizedTime"
         }]
       },
       {
         // Name (subject) (RDNSequence)
         name: "Certificate.TBSCertificate.subject",
-        tagClass: h.Class.UNIVERSAL,
-        type: h.Type.SEQUENCE,
-        constructed: !0,
+        tagClass: asn1$4.Class.UNIVERSAL,
+        type: asn1$4.Type.SEQUENCE,
+        constructed: true,
         captureAsn1: "certSubject"
       },
       // SubjectPublicKeyInfo
-      Vn,
+      publicKeyValidator$1,
       {
         // issuerUniqueID (optional)
         name: "Certificate.TBSCertificate.issuerUniqueID",
-        tagClass: h.Class.CONTEXT_SPECIFIC,
+        tagClass: asn1$4.Class.CONTEXT_SPECIFIC,
         type: 1,
-        constructed: !0,
-        optional: !0,
+        constructed: true,
+        optional: true,
         value: [{
           name: "Certificate.TBSCertificate.issuerUniqueID.id",
-          tagClass: h.Class.UNIVERSAL,
-          type: h.Type.BITSTRING,
-          constructed: !1,
+          tagClass: asn1$4.Class.UNIVERSAL,
+          type: asn1$4.Type.BITSTRING,
+          constructed: false,
           // TODO: support arbitrary bit length ids
           captureBitStringValue: "certIssuerUniqueId"
         }]
@@ -6265,15 +9497,15 @@ var Vn = K.pki.rsa.publicKeyValidator, $o = {
       {
         // subjectUniqueID (optional)
         name: "Certificate.TBSCertificate.subjectUniqueID",
-        tagClass: h.Class.CONTEXT_SPECIFIC,
+        tagClass: asn1$4.Class.CONTEXT_SPECIFIC,
         type: 2,
-        constructed: !0,
-        optional: !0,
+        constructed: true,
+        optional: true,
         value: [{
           name: "Certificate.TBSCertificate.subjectUniqueID.id",
-          tagClass: h.Class.UNIVERSAL,
-          type: h.Type.BITSTRING,
-          constructed: !1,
+          tagClass: asn1$4.Class.UNIVERSAL,
+          type: asn1$4.Type.BITSTRING,
+          constructed: false,
           // TODO: support arbitrary bit length ids
           captureBitStringValue: "certSubjectUniqueId"
         }]
@@ -6281,92 +9513,93 @@ var Vn = K.pki.rsa.publicKeyValidator, $o = {
       {
         // Extensions (optional)
         name: "Certificate.TBSCertificate.extensions",
-        tagClass: h.Class.CONTEXT_SPECIFIC,
+        tagClass: asn1$4.Class.CONTEXT_SPECIFIC,
         type: 3,
-        constructed: !0,
+        constructed: true,
         captureAsn1: "certExtensions",
-        optional: !0
+        optional: true
       }
     ]
   }, {
     // AlgorithmIdentifier (signature algorithm)
     name: "Certificate.signatureAlgorithm",
-    tagClass: h.Class.UNIVERSAL,
-    type: h.Type.SEQUENCE,
-    constructed: !0,
+    tagClass: asn1$4.Class.UNIVERSAL,
+    type: asn1$4.Type.SEQUENCE,
+    constructed: true,
     value: [{
       // algorithm
       name: "Certificate.signatureAlgorithm.algorithm",
-      tagClass: h.Class.UNIVERSAL,
-      type: h.Type.OID,
-      constructed: !1,
+      tagClass: asn1$4.Class.UNIVERSAL,
+      type: asn1$4.Type.OID,
+      constructed: false,
       capture: "certSignatureOid"
     }, {
       name: "Certificate.TBSCertificate.signature.parameters",
-      tagClass: h.Class.UNIVERSAL,
-      optional: !0,
+      tagClass: asn1$4.Class.UNIVERSAL,
+      optional: true,
       captureAsn1: "certSignatureParams"
     }]
   }, {
     // SignatureValue
     name: "Certificate.signatureValue",
-    tagClass: h.Class.UNIVERSAL,
-    type: h.Type.BITSTRING,
-    constructed: !1,
+    tagClass: asn1$4.Class.UNIVERSAL,
+    type: asn1$4.Type.BITSTRING,
+    constructed: false,
     captureBitStringValue: "certSignature"
   }]
-}, Wo = {
+};
+var rsassaPssParameterValidator = {
   name: "rsapss",
-  tagClass: h.Class.UNIVERSAL,
-  type: h.Type.SEQUENCE,
-  constructed: !0,
+  tagClass: asn1$4.Class.UNIVERSAL,
+  type: asn1$4.Type.SEQUENCE,
+  constructed: true,
   value: [{
     name: "rsapss.hashAlgorithm",
-    tagClass: h.Class.CONTEXT_SPECIFIC,
+    tagClass: asn1$4.Class.CONTEXT_SPECIFIC,
     type: 0,
-    constructed: !0,
+    constructed: true,
     value: [{
       name: "rsapss.hashAlgorithm.AlgorithmIdentifier",
-      tagClass: h.Class.UNIVERSAL,
-      type: h.Class.SEQUENCE,
-      constructed: !0,
-      optional: !0,
+      tagClass: asn1$4.Class.UNIVERSAL,
+      type: asn1$4.Class.SEQUENCE,
+      constructed: true,
+      optional: true,
       value: [{
         name: "rsapss.hashAlgorithm.AlgorithmIdentifier.algorithm",
-        tagClass: h.Class.UNIVERSAL,
-        type: h.Type.OID,
-        constructed: !1,
+        tagClass: asn1$4.Class.UNIVERSAL,
+        type: asn1$4.Type.OID,
+        constructed: false,
         capture: "hashOid"
         /* parameter block omitted, for SHA1 NULL anyhow. */
       }]
     }]
   }, {
     name: "rsapss.maskGenAlgorithm",
-    tagClass: h.Class.CONTEXT_SPECIFIC,
+    tagClass: asn1$4.Class.CONTEXT_SPECIFIC,
     type: 1,
-    constructed: !0,
+    constructed: true,
     value: [{
       name: "rsapss.maskGenAlgorithm.AlgorithmIdentifier",
-      tagClass: h.Class.UNIVERSAL,
-      type: h.Class.SEQUENCE,
-      constructed: !0,
-      optional: !0,
+      tagClass: asn1$4.Class.UNIVERSAL,
+      type: asn1$4.Class.SEQUENCE,
+      constructed: true,
+      optional: true,
       value: [{
         name: "rsapss.maskGenAlgorithm.AlgorithmIdentifier.algorithm",
-        tagClass: h.Class.UNIVERSAL,
-        type: h.Type.OID,
-        constructed: !1,
+        tagClass: asn1$4.Class.UNIVERSAL,
+        type: asn1$4.Type.OID,
+        constructed: false,
         capture: "maskGenOid"
       }, {
         name: "rsapss.maskGenAlgorithm.AlgorithmIdentifier.params",
-        tagClass: h.Class.UNIVERSAL,
-        type: h.Type.SEQUENCE,
-        constructed: !0,
+        tagClass: asn1$4.Class.UNIVERSAL,
+        type: asn1$4.Type.SEQUENCE,
+        constructed: true,
         value: [{
           name: "rsapss.maskGenAlgorithm.AlgorithmIdentifier.params.algorithm",
-          tagClass: h.Class.UNIVERSAL,
-          type: h.Type.OID,
-          constructed: !1,
+          tagClass: asn1$4.Class.UNIVERSAL,
+          type: asn1$4.Type.OID,
+          constructed: false,
           capture: "maskGenHashOid"
           /* parameter block omitted, for SHA1 NULL anyhow. */
         }]
@@ -6374,1124 +9607,1695 @@ var Vn = K.pki.rsa.publicKeyValidator, $o = {
     }]
   }, {
     name: "rsapss.saltLength",
-    tagClass: h.Class.CONTEXT_SPECIFIC,
+    tagClass: asn1$4.Class.CONTEXT_SPECIFIC,
     type: 2,
-    optional: !0,
+    optional: true,
     value: [{
       name: "rsapss.saltLength.saltLength",
-      tagClass: h.Class.UNIVERSAL,
-      type: h.Class.INTEGER,
-      constructed: !1,
+      tagClass: asn1$4.Class.UNIVERSAL,
+      type: asn1$4.Class.INTEGER,
+      constructed: false,
       capture: "saltLength"
     }]
   }, {
     name: "rsapss.trailerField",
-    tagClass: h.Class.CONTEXT_SPECIFIC,
+    tagClass: asn1$4.Class.CONTEXT_SPECIFIC,
     type: 3,
-    optional: !0,
+    optional: true,
     value: [{
       name: "rsapss.trailer.trailer",
-      tagClass: h.Class.UNIVERSAL,
-      type: h.Class.INTEGER,
-      constructed: !1,
+      tagClass: asn1$4.Class.UNIVERSAL,
+      type: asn1$4.Class.INTEGER,
+      constructed: false,
       capture: "trailer"
     }]
   }]
-}, Xo = {
+};
+var certificationRequestInfoValidator = {
   name: "CertificationRequestInfo",
-  tagClass: h.Class.UNIVERSAL,
-  type: h.Type.SEQUENCE,
-  constructed: !0,
+  tagClass: asn1$4.Class.UNIVERSAL,
+  type: asn1$4.Type.SEQUENCE,
+  constructed: true,
   captureAsn1: "certificationRequestInfo",
   value: [
     {
       name: "CertificationRequestInfo.integer",
-      tagClass: h.Class.UNIVERSAL,
-      type: h.Type.INTEGER,
-      constructed: !1,
+      tagClass: asn1$4.Class.UNIVERSAL,
+      type: asn1$4.Type.INTEGER,
+      constructed: false,
       capture: "certificationRequestInfoVersion"
     },
     {
       // Name (subject) (RDNSequence)
       name: "CertificationRequestInfo.subject",
-      tagClass: h.Class.UNIVERSAL,
-      type: h.Type.SEQUENCE,
-      constructed: !0,
+      tagClass: asn1$4.Class.UNIVERSAL,
+      type: asn1$4.Type.SEQUENCE,
+      constructed: true,
       captureAsn1: "certificationRequestInfoSubject"
     },
     // SubjectPublicKeyInfo
-    Vn,
+    publicKeyValidator$1,
     {
       name: "CertificationRequestInfo.attributes",
-      tagClass: h.Class.CONTEXT_SPECIFIC,
+      tagClass: asn1$4.Class.CONTEXT_SPECIFIC,
       type: 0,
-      constructed: !0,
-      optional: !0,
+      constructed: true,
+      optional: true,
       capture: "certificationRequestInfoAttributes",
       value: [{
         name: "CertificationRequestInfo.attributes",
-        tagClass: h.Class.UNIVERSAL,
-        type: h.Type.SEQUENCE,
-        constructed: !0,
+        tagClass: asn1$4.Class.UNIVERSAL,
+        type: asn1$4.Type.SEQUENCE,
+        constructed: true,
         value: [{
           name: "CertificationRequestInfo.attributes.type",
-          tagClass: h.Class.UNIVERSAL,
-          type: h.Type.OID,
-          constructed: !1
+          tagClass: asn1$4.Class.UNIVERSAL,
+          type: asn1$4.Type.OID,
+          constructed: false
         }, {
           name: "CertificationRequestInfo.attributes.value",
-          tagClass: h.Class.UNIVERSAL,
-          type: h.Type.SET,
-          constructed: !0
+          tagClass: asn1$4.Class.UNIVERSAL,
+          type: asn1$4.Type.SET,
+          constructed: true
         }]
       }]
     }
   ]
-}, jo = {
+};
+var certificationRequestValidator = {
   name: "CertificationRequest",
-  tagClass: h.Class.UNIVERSAL,
-  type: h.Type.SEQUENCE,
-  constructed: !0,
+  tagClass: asn1$4.Class.UNIVERSAL,
+  type: asn1$4.Type.SEQUENCE,
+  constructed: true,
   captureAsn1: "csr",
   value: [
-    Xo,
+    certificationRequestInfoValidator,
     {
       // AlgorithmIdentifier (signature algorithm)
       name: "CertificationRequest.signatureAlgorithm",
-      tagClass: h.Class.UNIVERSAL,
-      type: h.Type.SEQUENCE,
-      constructed: !0,
+      tagClass: asn1$4.Class.UNIVERSAL,
+      type: asn1$4.Type.SEQUENCE,
+      constructed: true,
       value: [{
         // algorithm
         name: "CertificationRequest.signatureAlgorithm.algorithm",
-        tagClass: h.Class.UNIVERSAL,
-        type: h.Type.OID,
-        constructed: !1,
+        tagClass: asn1$4.Class.UNIVERSAL,
+        type: asn1$4.Type.OID,
+        constructed: false,
         capture: "csrSignatureOid"
       }, {
         name: "CertificationRequest.signatureAlgorithm.parameters",
-        tagClass: h.Class.UNIVERSAL,
-        optional: !0,
+        tagClass: asn1$4.Class.UNIVERSAL,
+        optional: true,
         captureAsn1: "csrSignatureParams"
       }]
     },
     {
       // signature
       name: "CertificationRequest.signature",
-      tagClass: h.Class.UNIVERSAL,
-      type: h.Type.BITSTRING,
-      constructed: !1,
+      tagClass: asn1$4.Class.UNIVERSAL,
+      type: asn1$4.Type.BITSTRING,
+      constructed: false,
       captureBitStringValue: "csrSignature"
     }
   ]
 };
-L.RDNAttributesAsArray = function(e, t) {
-  for (var a = [], r, n, s, i = 0; i < e.value.length; ++i) {
-    r = e.value[i];
-    for (var o = 0; o < r.value.length; ++o)
-      s = {}, n = r.value[o], s.type = h.derToOid(n.value[0].value), s.value = n.value[1].value, s.valueTagClass = n.value[1].type, s.type in Z && (s.name = Z[s.type], s.name in de && (s.shortName = de[s.name])), t && (t.update(s.type), t.update(s.value)), a.push(s);
-  }
-  return a;
-};
-L.CRIAttributesAsArray = function(e) {
-  for (var t = [], a = 0; a < e.length; ++a)
-    for (var r = e[a], n = h.derToOid(r.value[0].value), s = r.value[1].value, i = 0; i < s.length; ++i) {
-      var o = {};
-      if (o.type = n, o.value = s[i].value, o.valueTagClass = s[i].type, o.type in Z && (o.name = Z[o.type], o.name in de && (o.shortName = de[o.name])), o.type === Z.extensionRequest) {
-        o.extensions = [];
-        for (var l = 0; l < o.value.length; ++l)
-          o.extensions.push(L.certificateExtensionFromAsn1(o.value[l]));
+pki$2.RDNAttributesAsArray = function(rdn, md) {
+  var rval = [];
+  var set, attr, obj;
+  for (var si = 0; si < rdn.value.length; ++si) {
+    set = rdn.value[si];
+    for (var i = 0; i < set.value.length; ++i) {
+      obj = {};
+      attr = set.value[i];
+      obj.type = asn1$4.derToOid(attr.value[0].value);
+      obj.value = attr.value[1].value;
+      obj.valueTagClass = attr.value[1].type;
+      if (obj.type in oids) {
+        obj.name = oids[obj.type];
+        if (obj.name in _shortNames) {
+          obj.shortName = _shortNames[obj.name];
+        }
       }
-      t.push(o);
+      if (md) {
+        md.update(obj.type);
+        md.update(obj.value);
+      }
+      rval.push(obj);
     }
-  return t;
-};
-function _t(e, t) {
-  typeof t == "string" && (t = { shortName: t });
-  for (var a = null, r, n = 0; a === null && n < e.attributes.length; ++n)
-    r = e.attributes[n], (t.type && t.type === r.type || t.name && t.name === r.name || t.shortName && t.shortName === r.shortName) && (a = r);
-  return a;
-}
-var _r = function(e, t, a) {
-  var r = {};
-  if (e !== Z["RSASSA-PSS"])
-    return r;
-  a && (r = {
-    hash: {
-      algorithmOid: Z.sha1
-    },
-    mgf: {
-      algorithmOid: Z.mgf1,
-      hash: {
-        algorithmOid: Z.sha1
-      }
-    },
-    saltLength: 20
-  });
-  var n = {}, s = [];
-  if (!h.validate(t, Wo, n, s)) {
-    var i = new Error("Cannot read RSASSA-PSS parameter block.");
-    throw i.errors = s, i;
   }
-  return n.hashOid !== void 0 && (r.hash = r.hash || {}, r.hash.algorithmOid = h.derToOid(n.hashOid)), n.maskGenOid !== void 0 && (r.mgf = r.mgf || {}, r.mgf.algorithmOid = h.derToOid(n.maskGenOid), r.mgf.hash = r.mgf.hash || {}, r.mgf.hash.algorithmOid = h.derToOid(n.maskGenHashOid)), n.saltLength !== void 0 && (r.saltLength = n.saltLength.charCodeAt(0)), r;
-}, Kr = function(e) {
-  switch (Z[e.signatureOid]) {
+  return rval;
+};
+pki$2.CRIAttributesAsArray = function(attributes) {
+  var rval = [];
+  for (var si = 0; si < attributes.length; ++si) {
+    var seq = attributes[si];
+    var type = asn1$4.derToOid(seq.value[0].value);
+    var values = seq.value[1].value;
+    for (var vi = 0; vi < values.length; ++vi) {
+      var obj = {};
+      obj.type = type;
+      obj.value = values[vi].value;
+      obj.valueTagClass = values[vi].type;
+      if (obj.type in oids) {
+        obj.name = oids[obj.type];
+        if (obj.name in _shortNames) {
+          obj.shortName = _shortNames[obj.name];
+        }
+      }
+      if (obj.type === oids.extensionRequest) {
+        obj.extensions = [];
+        for (var ei = 0; ei < obj.value.length; ++ei) {
+          obj.extensions.push(pki$2.certificateExtensionFromAsn1(obj.value[ei]));
+        }
+      }
+      rval.push(obj);
+    }
+  }
+  return rval;
+};
+function _getAttribute(obj, options) {
+  if (typeof options === "string") {
+    options = { shortName: options };
+  }
+  var rval = null;
+  var attr;
+  for (var i = 0; rval === null && i < obj.attributes.length; ++i) {
+    attr = obj.attributes[i];
+    if (options.type && options.type === attr.type) {
+      rval = attr;
+    } else if (options.name && options.name === attr.name) {
+      rval = attr;
+    } else if (options.shortName && options.shortName === attr.shortName) {
+      rval = attr;
+    }
+  }
+  return rval;
+}
+var _readSignatureParameters = function(oid, obj, fillDefaults) {
+  var params = {};
+  if (oid !== oids["RSASSA-PSS"]) {
+    return params;
+  }
+  if (fillDefaults) {
+    params = {
+      hash: {
+        algorithmOid: oids["sha1"]
+      },
+      mgf: {
+        algorithmOid: oids["mgf1"],
+        hash: {
+          algorithmOid: oids["sha1"]
+        }
+      },
+      saltLength: 20
+    };
+  }
+  var capture = {};
+  var errors = [];
+  if (!asn1$4.validate(obj, rsassaPssParameterValidator, capture, errors)) {
+    var error = new Error("Cannot read RSASSA-PSS parameter block.");
+    error.errors = errors;
+    throw error;
+  }
+  if (capture.hashOid !== void 0) {
+    params.hash = params.hash || {};
+    params.hash.algorithmOid = asn1$4.derToOid(capture.hashOid);
+  }
+  if (capture.maskGenOid !== void 0) {
+    params.mgf = params.mgf || {};
+    params.mgf.algorithmOid = asn1$4.derToOid(capture.maskGenOid);
+    params.mgf.hash = params.mgf.hash || {};
+    params.mgf.hash.algorithmOid = asn1$4.derToOid(capture.maskGenHashOid);
+  }
+  if (capture.saltLength !== void 0) {
+    params.saltLength = capture.saltLength.charCodeAt(0);
+  }
+  return params;
+};
+var _createSignatureDigest = function(options) {
+  switch (oids[options.signatureOid]) {
     case "sha1WithRSAEncryption":
     case "sha1WithRSASignature":
-      return K.md.sha1.create();
+      return forge$b.md.sha1.create();
     case "md5WithRSAEncryption":
-      return K.md.md5.create();
+      return forge$b.md.md5.create();
     case "sha256WithRSAEncryption":
-      return K.md.sha256.create();
+      return forge$b.md.sha256.create();
     case "sha384WithRSAEncryption":
-      return K.md.sha384.create();
+      return forge$b.md.sha384.create();
     case "sha512WithRSAEncryption":
-      return K.md.sha512.create();
+      return forge$b.md.sha512.create();
     case "RSASSA-PSS":
-      return K.md.sha256.create();
+      return forge$b.md.sha256.create();
     default:
-      var t = new Error(
-        "Could not compute " + e.type + " digest. Unknown signature OID."
+      var error = new Error(
+        "Could not compute " + options.type + " digest. Unknown signature OID."
       );
-      throw t.signatureOid = e.signatureOid, t;
+      error.signatureOid = options.signatureOid;
+      throw error;
   }
-}, On = function(e) {
-  var t = e.certificate, a;
-  switch (t.signatureOid) {
-    case Z.sha1WithRSAEncryption:
-    case Z.sha1WithRSASignature:
+};
+var _verifySignature = function(options) {
+  var cert = options.certificate;
+  var scheme;
+  switch (cert.signatureOid) {
+    case oids.sha1WithRSAEncryption:
+    case oids.sha1WithRSASignature:
       break;
-    case Z["RSASSA-PSS"]:
-      var r, n;
-      if (r = Z[t.signatureParameters.mgf.hash.algorithmOid], r === void 0 || K.md[r] === void 0) {
-        var s = new Error("Unsupported MGF hash function.");
-        throw s.oid = t.signatureParameters.mgf.hash.algorithmOid, s.name = r, s;
+    case oids["RSASSA-PSS"]:
+      var hash2, mgf;
+      hash2 = oids[cert.signatureParameters.mgf.hash.algorithmOid];
+      if (hash2 === void 0 || forge$b.md[hash2] === void 0) {
+        var error = new Error("Unsupported MGF hash function.");
+        error.oid = cert.signatureParameters.mgf.hash.algorithmOid;
+        error.name = hash2;
+        throw error;
       }
-      if (n = Z[t.signatureParameters.mgf.algorithmOid], n === void 0 || K.mgf[n] === void 0) {
-        var s = new Error("Unsupported MGF function.");
-        throw s.oid = t.signatureParameters.mgf.algorithmOid, s.name = n, s;
+      mgf = oids[cert.signatureParameters.mgf.algorithmOid];
+      if (mgf === void 0 || forge$b.mgf[mgf] === void 0) {
+        var error = new Error("Unsupported MGF function.");
+        error.oid = cert.signatureParameters.mgf.algorithmOid;
+        error.name = mgf;
+        throw error;
       }
-      if (n = K.mgf[n].create(K.md[r].create()), r = Z[t.signatureParameters.hash.algorithmOid], r === void 0 || K.md[r] === void 0) {
-        var s = new Error("Unsupported RSASSA-PSS hash function.");
-        throw s.oid = t.signatureParameters.hash.algorithmOid, s.name = r, s;
+      mgf = forge$b.mgf[mgf].create(forge$b.md[hash2].create());
+      hash2 = oids[cert.signatureParameters.hash.algorithmOid];
+      if (hash2 === void 0 || forge$b.md[hash2] === void 0) {
+        var error = new Error("Unsupported RSASSA-PSS hash function.");
+        error.oid = cert.signatureParameters.hash.algorithmOid;
+        error.name = hash2;
+        throw error;
       }
-      a = K.pss.create(
-        K.md[r].create(),
-        n,
-        t.signatureParameters.saltLength
+      scheme = forge$b.pss.create(
+        forge$b.md[hash2].create(),
+        mgf,
+        cert.signatureParameters.saltLength
       );
       break;
   }
-  return t.publicKey.verify(
-    e.md.digest().getBytes(),
-    e.signature,
-    a
+  return cert.publicKey.verify(
+    options.md.digest().getBytes(),
+    options.signature,
+    scheme
   );
 };
-L.certificateFromPem = function(e, t, a) {
-  var r = K.pem.decode(e)[0];
-  if (r.type !== "CERTIFICATE" && r.type !== "X509 CERTIFICATE" && r.type !== "TRUSTED CERTIFICATE") {
-    var n = new Error(
+pki$2.certificateFromPem = function(pem2, computeHash, strict) {
+  var msg = forge$b.pem.decode(pem2)[0];
+  if (msg.type !== "CERTIFICATE" && msg.type !== "X509 CERTIFICATE" && msg.type !== "TRUSTED CERTIFICATE") {
+    var error = new Error(
       'Could not convert certificate from PEM; PEM header type is not "CERTIFICATE", "X509 CERTIFICATE", or "TRUSTED CERTIFICATE".'
     );
-    throw n.headerType = r.type, n;
+    error.headerType = msg.type;
+    throw error;
   }
-  if (r.procType && r.procType.type === "ENCRYPTED")
+  if (msg.procType && msg.procType.type === "ENCRYPTED") {
     throw new Error(
       "Could not convert certificate from PEM; PEM is encrypted."
     );
-  var s = h.fromDer(r.body, a);
-  return L.certificateFromAsn1(s, t);
-};
-L.certificateToPem = function(e, t) {
-  var a = {
-    type: "CERTIFICATE",
-    body: h.toDer(L.certificateToAsn1(e)).getBytes()
-  };
-  return K.pem.encode(a, { maxline: t });
-};
-L.publicKeyFromPem = function(e) {
-  var t = K.pem.decode(e)[0];
-  if (t.type !== "PUBLIC KEY" && t.type !== "RSA PUBLIC KEY") {
-    var a = new Error('Could not convert public key from PEM; PEM header type is not "PUBLIC KEY" or "RSA PUBLIC KEY".');
-    throw a.headerType = t.type, a;
   }
-  if (t.procType && t.procType.type === "ENCRYPTED")
+  var obj = asn1$4.fromDer(msg.body, strict);
+  return pki$2.certificateFromAsn1(obj, computeHash);
+};
+pki$2.certificateToPem = function(cert, maxline) {
+  var msg = {
+    type: "CERTIFICATE",
+    body: asn1$4.toDer(pki$2.certificateToAsn1(cert)).getBytes()
+  };
+  return forge$b.pem.encode(msg, { maxline });
+};
+pki$2.publicKeyFromPem = function(pem2) {
+  var msg = forge$b.pem.decode(pem2)[0];
+  if (msg.type !== "PUBLIC KEY" && msg.type !== "RSA PUBLIC KEY") {
+    var error = new Error('Could not convert public key from PEM; PEM header type is not "PUBLIC KEY" or "RSA PUBLIC KEY".');
+    error.headerType = msg.type;
+    throw error;
+  }
+  if (msg.procType && msg.procType.type === "ENCRYPTED") {
     throw new Error("Could not convert public key from PEM; PEM is encrypted.");
-  var r = h.fromDer(t.body);
-  return L.publicKeyFromAsn1(r);
+  }
+  var obj = asn1$4.fromDer(msg.body);
+  return pki$2.publicKeyFromAsn1(obj);
 };
-L.publicKeyToPem = function(e, t) {
-  var a = {
+pki$2.publicKeyToPem = function(key, maxline) {
+  var msg = {
     type: "PUBLIC KEY",
-    body: h.toDer(L.publicKeyToAsn1(e)).getBytes()
+    body: asn1$4.toDer(pki$2.publicKeyToAsn1(key)).getBytes()
   };
-  return K.pem.encode(a, { maxline: t });
+  return forge$b.pem.encode(msg, { maxline });
 };
-L.publicKeyToRSAPublicKeyPem = function(e, t) {
-  var a = {
+pki$2.publicKeyToRSAPublicKeyPem = function(key, maxline) {
+  var msg = {
     type: "RSA PUBLIC KEY",
-    body: h.toDer(L.publicKeyToRSAPublicKey(e)).getBytes()
+    body: asn1$4.toDer(pki$2.publicKeyToRSAPublicKey(key)).getBytes()
   };
-  return K.pem.encode(a, { maxline: t });
+  return forge$b.pem.encode(msg, { maxline });
 };
-L.getPublicKeyFingerprint = function(e, t) {
-  t = t || {};
-  var a = t.md || K.md.sha1.create(), r = t.type || "RSAPublicKey", n;
-  switch (r) {
+pki$2.getPublicKeyFingerprint = function(key, options) {
+  options = options || {};
+  var md = options.md || forge$b.md.sha1.create();
+  var type = options.type || "RSAPublicKey";
+  var bytes;
+  switch (type) {
     case "RSAPublicKey":
-      n = h.toDer(L.publicKeyToRSAPublicKey(e)).getBytes();
+      bytes = asn1$4.toDer(pki$2.publicKeyToRSAPublicKey(key)).getBytes();
       break;
     case "SubjectPublicKeyInfo":
-      n = h.toDer(L.publicKeyToAsn1(e)).getBytes();
+      bytes = asn1$4.toDer(pki$2.publicKeyToAsn1(key)).getBytes();
       break;
     default:
-      throw new Error('Unknown fingerprint type "' + t.type + '".');
+      throw new Error('Unknown fingerprint type "' + options.type + '".');
   }
-  a.start(), a.update(n);
-  var s = a.digest();
-  if (t.encoding === "hex") {
-    var i = s.toHex();
-    return t.delimiter ? i.match(/.{2}/g).join(t.delimiter) : i;
-  } else {
-    if (t.encoding === "binary")
-      return s.getBytes();
-    if (t.encoding)
-      throw new Error('Unknown encoding "' + t.encoding + '".');
-  }
-  return s;
-};
-L.certificationRequestFromPem = function(e, t, a) {
-  var r = K.pem.decode(e)[0];
-  if (r.type !== "CERTIFICATE REQUEST") {
-    var n = new Error('Could not convert certification request from PEM; PEM header type is not "CERTIFICATE REQUEST".');
-    throw n.headerType = r.type, n;
-  }
-  if (r.procType && r.procType.type === "ENCRYPTED")
-    throw new Error("Could not convert certification request from PEM; PEM is encrypted.");
-  var s = h.fromDer(r.body, a);
-  return L.certificationRequestFromAsn1(s, t);
-};
-L.certificationRequestToPem = function(e, t) {
-  var a = {
-    type: "CERTIFICATE REQUEST",
-    body: h.toDer(L.certificationRequestToAsn1(e)).getBytes()
-  };
-  return K.pem.encode(a, { maxline: t });
-};
-L.createCertificate = function() {
-  var e = {};
-  return e.version = 2, e.serialNumber = "00", e.signatureOid = null, e.signature = null, e.siginfo = {}, e.siginfo.algorithmOid = null, e.validity = {}, e.validity.notBefore = /* @__PURE__ */ new Date(), e.validity.notAfter = /* @__PURE__ */ new Date(), e.issuer = {}, e.issuer.getField = function(t) {
-    return _t(e.issuer, t);
-  }, e.issuer.addField = function(t) {
-    et([t]), e.issuer.attributes.push(t);
-  }, e.issuer.attributes = [], e.issuer.hash = null, e.subject = {}, e.subject.getField = function(t) {
-    return _t(e.subject, t);
-  }, e.subject.addField = function(t) {
-    et([t]), e.subject.attributes.push(t);
-  }, e.subject.attributes = [], e.subject.hash = null, e.extensions = [], e.publicKey = null, e.md = null, e.setSubject = function(t, a) {
-    et(t), e.subject.attributes = t, delete e.subject.uniqueId, a && (e.subject.uniqueId = a), e.subject.hash = null;
-  }, e.setIssuer = function(t, a) {
-    et(t), e.issuer.attributes = t, delete e.issuer.uniqueId, a && (e.issuer.uniqueId = a), e.issuer.hash = null;
-  }, e.setExtensions = function(t) {
-    for (var a = 0; a < t.length; ++a)
-      Fn(t[a], { cert: e });
-    e.extensions = t;
-  }, e.getExtension = function(t) {
-    typeof t == "string" && (t = { name: t });
-    for (var a = null, r, n = 0; a === null && n < e.extensions.length; ++n)
-      r = e.extensions[n], (t.id && r.id === t.id || t.name && r.name === t.name) && (a = r);
-    return a;
-  }, e.sign = function(t, a) {
-    e.md = a || K.md.sha1.create();
-    var r = Z[e.md.algorithm + "WithRSAEncryption"];
-    if (!r) {
-      var n = new Error("Could not compute certificate digest. Unknown message digest algorithm OID.");
-      throw n.algorithm = e.md.algorithm, n;
+  md.start();
+  md.update(bytes);
+  var digest = md.digest();
+  if (options.encoding === "hex") {
+    var hex = digest.toHex();
+    if (options.delimiter) {
+      return hex.match(/.{2}/g).join(options.delimiter);
     }
-    e.signatureOid = e.siginfo.algorithmOid = r, e.tbsCertificate = L.getTBSCertificate(e);
-    var s = h.toDer(e.tbsCertificate);
-    e.md.update(s.getBytes()), e.signature = t.sign(e.md);
-  }, e.verify = function(t) {
-    var a = !1;
-    if (!e.issued(t)) {
-      var r = t.issuer, n = e.subject, s = new Error(
+    return hex;
+  } else if (options.encoding === "binary") {
+    return digest.getBytes();
+  } else if (options.encoding) {
+    throw new Error('Unknown encoding "' + options.encoding + '".');
+  }
+  return digest;
+};
+pki$2.certificationRequestFromPem = function(pem2, computeHash, strict) {
+  var msg = forge$b.pem.decode(pem2)[0];
+  if (msg.type !== "CERTIFICATE REQUEST") {
+    var error = new Error('Could not convert certification request from PEM; PEM header type is not "CERTIFICATE REQUEST".');
+    error.headerType = msg.type;
+    throw error;
+  }
+  if (msg.procType && msg.procType.type === "ENCRYPTED") {
+    throw new Error("Could not convert certification request from PEM; PEM is encrypted.");
+  }
+  var obj = asn1$4.fromDer(msg.body, strict);
+  return pki$2.certificationRequestFromAsn1(obj, computeHash);
+};
+pki$2.certificationRequestToPem = function(csr, maxline) {
+  var msg = {
+    type: "CERTIFICATE REQUEST",
+    body: asn1$4.toDer(pki$2.certificationRequestToAsn1(csr)).getBytes()
+  };
+  return forge$b.pem.encode(msg, { maxline });
+};
+pki$2.createCertificate = function() {
+  var cert = {};
+  cert.version = 2;
+  cert.serialNumber = "00";
+  cert.signatureOid = null;
+  cert.signature = null;
+  cert.siginfo = {};
+  cert.siginfo.algorithmOid = null;
+  cert.validity = {};
+  cert.validity.notBefore = /* @__PURE__ */ new Date();
+  cert.validity.notAfter = /* @__PURE__ */ new Date();
+  cert.issuer = {};
+  cert.issuer.getField = function(sn) {
+    return _getAttribute(cert.issuer, sn);
+  };
+  cert.issuer.addField = function(attr) {
+    _fillMissingFields([attr]);
+    cert.issuer.attributes.push(attr);
+  };
+  cert.issuer.attributes = [];
+  cert.issuer.hash = null;
+  cert.subject = {};
+  cert.subject.getField = function(sn) {
+    return _getAttribute(cert.subject, sn);
+  };
+  cert.subject.addField = function(attr) {
+    _fillMissingFields([attr]);
+    cert.subject.attributes.push(attr);
+  };
+  cert.subject.attributes = [];
+  cert.subject.hash = null;
+  cert.extensions = [];
+  cert.publicKey = null;
+  cert.md = null;
+  cert.setSubject = function(attrs, uniqueId) {
+    _fillMissingFields(attrs);
+    cert.subject.attributes = attrs;
+    delete cert.subject.uniqueId;
+    if (uniqueId) {
+      cert.subject.uniqueId = uniqueId;
+    }
+    cert.subject.hash = null;
+  };
+  cert.setIssuer = function(attrs, uniqueId) {
+    _fillMissingFields(attrs);
+    cert.issuer.attributes = attrs;
+    delete cert.issuer.uniqueId;
+    if (uniqueId) {
+      cert.issuer.uniqueId = uniqueId;
+    }
+    cert.issuer.hash = null;
+  };
+  cert.setExtensions = function(exts) {
+    for (var i = 0; i < exts.length; ++i) {
+      _fillMissingExtensionFields(exts[i], { cert });
+    }
+    cert.extensions = exts;
+  };
+  cert.getExtension = function(options) {
+    if (typeof options === "string") {
+      options = { name: options };
+    }
+    var rval = null;
+    var ext;
+    for (var i = 0; rval === null && i < cert.extensions.length; ++i) {
+      ext = cert.extensions[i];
+      if (options.id && ext.id === options.id) {
+        rval = ext;
+      } else if (options.name && ext.name === options.name) {
+        rval = ext;
+      }
+    }
+    return rval;
+  };
+  cert.sign = function(key, md) {
+    cert.md = md || forge$b.md.sha1.create();
+    var algorithmOid = oids[cert.md.algorithm + "WithRSAEncryption"];
+    if (!algorithmOid) {
+      var error = new Error("Could not compute certificate digest. Unknown message digest algorithm OID.");
+      error.algorithm = cert.md.algorithm;
+      throw error;
+    }
+    cert.signatureOid = cert.siginfo.algorithmOid = algorithmOid;
+    cert.tbsCertificate = pki$2.getTBSCertificate(cert);
+    var bytes = asn1$4.toDer(cert.tbsCertificate);
+    cert.md.update(bytes.getBytes());
+    cert.signature = key.sign(cert.md);
+  };
+  cert.verify = function(child) {
+    var rval = false;
+    if (!cert.issued(child)) {
+      var issuer = child.issuer;
+      var subject = cert.subject;
+      var error = new Error(
         "The parent certificate did not issue the given child certificate; the child certificate's issuer does not match the parent's subject."
       );
-      throw s.expectedIssuer = n.attributes, s.actualIssuer = r.attributes, s;
+      error.expectedIssuer = subject.attributes;
+      error.actualIssuer = issuer.attributes;
+      throw error;
     }
-    var i = t.md;
-    if (i === null) {
-      i = Kr({
-        signatureOid: t.signatureOid,
+    var md = child.md;
+    if (md === null) {
+      md = _createSignatureDigest({
+        signatureOid: child.signatureOid,
         type: "certificate"
       });
-      var o = t.tbsCertificate || L.getTBSCertificate(t), l = h.toDer(o);
-      i.update(l.getBytes());
+      var tbsCertificate = child.tbsCertificate || pki$2.getTBSCertificate(child);
+      var bytes = asn1$4.toDer(tbsCertificate);
+      md.update(bytes.getBytes());
     }
-    return i !== null && (a = On({
-      certificate: e,
-      md: i,
-      signature: t.signature
-    })), a;
-  }, e.isIssuer = function(t) {
-    var a = !1, r = e.issuer, n = t.subject;
-    if (r.hash && n.hash)
-      a = r.hash === n.hash;
-    else if (r.attributes.length === n.attributes.length) {
-      a = !0;
-      for (var s, i, o = 0; a && o < r.attributes.length; ++o)
-        s = r.attributes[o], i = n.attributes[o], (s.type !== i.type || s.value !== i.value) && (a = !1);
+    if (md !== null) {
+      rval = _verifySignature({
+        certificate: cert,
+        md,
+        signature: child.signature
+      });
     }
-    return a;
-  }, e.issued = function(t) {
-    return t.isIssuer(e);
-  }, e.generateSubjectKeyIdentifier = function() {
-    return L.getPublicKeyFingerprint(e.publicKey, { type: "RSAPublicKey" });
-  }, e.verifySubjectKeyIdentifier = function() {
-    for (var t = Z.subjectKeyIdentifier, a = 0; a < e.extensions.length; ++a) {
-      var r = e.extensions[a];
-      if (r.id === t) {
-        var n = e.generateSubjectKeyIdentifier().getBytes();
-        return K.util.hexToBytes(r.subjectKeyIdentifier) === n;
+    return rval;
+  };
+  cert.isIssuer = function(parent) {
+    var rval = false;
+    var i = cert.issuer;
+    var s2 = parent.subject;
+    if (i.hash && s2.hash) {
+      rval = i.hash === s2.hash;
+    } else if (i.attributes.length === s2.attributes.length) {
+      rval = true;
+      var iattr, sattr;
+      for (var n = 0; rval && n < i.attributes.length; ++n) {
+        iattr = i.attributes[n];
+        sattr = s2.attributes[n];
+        if (iattr.type !== sattr.type || iattr.value !== sattr.value) {
+          rval = false;
+        }
       }
     }
-    return !1;
-  }, e;
+    return rval;
+  };
+  cert.issued = function(child) {
+    return child.isIssuer(cert);
+  };
+  cert.generateSubjectKeyIdentifier = function() {
+    return pki$2.getPublicKeyFingerprint(cert.publicKey, { type: "RSAPublicKey" });
+  };
+  cert.verifySubjectKeyIdentifier = function() {
+    var oid = oids["subjectKeyIdentifier"];
+    for (var i = 0; i < cert.extensions.length; ++i) {
+      var ext = cert.extensions[i];
+      if (ext.id === oid) {
+        var ski = cert.generateSubjectKeyIdentifier().getBytes();
+        return forge$b.util.hexToBytes(ext.subjectKeyIdentifier) === ski;
+      }
+    }
+    return false;
+  };
+  return cert;
 };
-L.certificateFromAsn1 = function(e, t) {
-  var a = {}, r = [];
-  if (!h.validate(e, $o, a, r)) {
-    var n = new Error("Cannot read X.509 certificate. ASN.1 object is not an X509v3 Certificate.");
-    throw n.errors = r, n;
+pki$2.certificateFromAsn1 = function(obj, computeHash) {
+  var capture = {};
+  var errors = [];
+  if (!asn1$4.validate(obj, x509CertificateValidator, capture, errors)) {
+    var error = new Error("Cannot read X.509 certificate. ASN.1 object is not an X509v3 Certificate.");
+    error.errors = errors;
+    throw error;
   }
-  var s = h.derToOid(a.publicKeyOid);
-  if (s !== L.oids.rsaEncryption)
+  var oid = asn1$4.derToOid(capture.publicKeyOid);
+  if (oid !== pki$2.oids.rsaEncryption) {
     throw new Error("Cannot read public key. OID is not RSA.");
-  var i = L.createCertificate();
-  i.version = a.certVersion ? a.certVersion.charCodeAt(0) : 0;
-  var o = K.util.createBuffer(a.certSerialNumber);
-  i.serialNumber = o.toHex(), i.signatureOid = K.asn1.derToOid(a.certSignatureOid), i.signatureParameters = _r(
-    i.signatureOid,
-    a.certSignatureParams,
-    !0
-  ), i.siginfo.algorithmOid = K.asn1.derToOid(a.certinfoSignatureOid), i.siginfo.parameters = _r(
-    i.siginfo.algorithmOid,
-    a.certinfoSignatureParams,
-    !1
-  ), i.signature = a.certSignature;
-  var l = [];
-  if (a.certValidity1UTCTime !== void 0 && l.push(h.utcTimeToDate(a.certValidity1UTCTime)), a.certValidity2GeneralizedTime !== void 0 && l.push(h.generalizedTimeToDate(
-    a.certValidity2GeneralizedTime
-  )), a.certValidity3UTCTime !== void 0 && l.push(h.utcTimeToDate(a.certValidity3UTCTime)), a.certValidity4GeneralizedTime !== void 0 && l.push(h.generalizedTimeToDate(
-    a.certValidity4GeneralizedTime
-  )), l.length > 2)
+  }
+  var cert = pki$2.createCertificate();
+  cert.version = capture.certVersion ? capture.certVersion.charCodeAt(0) : 0;
+  var serial = forge$b.util.createBuffer(capture.certSerialNumber);
+  cert.serialNumber = serial.toHex();
+  cert.signatureOid = forge$b.asn1.derToOid(capture.certSignatureOid);
+  cert.signatureParameters = _readSignatureParameters(
+    cert.signatureOid,
+    capture.certSignatureParams,
+    true
+  );
+  cert.siginfo.algorithmOid = forge$b.asn1.derToOid(capture.certinfoSignatureOid);
+  cert.siginfo.parameters = _readSignatureParameters(
+    cert.siginfo.algorithmOid,
+    capture.certinfoSignatureParams,
+    false
+  );
+  cert.signature = capture.certSignature;
+  var validity = [];
+  if (capture.certValidity1UTCTime !== void 0) {
+    validity.push(asn1$4.utcTimeToDate(capture.certValidity1UTCTime));
+  }
+  if (capture.certValidity2GeneralizedTime !== void 0) {
+    validity.push(asn1$4.generalizedTimeToDate(
+      capture.certValidity2GeneralizedTime
+    ));
+  }
+  if (capture.certValidity3UTCTime !== void 0) {
+    validity.push(asn1$4.utcTimeToDate(capture.certValidity3UTCTime));
+  }
+  if (capture.certValidity4GeneralizedTime !== void 0) {
+    validity.push(asn1$4.generalizedTimeToDate(
+      capture.certValidity4GeneralizedTime
+    ));
+  }
+  if (validity.length > 2) {
     throw new Error("Cannot read notBefore/notAfter validity times; more than two times were provided in the certificate.");
-  if (l.length < 2)
+  }
+  if (validity.length < 2) {
     throw new Error("Cannot read notBefore/notAfter validity times; they were not provided as either UTCTime or GeneralizedTime.");
-  if (i.validity.notBefore = l[0], i.validity.notAfter = l[1], i.tbsCertificate = a.tbsCertificate, t) {
-    i.md = Kr({
-      signatureOid: i.signatureOid,
+  }
+  cert.validity.notBefore = validity[0];
+  cert.validity.notAfter = validity[1];
+  cert.tbsCertificate = capture.tbsCertificate;
+  if (computeHash) {
+    cert.md = _createSignatureDigest({
+      signatureOid: cert.signatureOid,
       type: "certificate"
     });
-    var u = h.toDer(i.tbsCertificate);
-    i.md.update(u.getBytes());
+    var bytes = asn1$4.toDer(cert.tbsCertificate);
+    cert.md.update(bytes.getBytes());
   }
-  var f = K.md.sha1.create(), c = h.toDer(a.certIssuer);
-  f.update(c.getBytes()), i.issuer.getField = function(y) {
-    return _t(i.issuer, y);
-  }, i.issuer.addField = function(y) {
-    et([y]), i.issuer.attributes.push(y);
-  }, i.issuer.attributes = L.RDNAttributesAsArray(a.certIssuer), a.certIssuerUniqueId && (i.issuer.uniqueId = a.certIssuerUniqueId), i.issuer.hash = f.digest().toHex();
-  var v = K.md.sha1.create(), m = h.toDer(a.certSubject);
-  return v.update(m.getBytes()), i.subject.getField = function(y) {
-    return _t(i.subject, y);
-  }, i.subject.addField = function(y) {
-    et([y]), i.subject.attributes.push(y);
-  }, i.subject.attributes = L.RDNAttributesAsArray(a.certSubject), a.certSubjectUniqueId && (i.subject.uniqueId = a.certSubjectUniqueId), i.subject.hash = v.digest().toHex(), a.certExtensions ? i.extensions = L.certificateExtensionsFromAsn1(a.certExtensions) : i.extensions = [], i.publicKey = L.publicKeyFromAsn1(a.subjectPublicKeyInfo), i;
+  var imd = forge$b.md.sha1.create();
+  var ibytes = asn1$4.toDer(capture.certIssuer);
+  imd.update(ibytes.getBytes());
+  cert.issuer.getField = function(sn) {
+    return _getAttribute(cert.issuer, sn);
+  };
+  cert.issuer.addField = function(attr) {
+    _fillMissingFields([attr]);
+    cert.issuer.attributes.push(attr);
+  };
+  cert.issuer.attributes = pki$2.RDNAttributesAsArray(capture.certIssuer);
+  if (capture.certIssuerUniqueId) {
+    cert.issuer.uniqueId = capture.certIssuerUniqueId;
+  }
+  cert.issuer.hash = imd.digest().toHex();
+  var smd = forge$b.md.sha1.create();
+  var sbytes = asn1$4.toDer(capture.certSubject);
+  smd.update(sbytes.getBytes());
+  cert.subject.getField = function(sn) {
+    return _getAttribute(cert.subject, sn);
+  };
+  cert.subject.addField = function(attr) {
+    _fillMissingFields([attr]);
+    cert.subject.attributes.push(attr);
+  };
+  cert.subject.attributes = pki$2.RDNAttributesAsArray(capture.certSubject);
+  if (capture.certSubjectUniqueId) {
+    cert.subject.uniqueId = capture.certSubjectUniqueId;
+  }
+  cert.subject.hash = smd.digest().toHex();
+  if (capture.certExtensions) {
+    cert.extensions = pki$2.certificateExtensionsFromAsn1(capture.certExtensions);
+  } else {
+    cert.extensions = [];
+  }
+  cert.publicKey = pki$2.publicKeyFromAsn1(capture.subjectPublicKeyInfo);
+  return cert;
 };
-L.certificateExtensionsFromAsn1 = function(e) {
-  for (var t = [], a = 0; a < e.value.length; ++a)
-    for (var r = e.value[a], n = 0; n < r.value.length; ++n)
-      t.push(L.certificateExtensionFromAsn1(r.value[n]));
-  return t;
+pki$2.certificateExtensionsFromAsn1 = function(exts) {
+  var rval = [];
+  for (var i = 0; i < exts.value.length; ++i) {
+    var extseq = exts.value[i];
+    for (var ei = 0; ei < extseq.value.length; ++ei) {
+      rval.push(pki$2.certificateExtensionFromAsn1(extseq.value[ei]));
+    }
+  }
+  return rval;
 };
-L.certificateExtensionFromAsn1 = function(e) {
-  var t = {};
-  if (t.id = h.derToOid(e.value[0].value), t.critical = !1, e.value[1].type === h.Type.BOOLEAN ? (t.critical = e.value[1].value.charCodeAt(0) !== 0, t.value = e.value[2].value) : t.value = e.value[1].value, t.id in Z) {
-    if (t.name = Z[t.id], t.name === "keyUsage") {
-      var a = h.fromDer(t.value), r = 0, n = 0;
-      a.value.length > 1 && (r = a.value.charCodeAt(1), n = a.value.length > 2 ? a.value.charCodeAt(2) : 0), t.digitalSignature = (r & 128) === 128, t.nonRepudiation = (r & 64) === 64, t.keyEncipherment = (r & 32) === 32, t.dataEncipherment = (r & 16) === 16, t.keyAgreement = (r & 8) === 8, t.keyCertSign = (r & 4) === 4, t.cRLSign = (r & 2) === 2, t.encipherOnly = (r & 1) === 1, t.decipherOnly = (n & 128) === 128;
-    } else if (t.name === "basicConstraints") {
-      var a = h.fromDer(t.value);
-      a.value.length > 0 && a.value[0].type === h.Type.BOOLEAN ? t.cA = a.value[0].value.charCodeAt(0) !== 0 : t.cA = !1;
-      var s = null;
-      a.value.length > 0 && a.value[0].type === h.Type.INTEGER ? s = a.value[0].value : a.value.length > 1 && (s = a.value[1].value), s !== null && (t.pathLenConstraint = h.derToInteger(s));
-    } else if (t.name === "extKeyUsage")
-      for (var a = h.fromDer(t.value), i = 0; i < a.value.length; ++i) {
-        var o = h.derToOid(a.value[i].value);
-        o in Z ? t[Z[o]] = !0 : t[o] = !0;
+pki$2.certificateExtensionFromAsn1 = function(ext) {
+  var e = {};
+  e.id = asn1$4.derToOid(ext.value[0].value);
+  e.critical = false;
+  if (ext.value[1].type === asn1$4.Type.BOOLEAN) {
+    e.critical = ext.value[1].value.charCodeAt(0) !== 0;
+    e.value = ext.value[2].value;
+  } else {
+    e.value = ext.value[1].value;
+  }
+  if (e.id in oids) {
+    e.name = oids[e.id];
+    if (e.name === "keyUsage") {
+      var ev = asn1$4.fromDer(e.value);
+      var b2 = 0;
+      var b3 = 0;
+      if (ev.value.length > 1) {
+        b2 = ev.value.charCodeAt(1);
+        b3 = ev.value.length > 2 ? ev.value.charCodeAt(2) : 0;
       }
-    else if (t.name === "nsCertType") {
-      var a = h.fromDer(t.value), r = 0;
-      a.value.length > 1 && (r = a.value.charCodeAt(1)), t.client = (r & 128) === 128, t.server = (r & 64) === 64, t.email = (r & 32) === 32, t.objsign = (r & 16) === 16, t.reserved = (r & 8) === 8, t.sslCA = (r & 4) === 4, t.emailCA = (r & 2) === 2, t.objCA = (r & 1) === 1;
-    } else if (t.name === "subjectAltName" || t.name === "issuerAltName") {
-      t.altNames = [];
-      for (var l, a = h.fromDer(t.value), u = 0; u < a.value.length; ++u) {
-        l = a.value[u];
-        var f = {
-          type: l.type,
-          value: l.value
+      e.digitalSignature = (b2 & 128) === 128;
+      e.nonRepudiation = (b2 & 64) === 64;
+      e.keyEncipherment = (b2 & 32) === 32;
+      e.dataEncipherment = (b2 & 16) === 16;
+      e.keyAgreement = (b2 & 8) === 8;
+      e.keyCertSign = (b2 & 4) === 4;
+      e.cRLSign = (b2 & 2) === 2;
+      e.encipherOnly = (b2 & 1) === 1;
+      e.decipherOnly = (b3 & 128) === 128;
+    } else if (e.name === "basicConstraints") {
+      var ev = asn1$4.fromDer(e.value);
+      if (ev.value.length > 0 && ev.value[0].type === asn1$4.Type.BOOLEAN) {
+        e.cA = ev.value[0].value.charCodeAt(0) !== 0;
+      } else {
+        e.cA = false;
+      }
+      var value = null;
+      if (ev.value.length > 0 && ev.value[0].type === asn1$4.Type.INTEGER) {
+        value = ev.value[0].value;
+      } else if (ev.value.length > 1) {
+        value = ev.value[1].value;
+      }
+      if (value !== null) {
+        e.pathLenConstraint = asn1$4.derToInteger(value);
+      }
+    } else if (e.name === "extKeyUsage") {
+      var ev = asn1$4.fromDer(e.value);
+      for (var vi = 0; vi < ev.value.length; ++vi) {
+        var oid = asn1$4.derToOid(ev.value[vi].value);
+        if (oid in oids) {
+          e[oids[oid]] = true;
+        } else {
+          e[oid] = true;
+        }
+      }
+    } else if (e.name === "nsCertType") {
+      var ev = asn1$4.fromDer(e.value);
+      var b2 = 0;
+      if (ev.value.length > 1) {
+        b2 = ev.value.charCodeAt(1);
+      }
+      e.client = (b2 & 128) === 128;
+      e.server = (b2 & 64) === 64;
+      e.email = (b2 & 32) === 32;
+      e.objsign = (b2 & 16) === 16;
+      e.reserved = (b2 & 8) === 8;
+      e.sslCA = (b2 & 4) === 4;
+      e.emailCA = (b2 & 2) === 2;
+      e.objCA = (b2 & 1) === 1;
+    } else if (e.name === "subjectAltName" || e.name === "issuerAltName") {
+      e.altNames = [];
+      var gn;
+      var ev = asn1$4.fromDer(e.value);
+      for (var n = 0; n < ev.value.length; ++n) {
+        gn = ev.value[n];
+        var altName = {
+          type: gn.type,
+          value: gn.value
         };
-        switch (t.altNames.push(f), l.type) {
+        e.altNames.push(altName);
+        switch (gn.type) {
           case 1:
           case 2:
           case 6:
             break;
           case 7:
-            f.ip = K.util.bytesToIP(l.value);
+            altName.ip = forge$b.util.bytesToIP(gn.value);
             break;
           case 8:
-            f.oid = h.derToOid(l.value);
+            altName.oid = asn1$4.derToOid(gn.value);
             break;
         }
       }
-    } else if (t.name === "subjectKeyIdentifier") {
-      var a = h.fromDer(t.value);
-      t.subjectKeyIdentifier = K.util.bytesToHex(a.value);
+    } else if (e.name === "subjectKeyIdentifier") {
+      var ev = asn1$4.fromDer(e.value);
+      e.subjectKeyIdentifier = forge$b.util.bytesToHex(ev.value);
     }
   }
-  return t;
+  return e;
 };
-L.certificationRequestFromAsn1 = function(e, t) {
-  var a = {}, r = [];
-  if (!h.validate(e, jo, a, r)) {
-    var n = new Error("Cannot read PKCS#10 certificate request. ASN.1 object is not a PKCS#10 CertificationRequest.");
-    throw n.errors = r, n;
+pki$2.certificationRequestFromAsn1 = function(obj, computeHash) {
+  var capture = {};
+  var errors = [];
+  if (!asn1$4.validate(obj, certificationRequestValidator, capture, errors)) {
+    var error = new Error("Cannot read PKCS#10 certificate request. ASN.1 object is not a PKCS#10 CertificationRequest.");
+    error.errors = errors;
+    throw error;
   }
-  var s = h.derToOid(a.publicKeyOid);
-  if (s !== L.oids.rsaEncryption)
+  var oid = asn1$4.derToOid(capture.publicKeyOid);
+  if (oid !== pki$2.oids.rsaEncryption) {
     throw new Error("Cannot read public key. OID is not RSA.");
-  var i = L.createCertificationRequest();
-  if (i.version = a.csrVersion ? a.csrVersion.charCodeAt(0) : 0, i.signatureOid = K.asn1.derToOid(a.csrSignatureOid), i.signatureParameters = _r(
-    i.signatureOid,
-    a.csrSignatureParams,
-    !0
-  ), i.siginfo.algorithmOid = K.asn1.derToOid(a.csrSignatureOid), i.siginfo.parameters = _r(
-    i.siginfo.algorithmOid,
-    a.csrSignatureParams,
-    !1
-  ), i.signature = a.csrSignature, i.certificationRequestInfo = a.certificationRequestInfo, t) {
-    i.md = Kr({
-      signatureOid: i.signatureOid,
+  }
+  var csr = pki$2.createCertificationRequest();
+  csr.version = capture.csrVersion ? capture.csrVersion.charCodeAt(0) : 0;
+  csr.signatureOid = forge$b.asn1.derToOid(capture.csrSignatureOid);
+  csr.signatureParameters = _readSignatureParameters(
+    csr.signatureOid,
+    capture.csrSignatureParams,
+    true
+  );
+  csr.siginfo.algorithmOid = forge$b.asn1.derToOid(capture.csrSignatureOid);
+  csr.siginfo.parameters = _readSignatureParameters(
+    csr.siginfo.algorithmOid,
+    capture.csrSignatureParams,
+    false
+  );
+  csr.signature = capture.csrSignature;
+  csr.certificationRequestInfo = capture.certificationRequestInfo;
+  if (computeHash) {
+    csr.md = _createSignatureDigest({
+      signatureOid: csr.signatureOid,
       type: "certification request"
     });
-    var o = h.toDer(i.certificationRequestInfo);
-    i.md.update(o.getBytes());
+    var bytes = asn1$4.toDer(csr.certificationRequestInfo);
+    csr.md.update(bytes.getBytes());
   }
-  var l = K.md.sha1.create();
-  return i.subject.getField = function(u) {
-    return _t(i.subject, u);
-  }, i.subject.addField = function(u) {
-    et([u]), i.subject.attributes.push(u);
-  }, i.subject.attributes = L.RDNAttributesAsArray(
-    a.certificationRequestInfoSubject,
-    l
-  ), i.subject.hash = l.digest().toHex(), i.publicKey = L.publicKeyFromAsn1(a.subjectPublicKeyInfo), i.getAttribute = function(u) {
-    return _t(i, u);
-  }, i.addAttribute = function(u) {
-    et([u]), i.attributes.push(u);
-  }, i.attributes = L.CRIAttributesAsArray(
-    a.certificationRequestInfoAttributes || []
-  ), i;
+  var smd = forge$b.md.sha1.create();
+  csr.subject.getField = function(sn) {
+    return _getAttribute(csr.subject, sn);
+  };
+  csr.subject.addField = function(attr) {
+    _fillMissingFields([attr]);
+    csr.subject.attributes.push(attr);
+  };
+  csr.subject.attributes = pki$2.RDNAttributesAsArray(
+    capture.certificationRequestInfoSubject,
+    smd
+  );
+  csr.subject.hash = smd.digest().toHex();
+  csr.publicKey = pki$2.publicKeyFromAsn1(capture.subjectPublicKeyInfo);
+  csr.getAttribute = function(sn) {
+    return _getAttribute(csr, sn);
+  };
+  csr.addAttribute = function(attr) {
+    _fillMissingFields([attr]);
+    csr.attributes.push(attr);
+  };
+  csr.attributes = pki$2.CRIAttributesAsArray(
+    capture.certificationRequestInfoAttributes || []
+  );
+  return csr;
 };
-L.createCertificationRequest = function() {
-  var e = {};
-  return e.version = 0, e.signatureOid = null, e.signature = null, e.siginfo = {}, e.siginfo.algorithmOid = null, e.subject = {}, e.subject.getField = function(t) {
-    return _t(e.subject, t);
-  }, e.subject.addField = function(t) {
-    et([t]), e.subject.attributes.push(t);
-  }, e.subject.attributes = [], e.subject.hash = null, e.publicKey = null, e.attributes = [], e.getAttribute = function(t) {
-    return _t(e, t);
-  }, e.addAttribute = function(t) {
-    et([t]), e.attributes.push(t);
-  }, e.md = null, e.setSubject = function(t) {
-    et(t), e.subject.attributes = t, e.subject.hash = null;
-  }, e.setAttributes = function(t) {
-    et(t), e.attributes = t;
-  }, e.sign = function(t, a) {
-    e.md = a || K.md.sha1.create();
-    var r = Z[e.md.algorithm + "WithRSAEncryption"];
-    if (!r) {
-      var n = new Error("Could not compute certification request digest. Unknown message digest algorithm OID.");
-      throw n.algorithm = e.md.algorithm, n;
+pki$2.createCertificationRequest = function() {
+  var csr = {};
+  csr.version = 0;
+  csr.signatureOid = null;
+  csr.signature = null;
+  csr.siginfo = {};
+  csr.siginfo.algorithmOid = null;
+  csr.subject = {};
+  csr.subject.getField = function(sn) {
+    return _getAttribute(csr.subject, sn);
+  };
+  csr.subject.addField = function(attr) {
+    _fillMissingFields([attr]);
+    csr.subject.attributes.push(attr);
+  };
+  csr.subject.attributes = [];
+  csr.subject.hash = null;
+  csr.publicKey = null;
+  csr.attributes = [];
+  csr.getAttribute = function(sn) {
+    return _getAttribute(csr, sn);
+  };
+  csr.addAttribute = function(attr) {
+    _fillMissingFields([attr]);
+    csr.attributes.push(attr);
+  };
+  csr.md = null;
+  csr.setSubject = function(attrs) {
+    _fillMissingFields(attrs);
+    csr.subject.attributes = attrs;
+    csr.subject.hash = null;
+  };
+  csr.setAttributes = function(attrs) {
+    _fillMissingFields(attrs);
+    csr.attributes = attrs;
+  };
+  csr.sign = function(key, md) {
+    csr.md = md || forge$b.md.sha1.create();
+    var algorithmOid = oids[csr.md.algorithm + "WithRSAEncryption"];
+    if (!algorithmOid) {
+      var error = new Error("Could not compute certification request digest. Unknown message digest algorithm OID.");
+      error.algorithm = csr.md.algorithm;
+      throw error;
     }
-    e.signatureOid = e.siginfo.algorithmOid = r, e.certificationRequestInfo = L.getCertificationRequestInfo(e);
-    var s = h.toDer(e.certificationRequestInfo);
-    e.md.update(s.getBytes()), e.signature = t.sign(e.md);
-  }, e.verify = function() {
-    var t = !1, a = e.md;
-    if (a === null) {
-      a = Kr({
-        signatureOid: e.signatureOid,
+    csr.signatureOid = csr.siginfo.algorithmOid = algorithmOid;
+    csr.certificationRequestInfo = pki$2.getCertificationRequestInfo(csr);
+    var bytes = asn1$4.toDer(csr.certificationRequestInfo);
+    csr.md.update(bytes.getBytes());
+    csr.signature = key.sign(csr.md);
+  };
+  csr.verify = function() {
+    var rval = false;
+    var md = csr.md;
+    if (md === null) {
+      md = _createSignatureDigest({
+        signatureOid: csr.signatureOid,
         type: "certification request"
       });
-      var r = e.certificationRequestInfo || L.getCertificationRequestInfo(e), n = h.toDer(r);
-      a.update(n.getBytes());
+      var cri = csr.certificationRequestInfo || pki$2.getCertificationRequestInfo(csr);
+      var bytes = asn1$4.toDer(cri);
+      md.update(bytes.getBytes());
     }
-    return a !== null && (t = On({
-      certificate: e,
-      md: a,
-      signature: e.signature
-    })), t;
-  }, e;
+    if (md !== null) {
+      rval = _verifySignature({
+        certificate: csr,
+        md,
+        signature: csr.signature
+      });
+    }
+    return rval;
+  };
+  return csr;
 };
-function Xt(e) {
-  for (var t = h.create(
-    h.Class.UNIVERSAL,
-    h.Type.SEQUENCE,
-    !0,
+function _dnToAsn1(obj) {
+  var rval = asn1$4.create(
+    asn1$4.Class.UNIVERSAL,
+    asn1$4.Type.SEQUENCE,
+    true,
     []
-  ), a, r, n = e.attributes, s = 0; s < n.length; ++s) {
-    a = n[s];
-    var i = a.value, o = h.Type.PRINTABLESTRING;
-    "valueTagClass" in a && (o = a.valueTagClass, o === h.Type.UTF8 && (i = K.util.encodeUtf8(i))), r = h.create(h.Class.UNIVERSAL, h.Type.SET, !0, [
-      h.create(h.Class.UNIVERSAL, h.Type.SEQUENCE, !0, [
+  );
+  var attr, set;
+  var attrs = obj.attributes;
+  for (var i = 0; i < attrs.length; ++i) {
+    attr = attrs[i];
+    var value = attr.value;
+    var valueTagClass = asn1$4.Type.PRINTABLESTRING;
+    if ("valueTagClass" in attr) {
+      valueTagClass = attr.valueTagClass;
+      if (valueTagClass === asn1$4.Type.UTF8) {
+        value = forge$b.util.encodeUtf8(value);
+      }
+    }
+    set = asn1$4.create(asn1$4.Class.UNIVERSAL, asn1$4.Type.SET, true, [
+      asn1$4.create(asn1$4.Class.UNIVERSAL, asn1$4.Type.SEQUENCE, true, [
         // AttributeType
-        h.create(
-          h.Class.UNIVERSAL,
-          h.Type.OID,
-          !1,
-          h.oidToDer(a.type).getBytes()
+        asn1$4.create(
+          asn1$4.Class.UNIVERSAL,
+          asn1$4.Type.OID,
+          false,
+          asn1$4.oidToDer(attr.type).getBytes()
         ),
         // AttributeValue
-        h.create(h.Class.UNIVERSAL, o, !1, i)
+        asn1$4.create(asn1$4.Class.UNIVERSAL, valueTagClass, false, value)
       ])
-    ]), t.value.push(r);
+    ]);
+    rval.value.push(set);
   }
-  return t;
+  return rval;
 }
-function et(e) {
-  for (var t, a = 0; a < e.length; ++a) {
-    if (t = e[a], typeof t.name > "u" && (t.type && t.type in L.oids ? t.name = L.oids[t.type] : t.shortName && t.shortName in de && (t.name = L.oids[de[t.shortName]])), typeof t.type > "u")
-      if (t.name && t.name in L.oids)
-        t.type = L.oids[t.name];
-      else {
-        var r = new Error("Attribute type not specified.");
-        throw r.attribute = t, r;
+function _fillMissingFields(attrs) {
+  var attr;
+  for (var i = 0; i < attrs.length; ++i) {
+    attr = attrs[i];
+    if (typeof attr.name === "undefined") {
+      if (attr.type && attr.type in pki$2.oids) {
+        attr.name = pki$2.oids[attr.type];
+      } else if (attr.shortName && attr.shortName in _shortNames) {
+        attr.name = pki$2.oids[_shortNames[attr.shortName]];
       }
-    if (typeof t.shortName > "u" && t.name && t.name in de && (t.shortName = de[t.name]), t.type === Z.extensionRequest && (t.valueConstructed = !0, t.valueTagClass = h.Type.SEQUENCE, !t.value && t.extensions)) {
-      t.value = [];
-      for (var n = 0; n < t.extensions.length; ++n)
-        t.value.push(L.certificateExtensionToAsn1(
-          Fn(t.extensions[n])
-        ));
     }
-    if (typeof t.value > "u") {
-      var r = new Error("Attribute value not specified.");
-      throw r.attribute = t, r;
+    if (typeof attr.type === "undefined") {
+      if (attr.name && attr.name in pki$2.oids) {
+        attr.type = pki$2.oids[attr.name];
+      } else {
+        var error = new Error("Attribute type not specified.");
+        error.attribute = attr;
+        throw error;
+      }
+    }
+    if (typeof attr.shortName === "undefined") {
+      if (attr.name && attr.name in _shortNames) {
+        attr.shortName = _shortNames[attr.name];
+      }
+    }
+    if (attr.type === oids.extensionRequest) {
+      attr.valueConstructed = true;
+      attr.valueTagClass = asn1$4.Type.SEQUENCE;
+      if (!attr.value && attr.extensions) {
+        attr.value = [];
+        for (var ei = 0; ei < attr.extensions.length; ++ei) {
+          attr.value.push(pki$2.certificateExtensionToAsn1(
+            _fillMissingExtensionFields(attr.extensions[ei])
+          ));
+        }
+      }
+    }
+    if (typeof attr.value === "undefined") {
+      var error = new Error("Attribute value not specified.");
+      error.attribute = attr;
+      throw error;
     }
   }
 }
-function Fn(e, t) {
-  if (t = t || {}, typeof e.name > "u" && e.id && e.id in L.oids && (e.name = L.oids[e.id]), typeof e.id > "u")
-    if (e.name && e.name in L.oids)
-      e.id = L.oids[e.name];
-    else {
-      var a = new Error("Extension ID not specified.");
-      throw a.extension = e, a;
+function _fillMissingExtensionFields(e, options) {
+  options = options || {};
+  if (typeof e.name === "undefined") {
+    if (e.id && e.id in pki$2.oids) {
+      e.name = pki$2.oids[e.id];
     }
-  if (typeof e.value < "u")
+  }
+  if (typeof e.id === "undefined") {
+    if (e.name && e.name in pki$2.oids) {
+      e.id = pki$2.oids[e.name];
+    } else {
+      var error = new Error("Extension ID not specified.");
+      error.extension = e;
+      throw error;
+    }
+  }
+  if (typeof e.value !== "undefined") {
     return e;
+  }
   if (e.name === "keyUsage") {
-    var r = 0, n = 0, s = 0;
-    e.digitalSignature && (n |= 128, r = 7), e.nonRepudiation && (n |= 64, r = 6), e.keyEncipherment && (n |= 32, r = 5), e.dataEncipherment && (n |= 16, r = 4), e.keyAgreement && (n |= 8, r = 3), e.keyCertSign && (n |= 4, r = 2), e.cRLSign && (n |= 2, r = 1), e.encipherOnly && (n |= 1, r = 0), e.decipherOnly && (s |= 128, r = 7);
-    var i = String.fromCharCode(r);
-    s !== 0 ? i += String.fromCharCode(n) + String.fromCharCode(s) : n !== 0 && (i += String.fromCharCode(n)), e.value = h.create(
-      h.Class.UNIVERSAL,
-      h.Type.BITSTRING,
-      !1,
-      i
+    var unused = 0;
+    var b2 = 0;
+    var b3 = 0;
+    if (e.digitalSignature) {
+      b2 |= 128;
+      unused = 7;
+    }
+    if (e.nonRepudiation) {
+      b2 |= 64;
+      unused = 6;
+    }
+    if (e.keyEncipherment) {
+      b2 |= 32;
+      unused = 5;
+    }
+    if (e.dataEncipherment) {
+      b2 |= 16;
+      unused = 4;
+    }
+    if (e.keyAgreement) {
+      b2 |= 8;
+      unused = 3;
+    }
+    if (e.keyCertSign) {
+      b2 |= 4;
+      unused = 2;
+    }
+    if (e.cRLSign) {
+      b2 |= 2;
+      unused = 1;
+    }
+    if (e.encipherOnly) {
+      b2 |= 1;
+      unused = 0;
+    }
+    if (e.decipherOnly) {
+      b3 |= 128;
+      unused = 7;
+    }
+    var value = String.fromCharCode(unused);
+    if (b3 !== 0) {
+      value += String.fromCharCode(b2) + String.fromCharCode(b3);
+    } else if (b2 !== 0) {
+      value += String.fromCharCode(b2);
+    }
+    e.value = asn1$4.create(
+      asn1$4.Class.UNIVERSAL,
+      asn1$4.Type.BITSTRING,
+      false,
+      value
     );
-  } else if (e.name === "basicConstraints")
-    e.value = h.create(
-      h.Class.UNIVERSAL,
-      h.Type.SEQUENCE,
-      !0,
+  } else if (e.name === "basicConstraints") {
+    e.value = asn1$4.create(
+      asn1$4.Class.UNIVERSAL,
+      asn1$4.Type.SEQUENCE,
+      true,
       []
-    ), e.cA && e.value.value.push(h.create(
-      h.Class.UNIVERSAL,
-      h.Type.BOOLEAN,
-      !1,
-      "ÿ"
-    )), "pathLenConstraint" in e && e.value.value.push(h.create(
-      h.Class.UNIVERSAL,
-      h.Type.INTEGER,
-      !1,
-      h.integerToDer(e.pathLenConstraint).getBytes()
-    ));
-  else if (e.name === "extKeyUsage") {
-    e.value = h.create(
-      h.Class.UNIVERSAL,
-      h.Type.SEQUENCE,
-      !0,
-      []
     );
-    var o = e.value.value;
-    for (var l in e)
-      e[l] === !0 && (l in Z ? o.push(h.create(
-        h.Class.UNIVERSAL,
-        h.Type.OID,
-        !1,
-        h.oidToDer(Z[l]).getBytes()
-      )) : l.indexOf(".") !== -1 && o.push(h.create(
-        h.Class.UNIVERSAL,
-        h.Type.OID,
-        !1,
-        h.oidToDer(l).getBytes()
-      )));
-  } else if (e.name === "nsCertType") {
-    var r = 0, n = 0;
-    e.client && (n |= 128, r = 7), e.server && (n |= 64, r = 6), e.email && (n |= 32, r = 5), e.objsign && (n |= 16, r = 4), e.reserved && (n |= 8, r = 3), e.sslCA && (n |= 4, r = 2), e.emailCA && (n |= 2, r = 1), e.objCA && (n |= 1, r = 0);
-    var i = String.fromCharCode(r);
-    n !== 0 && (i += String.fromCharCode(n)), e.value = h.create(
-      h.Class.UNIVERSAL,
-      h.Type.BITSTRING,
-      !1,
-      i
-    );
-  } else if (e.name === "subjectAltName" || e.name === "issuerAltName") {
-    e.value = h.create(h.Class.UNIVERSAL, h.Type.SEQUENCE, !0, []);
-    for (var u, f = 0; f < e.altNames.length; ++f) {
-      u = e.altNames[f];
-      var i = u.value;
-      if (u.type === 7 && u.ip) {
-        if (i = K.util.bytesFromIP(u.ip), i === null) {
-          var a = new Error(
-            'Extension "ip" value is not a valid IPv4 or IPv6 address.'
-          );
-          throw a.extension = e, a;
-        }
-      } else u.type === 8 && (u.oid ? i = h.oidToDer(h.oidToDer(u.oid)) : i = h.oidToDer(i));
-      e.value.value.push(h.create(
-        h.Class.CONTEXT_SPECIFIC,
-        u.type,
-        !1,
-        i
+    if (e.cA) {
+      e.value.value.push(asn1$4.create(
+        asn1$4.Class.UNIVERSAL,
+        asn1$4.Type.BOOLEAN,
+        false,
+        String.fromCharCode(255)
       ));
     }
-  } else if (e.name === "nsComment" && t.cert) {
-    if (!/^[\x00-\x7F]*$/.test(e.comment) || e.comment.length < 1 || e.comment.length > 128)
+    if ("pathLenConstraint" in e) {
+      e.value.value.push(asn1$4.create(
+        asn1$4.Class.UNIVERSAL,
+        asn1$4.Type.INTEGER,
+        false,
+        asn1$4.integerToDer(e.pathLenConstraint).getBytes()
+      ));
+    }
+  } else if (e.name === "extKeyUsage") {
+    e.value = asn1$4.create(
+      asn1$4.Class.UNIVERSAL,
+      asn1$4.Type.SEQUENCE,
+      true,
+      []
+    );
+    var seq = e.value.value;
+    for (var key in e) {
+      if (e[key] !== true) {
+        continue;
+      }
+      if (key in oids) {
+        seq.push(asn1$4.create(
+          asn1$4.Class.UNIVERSAL,
+          asn1$4.Type.OID,
+          false,
+          asn1$4.oidToDer(oids[key]).getBytes()
+        ));
+      } else if (key.indexOf(".") !== -1) {
+        seq.push(asn1$4.create(
+          asn1$4.Class.UNIVERSAL,
+          asn1$4.Type.OID,
+          false,
+          asn1$4.oidToDer(key).getBytes()
+        ));
+      }
+    }
+  } else if (e.name === "nsCertType") {
+    var unused = 0;
+    var b2 = 0;
+    if (e.client) {
+      b2 |= 128;
+      unused = 7;
+    }
+    if (e.server) {
+      b2 |= 64;
+      unused = 6;
+    }
+    if (e.email) {
+      b2 |= 32;
+      unused = 5;
+    }
+    if (e.objsign) {
+      b2 |= 16;
+      unused = 4;
+    }
+    if (e.reserved) {
+      b2 |= 8;
+      unused = 3;
+    }
+    if (e.sslCA) {
+      b2 |= 4;
+      unused = 2;
+    }
+    if (e.emailCA) {
+      b2 |= 2;
+      unused = 1;
+    }
+    if (e.objCA) {
+      b2 |= 1;
+      unused = 0;
+    }
+    var value = String.fromCharCode(unused);
+    if (b2 !== 0) {
+      value += String.fromCharCode(b2);
+    }
+    e.value = asn1$4.create(
+      asn1$4.Class.UNIVERSAL,
+      asn1$4.Type.BITSTRING,
+      false,
+      value
+    );
+  } else if (e.name === "subjectAltName" || e.name === "issuerAltName") {
+    e.value = asn1$4.create(asn1$4.Class.UNIVERSAL, asn1$4.Type.SEQUENCE, true, []);
+    var altName;
+    for (var n = 0; n < e.altNames.length; ++n) {
+      altName = e.altNames[n];
+      var value = altName.value;
+      if (altName.type === 7 && altName.ip) {
+        value = forge$b.util.bytesFromIP(altName.ip);
+        if (value === null) {
+          var error = new Error(
+            'Extension "ip" value is not a valid IPv4 or IPv6 address.'
+          );
+          error.extension = e;
+          throw error;
+        }
+      } else if (altName.type === 8) {
+        if (altName.oid) {
+          value = asn1$4.oidToDer(asn1$4.oidToDer(altName.oid));
+        } else {
+          value = asn1$4.oidToDer(value);
+        }
+      }
+      e.value.value.push(asn1$4.create(
+        asn1$4.Class.CONTEXT_SPECIFIC,
+        altName.type,
+        false,
+        value
+      ));
+    }
+  } else if (e.name === "nsComment" && options.cert) {
+    if (!/^[\x00-\x7F]*$/.test(e.comment) || e.comment.length < 1 || e.comment.length > 128) {
       throw new Error('Invalid "nsComment" content.');
-    e.value = h.create(
-      h.Class.UNIVERSAL,
-      h.Type.IA5STRING,
-      !1,
+    }
+    e.value = asn1$4.create(
+      asn1$4.Class.UNIVERSAL,
+      asn1$4.Type.IA5STRING,
+      false,
       e.comment
     );
-  } else if (e.name === "subjectKeyIdentifier" && t.cert) {
-    var c = t.cert.generateSubjectKeyIdentifier();
-    e.subjectKeyIdentifier = c.toHex(), e.value = h.create(
-      h.Class.UNIVERSAL,
-      h.Type.OCTETSTRING,
-      !1,
-      c.getBytes()
+  } else if (e.name === "subjectKeyIdentifier" && options.cert) {
+    var ski = options.cert.generateSubjectKeyIdentifier();
+    e.subjectKeyIdentifier = ski.toHex();
+    e.value = asn1$4.create(
+      asn1$4.Class.UNIVERSAL,
+      asn1$4.Type.OCTETSTRING,
+      false,
+      ski.getBytes()
     );
-  } else if (e.name === "authorityKeyIdentifier" && t.cert) {
-    e.value = h.create(h.Class.UNIVERSAL, h.Type.SEQUENCE, !0, []);
-    var o = e.value.value;
+  } else if (e.name === "authorityKeyIdentifier" && options.cert) {
+    e.value = asn1$4.create(asn1$4.Class.UNIVERSAL, asn1$4.Type.SEQUENCE, true, []);
+    var seq = e.value.value;
     if (e.keyIdentifier) {
-      var v = e.keyIdentifier === !0 ? t.cert.generateSubjectKeyIdentifier().getBytes() : e.keyIdentifier;
-      o.push(
-        h.create(h.Class.CONTEXT_SPECIFIC, 0, !1, v)
+      var keyIdentifier = e.keyIdentifier === true ? options.cert.generateSubjectKeyIdentifier().getBytes() : e.keyIdentifier;
+      seq.push(
+        asn1$4.create(asn1$4.Class.CONTEXT_SPECIFIC, 0, false, keyIdentifier)
       );
     }
     if (e.authorityCertIssuer) {
-      var m = [
-        h.create(h.Class.CONTEXT_SPECIFIC, 4, !0, [
-          Xt(e.authorityCertIssuer === !0 ? t.cert.issuer : e.authorityCertIssuer)
+      var authorityCertIssuer = [
+        asn1$4.create(asn1$4.Class.CONTEXT_SPECIFIC, 4, true, [
+          _dnToAsn1(e.authorityCertIssuer === true ? options.cert.issuer : e.authorityCertIssuer)
         ])
       ];
-      o.push(
-        h.create(h.Class.CONTEXT_SPECIFIC, 1, !0, m)
+      seq.push(
+        asn1$4.create(asn1$4.Class.CONTEXT_SPECIFIC, 1, true, authorityCertIssuer)
       );
     }
     if (e.serialNumber) {
-      var y = K.util.hexToBytes(e.serialNumber === !0 ? t.cert.serialNumber : e.serialNumber);
-      o.push(
-        h.create(h.Class.CONTEXT_SPECIFIC, 2, !1, y)
+      var serialNumber = forge$b.util.hexToBytes(e.serialNumber === true ? options.cert.serialNumber : e.serialNumber);
+      seq.push(
+        asn1$4.create(asn1$4.Class.CONTEXT_SPECIFIC, 2, false, serialNumber)
       );
     }
   } else if (e.name === "cRLDistributionPoints") {
-    e.value = h.create(h.Class.UNIVERSAL, h.Type.SEQUENCE, !0, []);
-    for (var o = e.value.value, x = h.create(
-      h.Class.UNIVERSAL,
-      h.Type.SEQUENCE,
-      !0,
+    e.value = asn1$4.create(asn1$4.Class.UNIVERSAL, asn1$4.Type.SEQUENCE, true, []);
+    var seq = e.value.value;
+    var subSeq = asn1$4.create(
+      asn1$4.Class.UNIVERSAL,
+      asn1$4.Type.SEQUENCE,
+      true,
       []
-    ), S = h.create(
-      h.Class.CONTEXT_SPECIFIC,
+    );
+    var fullNameGeneralNames = asn1$4.create(
+      asn1$4.Class.CONTEXT_SPECIFIC,
       0,
-      !0,
+      true,
       []
-    ), u, f = 0; f < e.altNames.length; ++f) {
-      u = e.altNames[f];
-      var i = u.value;
-      if (u.type === 7 && u.ip) {
-        if (i = K.util.bytesFromIP(u.ip), i === null) {
-          var a = new Error(
+    );
+    var altName;
+    for (var n = 0; n < e.altNames.length; ++n) {
+      altName = e.altNames[n];
+      var value = altName.value;
+      if (altName.type === 7 && altName.ip) {
+        value = forge$b.util.bytesFromIP(altName.ip);
+        if (value === null) {
+          var error = new Error(
             'Extension "ip" value is not a valid IPv4 or IPv6 address.'
           );
-          throw a.extension = e, a;
+          error.extension = e;
+          throw error;
         }
-      } else u.type === 8 && (u.oid ? i = h.oidToDer(h.oidToDer(u.oid)) : i = h.oidToDer(i));
-      S.value.push(h.create(
-        h.Class.CONTEXT_SPECIFIC,
-        u.type,
-        !1,
-        i
+      } else if (altName.type === 8) {
+        if (altName.oid) {
+          value = asn1$4.oidToDer(asn1$4.oidToDer(altName.oid));
+        } else {
+          value = asn1$4.oidToDer(value);
+        }
+      }
+      fullNameGeneralNames.value.push(asn1$4.create(
+        asn1$4.Class.CONTEXT_SPECIFIC,
+        altName.type,
+        false,
+        value
       ));
     }
-    x.value.push(h.create(
-      h.Class.CONTEXT_SPECIFIC,
+    subSeq.value.push(asn1$4.create(
+      asn1$4.Class.CONTEXT_SPECIFIC,
       0,
-      !0,
-      [S]
-    )), o.push(x);
+      true,
+      [fullNameGeneralNames]
+    ));
+    seq.push(subSeq);
   }
-  if (typeof e.value > "u") {
-    var a = new Error("Extension value not specified.");
-    throw a.extension = e, a;
+  if (typeof e.value === "undefined") {
+    var error = new Error("Extension value not specified.");
+    error.extension = e;
+    throw error;
   }
   return e;
 }
-function Ia(e, t) {
-  switch (e) {
-    case Z["RSASSA-PSS"]:
-      var a = [];
-      return t.hash.algorithmOid !== void 0 && a.push(h.create(h.Class.CONTEXT_SPECIFIC, 0, !0, [
-        h.create(h.Class.UNIVERSAL, h.Type.SEQUENCE, !0, [
-          h.create(
-            h.Class.UNIVERSAL,
-            h.Type.OID,
-            !1,
-            h.oidToDer(t.hash.algorithmOid).getBytes()
-          ),
-          h.create(h.Class.UNIVERSAL, h.Type.NULL, !1, "")
-        ])
-      ])), t.mgf.algorithmOid !== void 0 && a.push(h.create(h.Class.CONTEXT_SPECIFIC, 1, !0, [
-        h.create(h.Class.UNIVERSAL, h.Type.SEQUENCE, !0, [
-          h.create(
-            h.Class.UNIVERSAL,
-            h.Type.OID,
-            !1,
-            h.oidToDer(t.mgf.algorithmOid).getBytes()
-          ),
-          h.create(h.Class.UNIVERSAL, h.Type.SEQUENCE, !0, [
-            h.create(
-              h.Class.UNIVERSAL,
-              h.Type.OID,
-              !1,
-              h.oidToDer(t.mgf.hash.algorithmOid).getBytes()
+function _signatureParametersToAsn1(oid, params) {
+  switch (oid) {
+    case oids["RSASSA-PSS"]:
+      var parts = [];
+      if (params.hash.algorithmOid !== void 0) {
+        parts.push(asn1$4.create(asn1$4.Class.CONTEXT_SPECIFIC, 0, true, [
+          asn1$4.create(asn1$4.Class.UNIVERSAL, asn1$4.Type.SEQUENCE, true, [
+            asn1$4.create(
+              asn1$4.Class.UNIVERSAL,
+              asn1$4.Type.OID,
+              false,
+              asn1$4.oidToDer(params.hash.algorithmOid).getBytes()
             ),
-            h.create(h.Class.UNIVERSAL, h.Type.NULL, !1, "")
+            asn1$4.create(asn1$4.Class.UNIVERSAL, asn1$4.Type.NULL, false, "")
           ])
-        ])
-      ])), t.saltLength !== void 0 && a.push(h.create(h.Class.CONTEXT_SPECIFIC, 2, !0, [
-        h.create(
-          h.Class.UNIVERSAL,
-          h.Type.INTEGER,
-          !1,
-          h.integerToDer(t.saltLength).getBytes()
-        )
-      ])), h.create(h.Class.UNIVERSAL, h.Type.SEQUENCE, !0, a);
+        ]));
+      }
+      if (params.mgf.algorithmOid !== void 0) {
+        parts.push(asn1$4.create(asn1$4.Class.CONTEXT_SPECIFIC, 1, true, [
+          asn1$4.create(asn1$4.Class.UNIVERSAL, asn1$4.Type.SEQUENCE, true, [
+            asn1$4.create(
+              asn1$4.Class.UNIVERSAL,
+              asn1$4.Type.OID,
+              false,
+              asn1$4.oidToDer(params.mgf.algorithmOid).getBytes()
+            ),
+            asn1$4.create(asn1$4.Class.UNIVERSAL, asn1$4.Type.SEQUENCE, true, [
+              asn1$4.create(
+                asn1$4.Class.UNIVERSAL,
+                asn1$4.Type.OID,
+                false,
+                asn1$4.oidToDer(params.mgf.hash.algorithmOid).getBytes()
+              ),
+              asn1$4.create(asn1$4.Class.UNIVERSAL, asn1$4.Type.NULL, false, "")
+            ])
+          ])
+        ]));
+      }
+      if (params.saltLength !== void 0) {
+        parts.push(asn1$4.create(asn1$4.Class.CONTEXT_SPECIFIC, 2, true, [
+          asn1$4.create(
+            asn1$4.Class.UNIVERSAL,
+            asn1$4.Type.INTEGER,
+            false,
+            asn1$4.integerToDer(params.saltLength).getBytes()
+          )
+        ]));
+      }
+      return asn1$4.create(asn1$4.Class.UNIVERSAL, asn1$4.Type.SEQUENCE, true, parts);
     default:
-      return h.create(h.Class.UNIVERSAL, h.Type.NULL, !1, "");
+      return asn1$4.create(asn1$4.Class.UNIVERSAL, asn1$4.Type.NULL, false, "");
   }
 }
-function Zo(e) {
-  var t = h.create(h.Class.CONTEXT_SPECIFIC, 0, !0, []);
-  if (e.attributes.length === 0)
-    return t;
-  for (var a = e.attributes, r = 0; r < a.length; ++r) {
-    var n = a[r], s = n.value, i = h.Type.UTF8;
-    "valueTagClass" in n && (i = n.valueTagClass), i === h.Type.UTF8 && (s = K.util.encodeUtf8(s));
-    var o = !1;
-    "valueConstructed" in n && (o = n.valueConstructed);
-    var l = h.create(h.Class.UNIVERSAL, h.Type.SEQUENCE, !0, [
+function _CRIAttributesToAsn1(csr) {
+  var rval = asn1$4.create(asn1$4.Class.CONTEXT_SPECIFIC, 0, true, []);
+  if (csr.attributes.length === 0) {
+    return rval;
+  }
+  var attrs = csr.attributes;
+  for (var i = 0; i < attrs.length; ++i) {
+    var attr = attrs[i];
+    var value = attr.value;
+    var valueTagClass = asn1$4.Type.UTF8;
+    if ("valueTagClass" in attr) {
+      valueTagClass = attr.valueTagClass;
+    }
+    if (valueTagClass === asn1$4.Type.UTF8) {
+      value = forge$b.util.encodeUtf8(value);
+    }
+    var valueConstructed = false;
+    if ("valueConstructed" in attr) {
+      valueConstructed = attr.valueConstructed;
+    }
+    var seq = asn1$4.create(asn1$4.Class.UNIVERSAL, asn1$4.Type.SEQUENCE, true, [
       // AttributeType
-      h.create(
-        h.Class.UNIVERSAL,
-        h.Type.OID,
-        !1,
-        h.oidToDer(n.type).getBytes()
+      asn1$4.create(
+        asn1$4.Class.UNIVERSAL,
+        asn1$4.Type.OID,
+        false,
+        asn1$4.oidToDer(attr.type).getBytes()
       ),
-      h.create(h.Class.UNIVERSAL, h.Type.SET, !0, [
+      asn1$4.create(asn1$4.Class.UNIVERSAL, asn1$4.Type.SET, true, [
         // AttributeValue
-        h.create(
-          h.Class.UNIVERSAL,
-          i,
-          o,
-          s
+        asn1$4.create(
+          asn1$4.Class.UNIVERSAL,
+          valueTagClass,
+          valueConstructed,
+          value
         )
       ])
     ]);
-    t.value.push(l);
+    rval.value.push(seq);
   }
-  return t;
+  return rval;
 }
-var Jo = /* @__PURE__ */ new Date("1950-01-01T00:00:00Z"), e0 = /* @__PURE__ */ new Date("2050-01-01T00:00:00Z");
-function Za(e) {
-  return e >= Jo && e < e0 ? h.create(
-    h.Class.UNIVERSAL,
-    h.Type.UTCTIME,
-    !1,
-    h.dateToUtcTime(e)
-  ) : h.create(
-    h.Class.UNIVERSAL,
-    h.Type.GENERALIZEDTIME,
-    !1,
-    h.dateToGeneralizedTime(e)
-  );
+var jan_1_1950 = /* @__PURE__ */ new Date("1950-01-01T00:00:00Z");
+var jan_1_2050 = /* @__PURE__ */ new Date("2050-01-01T00:00:00Z");
+function _dateToAsn1(date) {
+  if (date >= jan_1_1950 && date < jan_1_2050) {
+    return asn1$4.create(
+      asn1$4.Class.UNIVERSAL,
+      asn1$4.Type.UTCTIME,
+      false,
+      asn1$4.dateToUtcTime(date)
+    );
+  } else {
+    return asn1$4.create(
+      asn1$4.Class.UNIVERSAL,
+      asn1$4.Type.GENERALIZEDTIME,
+      false,
+      asn1$4.dateToGeneralizedTime(date)
+    );
+  }
 }
-L.getTBSCertificate = function(e) {
-  var t = Za(e.validity.notBefore), a = Za(e.validity.notAfter), r = h.create(h.Class.UNIVERSAL, h.Type.SEQUENCE, !0, [
+pki$2.getTBSCertificate = function(cert) {
+  var notBefore = _dateToAsn1(cert.validity.notBefore);
+  var notAfter = _dateToAsn1(cert.validity.notAfter);
+  var tbs = asn1$4.create(asn1$4.Class.UNIVERSAL, asn1$4.Type.SEQUENCE, true, [
     // version
-    h.create(h.Class.CONTEXT_SPECIFIC, 0, !0, [
+    asn1$4.create(asn1$4.Class.CONTEXT_SPECIFIC, 0, true, [
       // integer
-      h.create(
-        h.Class.UNIVERSAL,
-        h.Type.INTEGER,
-        !1,
-        h.integerToDer(e.version).getBytes()
+      asn1$4.create(
+        asn1$4.Class.UNIVERSAL,
+        asn1$4.Type.INTEGER,
+        false,
+        asn1$4.integerToDer(cert.version).getBytes()
       )
     ]),
     // serialNumber
-    h.create(
-      h.Class.UNIVERSAL,
-      h.Type.INTEGER,
-      !1,
-      K.util.hexToBytes(e.serialNumber)
+    asn1$4.create(
+      asn1$4.Class.UNIVERSAL,
+      asn1$4.Type.INTEGER,
+      false,
+      forge$b.util.hexToBytes(cert.serialNumber)
     ),
     // signature
-    h.create(h.Class.UNIVERSAL, h.Type.SEQUENCE, !0, [
+    asn1$4.create(asn1$4.Class.UNIVERSAL, asn1$4.Type.SEQUENCE, true, [
       // algorithm
-      h.create(
-        h.Class.UNIVERSAL,
-        h.Type.OID,
-        !1,
-        h.oidToDer(e.siginfo.algorithmOid).getBytes()
+      asn1$4.create(
+        asn1$4.Class.UNIVERSAL,
+        asn1$4.Type.OID,
+        false,
+        asn1$4.oidToDer(cert.siginfo.algorithmOid).getBytes()
       ),
       // parameters
-      Ia(
-        e.siginfo.algorithmOid,
-        e.siginfo.parameters
+      _signatureParametersToAsn1(
+        cert.siginfo.algorithmOid,
+        cert.siginfo.parameters
       )
     ]),
     // issuer
-    Xt(e.issuer),
+    _dnToAsn1(cert.issuer),
     // validity
-    h.create(h.Class.UNIVERSAL, h.Type.SEQUENCE, !0, [
-      t,
-      a
+    asn1$4.create(asn1$4.Class.UNIVERSAL, asn1$4.Type.SEQUENCE, true, [
+      notBefore,
+      notAfter
     ]),
     // subject
-    Xt(e.subject),
+    _dnToAsn1(cert.subject),
     // SubjectPublicKeyInfo
-    L.publicKeyToAsn1(e.publicKey)
+    pki$2.publicKeyToAsn1(cert.publicKey)
   ]);
-  return e.issuer.uniqueId && r.value.push(
-    h.create(h.Class.CONTEXT_SPECIFIC, 1, !0, [
-      h.create(
-        h.Class.UNIVERSAL,
-        h.Type.BITSTRING,
-        !1,
-        // TODO: support arbitrary bit length ids
-        "\0" + e.issuer.uniqueId
-      )
-    ])
-  ), e.subject.uniqueId && r.value.push(
-    h.create(h.Class.CONTEXT_SPECIFIC, 2, !0, [
-      h.create(
-        h.Class.UNIVERSAL,
-        h.Type.BITSTRING,
-        !1,
-        // TODO: support arbitrary bit length ids
-        "\0" + e.subject.uniqueId
-      )
-    ])
-  ), e.extensions.length > 0 && r.value.push(L.certificateExtensionsToAsn1(e.extensions)), r;
+  if (cert.issuer.uniqueId) {
+    tbs.value.push(
+      asn1$4.create(asn1$4.Class.CONTEXT_SPECIFIC, 1, true, [
+        asn1$4.create(
+          asn1$4.Class.UNIVERSAL,
+          asn1$4.Type.BITSTRING,
+          false,
+          // TODO: support arbitrary bit length ids
+          String.fromCharCode(0) + cert.issuer.uniqueId
+        )
+      ])
+    );
+  }
+  if (cert.subject.uniqueId) {
+    tbs.value.push(
+      asn1$4.create(asn1$4.Class.CONTEXT_SPECIFIC, 2, true, [
+        asn1$4.create(
+          asn1$4.Class.UNIVERSAL,
+          asn1$4.Type.BITSTRING,
+          false,
+          // TODO: support arbitrary bit length ids
+          String.fromCharCode(0) + cert.subject.uniqueId
+        )
+      ])
+    );
+  }
+  if (cert.extensions.length > 0) {
+    tbs.value.push(pki$2.certificateExtensionsToAsn1(cert.extensions));
+  }
+  return tbs;
 };
-L.getCertificationRequestInfo = function(e) {
-  var t = h.create(h.Class.UNIVERSAL, h.Type.SEQUENCE, !0, [
+pki$2.getCertificationRequestInfo = function(csr) {
+  var cri = asn1$4.create(asn1$4.Class.UNIVERSAL, asn1$4.Type.SEQUENCE, true, [
     // version
-    h.create(
-      h.Class.UNIVERSAL,
-      h.Type.INTEGER,
-      !1,
-      h.integerToDer(e.version).getBytes()
+    asn1$4.create(
+      asn1$4.Class.UNIVERSAL,
+      asn1$4.Type.INTEGER,
+      false,
+      asn1$4.integerToDer(csr.version).getBytes()
     ),
     // subject
-    Xt(e.subject),
+    _dnToAsn1(csr.subject),
     // SubjectPublicKeyInfo
-    L.publicKeyToAsn1(e.publicKey),
+    pki$2.publicKeyToAsn1(csr.publicKey),
     // attributes
-    Zo(e)
+    _CRIAttributesToAsn1(csr)
   ]);
-  return t;
+  return cri;
 };
-L.distinguishedNameToAsn1 = function(e) {
-  return Xt(e);
+pki$2.distinguishedNameToAsn1 = function(dn) {
+  return _dnToAsn1(dn);
 };
-L.certificateToAsn1 = function(e) {
-  var t = e.tbsCertificate || L.getTBSCertificate(e);
-  return h.create(h.Class.UNIVERSAL, h.Type.SEQUENCE, !0, [
+pki$2.certificateToAsn1 = function(cert) {
+  var tbsCertificate = cert.tbsCertificate || pki$2.getTBSCertificate(cert);
+  return asn1$4.create(asn1$4.Class.UNIVERSAL, asn1$4.Type.SEQUENCE, true, [
     // TBSCertificate
-    t,
+    tbsCertificate,
     // AlgorithmIdentifier (signature algorithm)
-    h.create(h.Class.UNIVERSAL, h.Type.SEQUENCE, !0, [
+    asn1$4.create(asn1$4.Class.UNIVERSAL, asn1$4.Type.SEQUENCE, true, [
       // algorithm
-      h.create(
-        h.Class.UNIVERSAL,
-        h.Type.OID,
-        !1,
-        h.oidToDer(e.signatureOid).getBytes()
+      asn1$4.create(
+        asn1$4.Class.UNIVERSAL,
+        asn1$4.Type.OID,
+        false,
+        asn1$4.oidToDer(cert.signatureOid).getBytes()
       ),
       // parameters
-      Ia(e.signatureOid, e.signatureParameters)
+      _signatureParametersToAsn1(cert.signatureOid, cert.signatureParameters)
     ]),
     // SignatureValue
-    h.create(
-      h.Class.UNIVERSAL,
-      h.Type.BITSTRING,
-      !1,
-      "\0" + e.signature
+    asn1$4.create(
+      asn1$4.Class.UNIVERSAL,
+      asn1$4.Type.BITSTRING,
+      false,
+      String.fromCharCode(0) + cert.signature
     )
   ]);
 };
-L.certificateExtensionsToAsn1 = function(e) {
-  var t = h.create(h.Class.CONTEXT_SPECIFIC, 3, !0, []), a = h.create(h.Class.UNIVERSAL, h.Type.SEQUENCE, !0, []);
-  t.value.push(a);
-  for (var r = 0; r < e.length; ++r)
-    a.value.push(L.certificateExtensionToAsn1(e[r]));
-  return t;
+pki$2.certificateExtensionsToAsn1 = function(exts) {
+  var rval = asn1$4.create(asn1$4.Class.CONTEXT_SPECIFIC, 3, true, []);
+  var seq = asn1$4.create(asn1$4.Class.UNIVERSAL, asn1$4.Type.SEQUENCE, true, []);
+  rval.value.push(seq);
+  for (var i = 0; i < exts.length; ++i) {
+    seq.value.push(pki$2.certificateExtensionToAsn1(exts[i]));
+  }
+  return rval;
 };
-L.certificateExtensionToAsn1 = function(e) {
-  var t = h.create(h.Class.UNIVERSAL, h.Type.SEQUENCE, !0, []);
-  t.value.push(h.create(
-    h.Class.UNIVERSAL,
-    h.Type.OID,
-    !1,
-    h.oidToDer(e.id).getBytes()
-  )), e.critical && t.value.push(h.create(
-    h.Class.UNIVERSAL,
-    h.Type.BOOLEAN,
-    !1,
-    "ÿ"
+pki$2.certificateExtensionToAsn1 = function(ext) {
+  var extseq = asn1$4.create(asn1$4.Class.UNIVERSAL, asn1$4.Type.SEQUENCE, true, []);
+  extseq.value.push(asn1$4.create(
+    asn1$4.Class.UNIVERSAL,
+    asn1$4.Type.OID,
+    false,
+    asn1$4.oidToDer(ext.id).getBytes()
   ));
-  var a = e.value;
-  return typeof e.value != "string" && (a = h.toDer(a).getBytes()), t.value.push(h.create(
-    h.Class.UNIVERSAL,
-    h.Type.OCTETSTRING,
-    !1,
-    a
-  )), t;
+  if (ext.critical) {
+    extseq.value.push(asn1$4.create(
+      asn1$4.Class.UNIVERSAL,
+      asn1$4.Type.BOOLEAN,
+      false,
+      String.fromCharCode(255)
+    ));
+  }
+  var value = ext.value;
+  if (typeof ext.value !== "string") {
+    value = asn1$4.toDer(value).getBytes();
+  }
+  extseq.value.push(asn1$4.create(
+    asn1$4.Class.UNIVERSAL,
+    asn1$4.Type.OCTETSTRING,
+    false,
+    value
+  ));
+  return extseq;
 };
-L.certificationRequestToAsn1 = function(e) {
-  var t = e.certificationRequestInfo || L.getCertificationRequestInfo(e);
-  return h.create(h.Class.UNIVERSAL, h.Type.SEQUENCE, !0, [
+pki$2.certificationRequestToAsn1 = function(csr) {
+  var cri = csr.certificationRequestInfo || pki$2.getCertificationRequestInfo(csr);
+  return asn1$4.create(asn1$4.Class.UNIVERSAL, asn1$4.Type.SEQUENCE, true, [
     // CertificationRequestInfo
-    t,
+    cri,
     // AlgorithmIdentifier (signature algorithm)
-    h.create(h.Class.UNIVERSAL, h.Type.SEQUENCE, !0, [
+    asn1$4.create(asn1$4.Class.UNIVERSAL, asn1$4.Type.SEQUENCE, true, [
       // algorithm
-      h.create(
-        h.Class.UNIVERSAL,
-        h.Type.OID,
-        !1,
-        h.oidToDer(e.signatureOid).getBytes()
+      asn1$4.create(
+        asn1$4.Class.UNIVERSAL,
+        asn1$4.Type.OID,
+        false,
+        asn1$4.oidToDer(csr.signatureOid).getBytes()
       ),
       // parameters
-      Ia(e.signatureOid, e.signatureParameters)
+      _signatureParametersToAsn1(csr.signatureOid, csr.signatureParameters)
     ]),
     // signature
-    h.create(
-      h.Class.UNIVERSAL,
-      h.Type.BITSTRING,
-      !1,
-      "\0" + e.signature
+    asn1$4.create(
+      asn1$4.Class.UNIVERSAL,
+      asn1$4.Type.BITSTRING,
+      false,
+      String.fromCharCode(0) + csr.signature
     )
   ]);
 };
-L.createCaStore = function(e) {
-  var t = {
+pki$2.createCaStore = function(certs) {
+  var caStore = {
     // stored certificates
     certs: {}
   };
-  t.getIssuer = function(i) {
-    var o = a(i.issuer);
-    return o;
-  }, t.addCertificate = function(i) {
-    if (typeof i == "string" && (i = K.pki.certificateFromPem(i)), r(i.subject), !t.hasCertificate(i))
-      if (i.subject.hash in t.certs) {
-        var o = t.certs[i.subject.hash];
-        K.util.isArray(o) || (o = [o]), o.push(i), t.certs[i.subject.hash] = o;
-      } else
-        t.certs[i.subject.hash] = i;
-  }, t.hasCertificate = function(i) {
-    typeof i == "string" && (i = K.pki.certificateFromPem(i));
-    var o = a(i.subject);
-    if (!o)
-      return !1;
-    K.util.isArray(o) || (o = [o]);
-    for (var l = h.toDer(L.certificateToAsn1(i)).getBytes(), u = 0; u < o.length; ++u) {
-      var f = h.toDer(L.certificateToAsn1(o[u])).getBytes();
-      if (l === f)
-        return !0;
-    }
-    return !1;
-  }, t.listAllCertificates = function() {
-    var i = [];
-    for (var o in t.certs)
-      if (t.certs.hasOwnProperty(o)) {
-        var l = t.certs[o];
-        if (!K.util.isArray(l))
-          i.push(l);
-        else
-          for (var u = 0; u < l.length; ++u)
-            i.push(l[u]);
-      }
-    return i;
-  }, t.removeCertificate = function(i) {
-    var o;
-    if (typeof i == "string" && (i = K.pki.certificateFromPem(i)), r(i.subject), !t.hasCertificate(i))
-      return null;
-    var l = a(i.subject);
-    if (!K.util.isArray(l))
-      return o = t.certs[i.subject.hash], delete t.certs[i.subject.hash], o;
-    for (var u = h.toDer(L.certificateToAsn1(i)).getBytes(), f = 0; f < l.length; ++f) {
-      var c = h.toDer(L.certificateToAsn1(l[f])).getBytes();
-      u === c && (o = l[f], l.splice(f, 1));
-    }
-    return l.length === 0 && delete t.certs[i.subject.hash], o;
+  caStore.getIssuer = function(cert2) {
+    var rval = getBySubject(cert2.issuer);
+    return rval;
   };
-  function a(i) {
-    return r(i), t.certs[i.hash] || null;
+  caStore.addCertificate = function(cert2) {
+    if (typeof cert2 === "string") {
+      cert2 = forge$b.pki.certificateFromPem(cert2);
+    }
+    ensureSubjectHasHash(cert2.subject);
+    if (!caStore.hasCertificate(cert2)) {
+      if (cert2.subject.hash in caStore.certs) {
+        var tmp = caStore.certs[cert2.subject.hash];
+        if (!forge$b.util.isArray(tmp)) {
+          tmp = [tmp];
+        }
+        tmp.push(cert2);
+        caStore.certs[cert2.subject.hash] = tmp;
+      } else {
+        caStore.certs[cert2.subject.hash] = cert2;
+      }
+    }
+  };
+  caStore.hasCertificate = function(cert2) {
+    if (typeof cert2 === "string") {
+      cert2 = forge$b.pki.certificateFromPem(cert2);
+    }
+    var match = getBySubject(cert2.subject);
+    if (!match) {
+      return false;
+    }
+    if (!forge$b.util.isArray(match)) {
+      match = [match];
+    }
+    var der1 = asn1$4.toDer(pki$2.certificateToAsn1(cert2)).getBytes();
+    for (var i2 = 0; i2 < match.length; ++i2) {
+      var der2 = asn1$4.toDer(pki$2.certificateToAsn1(match[i2])).getBytes();
+      if (der1 === der2) {
+        return true;
+      }
+    }
+    return false;
+  };
+  caStore.listAllCertificates = function() {
+    var certList = [];
+    for (var hash2 in caStore.certs) {
+      if (caStore.certs.hasOwnProperty(hash2)) {
+        var value = caStore.certs[hash2];
+        if (!forge$b.util.isArray(value)) {
+          certList.push(value);
+        } else {
+          for (var i2 = 0; i2 < value.length; ++i2) {
+            certList.push(value[i2]);
+          }
+        }
+      }
+    }
+    return certList;
+  };
+  caStore.removeCertificate = function(cert2) {
+    var result;
+    if (typeof cert2 === "string") {
+      cert2 = forge$b.pki.certificateFromPem(cert2);
+    }
+    ensureSubjectHasHash(cert2.subject);
+    if (!caStore.hasCertificate(cert2)) {
+      return null;
+    }
+    var match = getBySubject(cert2.subject);
+    if (!forge$b.util.isArray(match)) {
+      result = caStore.certs[cert2.subject.hash];
+      delete caStore.certs[cert2.subject.hash];
+      return result;
+    }
+    var der1 = asn1$4.toDer(pki$2.certificateToAsn1(cert2)).getBytes();
+    for (var i2 = 0; i2 < match.length; ++i2) {
+      var der2 = asn1$4.toDer(pki$2.certificateToAsn1(match[i2])).getBytes();
+      if (der1 === der2) {
+        result = match[i2];
+        match.splice(i2, 1);
+      }
+    }
+    if (match.length === 0) {
+      delete caStore.certs[cert2.subject.hash];
+    }
+    return result;
+  };
+  function getBySubject(subject) {
+    ensureSubjectHasHash(subject);
+    return caStore.certs[subject.hash] || null;
   }
-  function r(i) {
-    if (!i.hash) {
-      var o = K.md.sha1.create();
-      i.attributes = L.RDNAttributesAsArray(Xt(i), o), i.hash = o.digest().toHex();
+  function ensureSubjectHasHash(subject) {
+    if (!subject.hash) {
+      var md = forge$b.md.sha1.create();
+      subject.attributes = pki$2.RDNAttributesAsArray(_dnToAsn1(subject), md);
+      subject.hash = md.digest().toHex();
     }
   }
-  if (e)
-    for (var n = 0; n < e.length; ++n) {
-      var s = e[n];
-      t.addCertificate(s);
+  if (certs) {
+    for (var i = 0; i < certs.length; ++i) {
+      var cert = certs[i];
+      caStore.addCertificate(cert);
     }
-  return t;
+  }
+  return caStore;
 };
-L.certificateError = {
+pki$2.certificateError = {
   bad_certificate: "forge.pki.BadCertificate",
   unsupported_certificate: "forge.pki.UnsupportedCertificate",
   certificate_revoked: "forge.pki.CertificateRevoked",
@@ -7499,264 +11303,353 @@ L.certificateError = {
   certificate_unknown: "forge.pki.CertificateUnknown",
   unknown_ca: "forge.pki.UnknownCertificateAuthority"
 };
-L.verifyCertificateChain = function(e, t, a) {
-  typeof a == "function" && (a = { verify: a }), a = a || {}, t = t.slice(0);
-  var r = t.slice(0), n = a.validityCheckDate;
-  typeof n > "u" && (n = /* @__PURE__ */ new Date());
-  var s = !0, i = null, o = 0;
+pki$2.verifyCertificateChain = function(caStore, chain, options) {
+  if (typeof options === "function") {
+    options = { verify: options };
+  }
+  options = options || {};
+  chain = chain.slice(0);
+  var certs = chain.slice(0);
+  var validityCheckDate = options.validityCheckDate;
+  if (typeof validityCheckDate === "undefined") {
+    validityCheckDate = /* @__PURE__ */ new Date();
+  }
+  var first = true;
+  var error = null;
+  var depth = 0;
   do {
-    var l = t.shift(), u = null, f = !1;
-    if (n && (n < l.validity.notBefore || n > l.validity.notAfter) && (i = {
-      message: "Certificate is not valid yet or has expired.",
-      error: L.certificateError.certificate_expired,
-      notBefore: l.validity.notBefore,
-      notAfter: l.validity.notAfter,
-      // TODO: we might want to reconsider renaming 'now' to
-      // 'validityCheckDate' should this API be changed in the future.
-      now: n
-    }), i === null) {
-      if (u = t[0] || e.getIssuer(l), u === null && l.isIssuer(l) && (f = !0, u = l), u) {
-        var c = u;
-        K.util.isArray(c) || (c = [c]);
-        for (var v = !1; !v && c.length > 0; ) {
-          u = c.shift();
+    var cert = chain.shift();
+    var parent = null;
+    var selfSigned = false;
+    if (validityCheckDate) {
+      if (validityCheckDate < cert.validity.notBefore || validityCheckDate > cert.validity.notAfter) {
+        error = {
+          message: "Certificate is not valid yet or has expired.",
+          error: pki$2.certificateError.certificate_expired,
+          notBefore: cert.validity.notBefore,
+          notAfter: cert.validity.notAfter,
+          // TODO: we might want to reconsider renaming 'now' to
+          // 'validityCheckDate' should this API be changed in the future.
+          now: validityCheckDate
+        };
+      }
+    }
+    if (error === null) {
+      parent = chain[0] || caStore.getIssuer(cert);
+      if (parent === null) {
+        if (cert.isIssuer(cert)) {
+          selfSigned = true;
+          parent = cert;
+        }
+      }
+      if (parent) {
+        var parents = parent;
+        if (!forge$b.util.isArray(parents)) {
+          parents = [parents];
+        }
+        var verified = false;
+        while (!verified && parents.length > 0) {
+          parent = parents.shift();
           try {
-            v = u.verify(l);
-          } catch {
+            verified = parent.verify(cert);
+          } catch (ex) {
           }
         }
-        v || (i = {
-          message: "Certificate signature is invalid.",
-          error: L.certificateError.bad_certificate
-        });
+        if (!verified) {
+          error = {
+            message: "Certificate signature is invalid.",
+            error: pki$2.certificateError.bad_certificate
+          };
+        }
       }
-      i === null && (!u || f) && !e.hasCertificate(l) && (i = {
-        message: "Certificate is not trusted.",
-        error: L.certificateError.unknown_ca
-      });
-    }
-    if (i === null && u && !l.isIssuer(u) && (i = {
-      message: "Certificate issuer is invalid.",
-      error: L.certificateError.bad_certificate
-    }), i === null)
-      for (var m = {
-        keyUsage: !0,
-        basicConstraints: !0
-      }, y = 0; i === null && y < l.extensions.length; ++y) {
-        var x = l.extensions[y];
-        x.critical && !(x.name in m) && (i = {
-          message: "Certificate has an unsupported critical extension.",
-          error: L.certificateError.unsupported_certificate
-        });
-      }
-    if (i === null && (!s || t.length === 0 && (!u || f))) {
-      var S = l.getExtension("basicConstraints"), I = l.getExtension("keyUsage");
-      if (I !== null && (!I.keyCertSign || S === null) && (i = {
-        message: "Certificate keyUsage or basicConstraints conflict or indicate that the certificate is not a CA. If the certificate is the only one in the chain or isn't the first then the certificate must be a valid CA.",
-        error: L.certificateError.bad_certificate
-      }), i === null && S === null && (i = {
-        message: "Certificate is missing basicConstraints extension and cannot be used as a CA.",
-        error: L.certificateError.bad_certificate
-      }), i === null && S !== null && !S.cA && (i = {
-        message: "Certificate basicConstraints indicates the certificate is not a CA.",
-        error: L.certificateError.bad_certificate
-      }), i === null && I !== null && "pathLenConstraint" in S) {
-        var b = o - 1;
-        b > S.pathLenConstraint && (i = {
-          message: "Certificate basicConstraints pathLenConstraint violated.",
-          error: L.certificateError.bad_certificate
-        });
+      if (error === null && (!parent || selfSigned) && !caStore.hasCertificate(cert)) {
+        error = {
+          message: "Certificate is not trusted.",
+          error: pki$2.certificateError.unknown_ca
+        };
       }
     }
-    var _ = i === null ? !0 : i.error, V = a.verify ? a.verify(_, o, r) : _;
-    if (V === !0)
-      i = null;
-    else
-      throw _ === !0 && (i = {
-        message: "The application rejected the certificate.",
-        error: L.certificateError.bad_certificate
-      }), (V || V === 0) && (typeof V == "object" && !K.util.isArray(V) ? (V.message && (i.message = V.message), V.error && (i.error = V.error)) : typeof V == "string" && (i.error = V)), i;
-    s = !1, ++o;
-  } while (t.length > 0);
-  return !0;
+    if (error === null && parent && !cert.isIssuer(parent)) {
+      error = {
+        message: "Certificate issuer is invalid.",
+        error: pki$2.certificateError.bad_certificate
+      };
+    }
+    if (error === null) {
+      var se = {
+        keyUsage: true,
+        basicConstraints: true
+      };
+      for (var i = 0; error === null && i < cert.extensions.length; ++i) {
+        var ext = cert.extensions[i];
+        if (ext.critical && !(ext.name in se)) {
+          error = {
+            message: "Certificate has an unsupported critical extension.",
+            error: pki$2.certificateError.unsupported_certificate
+          };
+        }
+      }
+    }
+    if (error === null && (!first || chain.length === 0 && (!parent || selfSigned))) {
+      var bcExt = cert.getExtension("basicConstraints");
+      var keyUsageExt = cert.getExtension("keyUsage");
+      if (keyUsageExt !== null) {
+        if (!keyUsageExt.keyCertSign || bcExt === null) {
+          error = {
+            message: "Certificate keyUsage or basicConstraints conflict or indicate that the certificate is not a CA. If the certificate is the only one in the chain or isn't the first then the certificate must be a valid CA.",
+            error: pki$2.certificateError.bad_certificate
+          };
+        }
+      }
+      if (error === null && bcExt === null) {
+        error = {
+          message: "Certificate is missing basicConstraints extension and cannot be used as a CA.",
+          error: pki$2.certificateError.bad_certificate
+        };
+      }
+      if (error === null && bcExt !== null && !bcExt.cA) {
+        error = {
+          message: "Certificate basicConstraints indicates the certificate is not a CA.",
+          error: pki$2.certificateError.bad_certificate
+        };
+      }
+      if (error === null && keyUsageExt !== null && "pathLenConstraint" in bcExt) {
+        var pathLen = depth - 1;
+        if (pathLen > bcExt.pathLenConstraint) {
+          error = {
+            message: "Certificate basicConstraints pathLenConstraint violated.",
+            error: pki$2.certificateError.bad_certificate
+          };
+        }
+      }
+    }
+    var vfd = error === null ? true : error.error;
+    var ret = options.verify ? options.verify(vfd, depth, certs) : vfd;
+    if (ret === true) {
+      error = null;
+    } else {
+      if (vfd === true) {
+        error = {
+          message: "The application rejected the certificate.",
+          error: pki$2.certificateError.bad_certificate
+        };
+      }
+      if (ret || ret === 0) {
+        if (typeof ret === "object" && !forge$b.util.isArray(ret)) {
+          if (ret.message) {
+            error.message = ret.message;
+          }
+          if (ret.error) {
+            error.error = ret.error;
+          }
+        } else if (typeof ret === "string") {
+          error.error = ret;
+        }
+      }
+      throw error;
+    }
+    first = false;
+    ++depth;
+  } while (chain.length > 0);
+  return true;
 };
-var oe = z, g = oe.asn1, $ = oe.pki, fr = oe.pkcs12 = oe.pkcs12 || {}, Kn = {
+var forge$a = forge$C;
+var asn1$3 = forge$a.asn1;
+var pki$1 = forge$a.pki;
+var p12 = forge$a.pkcs12 = forge$a.pkcs12 || {};
+var contentInfoValidator = {
   name: "ContentInfo",
-  tagClass: g.Class.UNIVERSAL,
-  type: g.Type.SEQUENCE,
+  tagClass: asn1$3.Class.UNIVERSAL,
+  type: asn1$3.Type.SEQUENCE,
   // a ContentInfo
-  constructed: !0,
+  constructed: true,
   value: [{
     name: "ContentInfo.contentType",
-    tagClass: g.Class.UNIVERSAL,
-    type: g.Type.OID,
-    constructed: !1,
+    tagClass: asn1$3.Class.UNIVERSAL,
+    type: asn1$3.Type.OID,
+    constructed: false,
     capture: "contentType"
   }, {
     name: "ContentInfo.content",
-    tagClass: g.Class.CONTEXT_SPECIFIC,
-    constructed: !0,
+    tagClass: asn1$3.Class.CONTEXT_SPECIFIC,
+    constructed: true,
     captureAsn1: "content"
   }]
-}, t0 = {
+};
+var pfxValidator = {
   name: "PFX",
-  tagClass: g.Class.UNIVERSAL,
-  type: g.Type.SEQUENCE,
-  constructed: !0,
+  tagClass: asn1$3.Class.UNIVERSAL,
+  type: asn1$3.Type.SEQUENCE,
+  constructed: true,
   value: [
     {
       name: "PFX.version",
-      tagClass: g.Class.UNIVERSAL,
-      type: g.Type.INTEGER,
-      constructed: !1,
+      tagClass: asn1$3.Class.UNIVERSAL,
+      type: asn1$3.Type.INTEGER,
+      constructed: false,
       capture: "version"
     },
-    Kn,
+    contentInfoValidator,
     {
       name: "PFX.macData",
-      tagClass: g.Class.UNIVERSAL,
-      type: g.Type.SEQUENCE,
-      constructed: !0,
-      optional: !0,
+      tagClass: asn1$3.Class.UNIVERSAL,
+      type: asn1$3.Type.SEQUENCE,
+      constructed: true,
+      optional: true,
       captureAsn1: "mac",
       value: [{
         name: "PFX.macData.mac",
-        tagClass: g.Class.UNIVERSAL,
-        type: g.Type.SEQUENCE,
+        tagClass: asn1$3.Class.UNIVERSAL,
+        type: asn1$3.Type.SEQUENCE,
         // DigestInfo
-        constructed: !0,
+        constructed: true,
         value: [{
           name: "PFX.macData.mac.digestAlgorithm",
-          tagClass: g.Class.UNIVERSAL,
-          type: g.Type.SEQUENCE,
+          tagClass: asn1$3.Class.UNIVERSAL,
+          type: asn1$3.Type.SEQUENCE,
           // DigestAlgorithmIdentifier
-          constructed: !0,
+          constructed: true,
           value: [{
             name: "PFX.macData.mac.digestAlgorithm.algorithm",
-            tagClass: g.Class.UNIVERSAL,
-            type: g.Type.OID,
-            constructed: !1,
+            tagClass: asn1$3.Class.UNIVERSAL,
+            type: asn1$3.Type.OID,
+            constructed: false,
             capture: "macAlgorithm"
           }, {
             name: "PFX.macData.mac.digestAlgorithm.parameters",
-            optional: !0,
-            tagClass: g.Class.UNIVERSAL,
+            optional: true,
+            tagClass: asn1$3.Class.UNIVERSAL,
             captureAsn1: "macAlgorithmParameters"
           }]
         }, {
           name: "PFX.macData.mac.digest",
-          tagClass: g.Class.UNIVERSAL,
-          type: g.Type.OCTETSTRING,
-          constructed: !1,
+          tagClass: asn1$3.Class.UNIVERSAL,
+          type: asn1$3.Type.OCTETSTRING,
+          constructed: false,
           capture: "macDigest"
         }]
       }, {
         name: "PFX.macData.macSalt",
-        tagClass: g.Class.UNIVERSAL,
-        type: g.Type.OCTETSTRING,
-        constructed: !1,
+        tagClass: asn1$3.Class.UNIVERSAL,
+        type: asn1$3.Type.OCTETSTRING,
+        constructed: false,
         capture: "macSalt"
       }, {
         name: "PFX.macData.iterations",
-        tagClass: g.Class.UNIVERSAL,
-        type: g.Type.INTEGER,
-        constructed: !1,
-        optional: !0,
+        tagClass: asn1$3.Class.UNIVERSAL,
+        type: asn1$3.Type.INTEGER,
+        constructed: false,
+        optional: true,
         capture: "macIterations"
       }]
     }
   ]
-}, r0 = {
+};
+var safeBagValidator = {
   name: "SafeBag",
-  tagClass: g.Class.UNIVERSAL,
-  type: g.Type.SEQUENCE,
-  constructed: !0,
+  tagClass: asn1$3.Class.UNIVERSAL,
+  type: asn1$3.Type.SEQUENCE,
+  constructed: true,
   value: [{
     name: "SafeBag.bagId",
-    tagClass: g.Class.UNIVERSAL,
-    type: g.Type.OID,
-    constructed: !1,
+    tagClass: asn1$3.Class.UNIVERSAL,
+    type: asn1$3.Type.OID,
+    constructed: false,
     capture: "bagId"
   }, {
     name: "SafeBag.bagValue",
-    tagClass: g.Class.CONTEXT_SPECIFIC,
-    constructed: !0,
+    tagClass: asn1$3.Class.CONTEXT_SPECIFIC,
+    constructed: true,
     captureAsn1: "bagValue"
   }, {
     name: "SafeBag.bagAttributes",
-    tagClass: g.Class.UNIVERSAL,
-    type: g.Type.SET,
-    constructed: !0,
-    optional: !0,
+    tagClass: asn1$3.Class.UNIVERSAL,
+    type: asn1$3.Type.SET,
+    constructed: true,
+    optional: true,
     capture: "bagAttributes"
   }]
-}, a0 = {
+};
+var attributeValidator = {
   name: "Attribute",
-  tagClass: g.Class.UNIVERSAL,
-  type: g.Type.SEQUENCE,
-  constructed: !0,
+  tagClass: asn1$3.Class.UNIVERSAL,
+  type: asn1$3.Type.SEQUENCE,
+  constructed: true,
   value: [{
     name: "Attribute.attrId",
-    tagClass: g.Class.UNIVERSAL,
-    type: g.Type.OID,
-    constructed: !1,
+    tagClass: asn1$3.Class.UNIVERSAL,
+    type: asn1$3.Type.OID,
+    constructed: false,
     capture: "oid"
   }, {
     name: "Attribute.attrValues",
-    tagClass: g.Class.UNIVERSAL,
-    type: g.Type.SET,
-    constructed: !0,
+    tagClass: asn1$3.Class.UNIVERSAL,
+    type: asn1$3.Type.SET,
+    constructed: true,
     capture: "values"
   }]
-}, n0 = {
+};
+var certBagValidator = {
   name: "CertBag",
-  tagClass: g.Class.UNIVERSAL,
-  type: g.Type.SEQUENCE,
-  constructed: !0,
+  tagClass: asn1$3.Class.UNIVERSAL,
+  type: asn1$3.Type.SEQUENCE,
+  constructed: true,
   value: [{
     name: "CertBag.certId",
-    tagClass: g.Class.UNIVERSAL,
-    type: g.Type.OID,
-    constructed: !1,
+    tagClass: asn1$3.Class.UNIVERSAL,
+    type: asn1$3.Type.OID,
+    constructed: false,
     capture: "certId"
   }, {
     name: "CertBag.certValue",
-    tagClass: g.Class.CONTEXT_SPECIFIC,
-    constructed: !0,
+    tagClass: asn1$3.Class.CONTEXT_SPECIFIC,
+    constructed: true,
     /* So far we only support X.509 certificates (which are wrapped in
        an OCTET STRING, hence hard code that here). */
     value: [{
       name: "CertBag.certValue[0]",
-      tagClass: g.Class.UNIVERSAL,
-      type: g.Class.OCTETSTRING,
-      constructed: !1,
+      tagClass: asn1$3.Class.UNIVERSAL,
+      type: asn1$3.Class.OCTETSTRING,
+      constructed: false,
       capture: "cert"
     }]
   }]
 };
-function rr(e, t, a, r) {
-  for (var n = [], s = 0; s < e.length; s++)
-    for (var i = 0; i < e[s].safeBags.length; i++) {
-      var o = e[s].safeBags[i];
-      if (!(r !== void 0 && o.type !== r)) {
-        if (t === null) {
-          n.push(o);
-          continue;
-        }
-        o.attributes[t] !== void 0 && o.attributes[t].indexOf(a) >= 0 && n.push(o);
+function _getBagsByAttribute(safeContents, attrName, attrValue, bagType) {
+  var result = [];
+  for (var i = 0; i < safeContents.length; i++) {
+    for (var j = 0; j < safeContents[i].safeBags.length; j++) {
+      var bag = safeContents[i].safeBags[j];
+      if (bagType !== void 0 && bag.type !== bagType) {
+        continue;
+      }
+      if (attrName === null) {
+        result.push(bag);
+        continue;
+      }
+      if (bag.attributes[attrName] !== void 0 && bag.attributes[attrName].indexOf(attrValue) >= 0) {
+        result.push(bag);
       }
     }
-  return n;
-}
-fr.pkcs12FromAsn1 = function(e, t, a) {
-  typeof t == "string" ? (a = t, t = !0) : t === void 0 && (t = !0);
-  var r = {}, n = [];
-  if (!g.validate(e, t0, r, n)) {
-    var s = new Error("Cannot read PKCS#12 PFX. ASN.1 object is not an PKCS#12 PFX.");
-    throw s.errors = s, s;
   }
-  var i = {
-    version: r.version.charCodeAt(0),
+  return result;
+}
+p12.pkcs12FromAsn1 = function(obj, strict, password) {
+  if (typeof strict === "string") {
+    password = strict;
+    strict = true;
+  } else if (strict === void 0) {
+    strict = true;
+  }
+  var capture = {};
+  var errors = [];
+  if (!asn1$3.validate(obj, pfxValidator, capture, errors)) {
+    var error = new Error("Cannot read PKCS#12 PFX. ASN.1 object is not an PKCS#12 PFX.");
+    error.errors = error;
+    throw error;
+  }
+  var pfx = {
+    version: capture.version.charCodeAt(0),
     safeContents: [],
     /**
      * Gets bags with matching attributes.
@@ -7771,24 +11664,39 @@ fr.pkcs12FromAsn1 = function(e, t, a) {
      *           attribute was given but a bag type, the map key will be the
      *           bag type.
      */
-    getBags: function(S) {
-      var I = {}, b;
-      return "localKeyId" in S ? b = S.localKeyId : "localKeyIdHex" in S && (b = oe.util.hexToBytes(S.localKeyIdHex)), b === void 0 && !("friendlyName" in S) && "bagType" in S && (I[S.bagType] = rr(
-        i.safeContents,
-        null,
-        null,
-        S.bagType
-      )), b !== void 0 && (I.localKeyId = rr(
-        i.safeContents,
-        "localKeyId",
-        b,
-        S.bagType
-      )), "friendlyName" in S && (I.friendlyName = rr(
-        i.safeContents,
-        "friendlyName",
-        S.friendlyName,
-        S.bagType
-      )), I;
+    getBags: function(filter) {
+      var rval = {};
+      var localKeyId;
+      if ("localKeyId" in filter) {
+        localKeyId = filter.localKeyId;
+      } else if ("localKeyIdHex" in filter) {
+        localKeyId = forge$a.util.hexToBytes(filter.localKeyIdHex);
+      }
+      if (localKeyId === void 0 && !("friendlyName" in filter) && "bagType" in filter) {
+        rval[filter.bagType] = _getBagsByAttribute(
+          pfx.safeContents,
+          null,
+          null,
+          filter.bagType
+        );
+      }
+      if (localKeyId !== void 0) {
+        rval.localKeyId = _getBagsByAttribute(
+          pfx.safeContents,
+          "localKeyId",
+          localKeyId,
+          filter.bagType
+        );
+      }
+      if ("friendlyName" in filter) {
+        rval.friendlyName = _getBagsByAttribute(
+          pfx.safeContents,
+          "friendlyName",
+          filter.friendlyName,
+          filter.bagType
+        );
+      }
+      return rval;
     },
     /**
      * DEPRECATED: use getBags() instead.
@@ -7800,12 +11708,12 @@ fr.pkcs12FromAsn1 = function(e, t, a) {
      *
      * @return an array of bags with matching friendlyName attribute.
      */
-    getBagsByFriendlyName: function(S, I) {
-      return rr(
-        i.safeContents,
+    getBagsByFriendlyName: function(friendlyName, bagType) {
+      return _getBagsByAttribute(
+        pfx.safeContents,
         "friendlyName",
-        S,
-        I
+        friendlyName,
+        bagType
       );
     },
     /**
@@ -7818,588 +11726,746 @@ fr.pkcs12FromAsn1 = function(e, t, a) {
      *
      * @return an array of bags with matching localKeyId attribute.
      */
-    getBagsByLocalKeyId: function(S, I) {
-      return rr(
-        i.safeContents,
+    getBagsByLocalKeyId: function(localKeyId, bagType) {
+      return _getBagsByAttribute(
+        pfx.safeContents,
         "localKeyId",
-        S,
-        I
+        localKeyId,
+        bagType
       );
     }
   };
-  if (r.version.charCodeAt(0) !== 3) {
-    var s = new Error("PKCS#12 PFX of version other than 3 not supported.");
-    throw s.version = r.version.charCodeAt(0), s;
+  if (capture.version.charCodeAt(0) !== 3) {
+    var error = new Error("PKCS#12 PFX of version other than 3 not supported.");
+    error.version = capture.version.charCodeAt(0);
+    throw error;
   }
-  if (g.derToOid(r.contentType) !== $.oids.data) {
-    var s = new Error("Only PKCS#12 PFX in password integrity mode supported.");
-    throw s.oid = g.derToOid(r.contentType), s;
+  if (asn1$3.derToOid(capture.contentType) !== pki$1.oids.data) {
+    var error = new Error("Only PKCS#12 PFX in password integrity mode supported.");
+    error.oid = asn1$3.derToOid(capture.contentType);
+    throw error;
   }
-  var o = r.content.value[0];
-  if (o.tagClass !== g.Class.UNIVERSAL || o.type !== g.Type.OCTETSTRING)
+  var data = capture.content.value[0];
+  if (data.tagClass !== asn1$3.Class.UNIVERSAL || data.type !== asn1$3.Type.OCTETSTRING) {
     throw new Error("PKCS#12 authSafe content data is not an OCTET STRING.");
-  if (o = Aa(o), r.mac) {
-    var l = null, u = 0, f = g.derToOid(r.macAlgorithm);
-    switch (f) {
-      case $.oids.sha1:
-        l = oe.md.sha1.create(), u = 20;
-        break;
-      case $.oids.sha256:
-        l = oe.md.sha256.create(), u = 32;
-        break;
-      case $.oids.sha384:
-        l = oe.md.sha384.create(), u = 48;
-        break;
-      case $.oids.sha512:
-        l = oe.md.sha512.create(), u = 64;
-        break;
-      case $.oids.md5:
-        l = oe.md.md5.create(), u = 16;
-        break;
-    }
-    if (l === null)
-      throw new Error("PKCS#12 uses unsupported MAC algorithm: " + f);
-    var c = new oe.util.ByteBuffer(r.macSalt), v = "macIterations" in r ? parseInt(oe.util.bytesToHex(r.macIterations), 16) : 1, m = fr.generateKey(
-      a,
-      c,
-      3,
-      v,
-      u,
-      l
-    ), y = oe.hmac.create();
-    y.start(l, m), y.update(o.value);
-    var x = y.getMac();
-    if (x.getBytes() !== r.macDigest)
-      throw new Error("PKCS#12 MAC could not be verified. Invalid password?");
-  } else if (Array.isArray(e.value) && e.value.length > 2)
-    throw new Error("Invalid PKCS#12. macData field present but MAC was not validated.");
-  return i0(i, o.value, t, a), i;
-};
-function Aa(e) {
-  if (e.composed || e.constructed) {
-    for (var t = oe.util.createBuffer(), a = 0; a < e.value.length; ++a)
-      t.putBytes(e.value[a].value);
-    e.composed = e.constructed = !1, e.value = t.getBytes();
   }
-  return e;
-}
-function i0(e, t, a, r) {
-  if (t = g.fromDer(t, a), t.tagClass !== g.Class.UNIVERSAL || t.type !== g.Type.SEQUENCE || t.constructed !== !0)
-    throw new Error("PKCS#12 AuthenticatedSafe expected to be a SEQUENCE OF ContentInfo");
-  for (var n = 0; n < t.value.length; n++) {
-    var s = t.value[n], i = {}, o = [];
-    if (!g.validate(s, Kn, i, o)) {
-      var l = new Error("Cannot read ContentInfo.");
-      throw l.errors = o, l;
-    }
-    var u = {
-      encrypted: !1
-    }, f = null, c = i.content.value[0];
-    switch (g.derToOid(i.contentType)) {
-      case $.oids.data:
-        if (c.tagClass !== g.Class.UNIVERSAL || c.type !== g.Type.OCTETSTRING)
-          throw new Error("PKCS#12 SafeContents Data is not an OCTET STRING.");
-        f = Aa(c).value;
+  data = _decodePkcs7Data(data);
+  if (capture.mac) {
+    var md = null;
+    var macKeyBytes = 0;
+    var macAlgorithm = asn1$3.derToOid(capture.macAlgorithm);
+    switch (macAlgorithm) {
+      case pki$1.oids.sha1:
+        md = forge$a.md.sha1.create();
+        macKeyBytes = 20;
         break;
-      case $.oids.encryptedData:
-        f = s0(c, r), u.encrypted = !0;
+      case pki$1.oids.sha256:
+        md = forge$a.md.sha256.create();
+        macKeyBytes = 32;
+        break;
+      case pki$1.oids.sha384:
+        md = forge$a.md.sha384.create();
+        macKeyBytes = 48;
+        break;
+      case pki$1.oids.sha512:
+        md = forge$a.md.sha512.create();
+        macKeyBytes = 64;
+        break;
+      case pki$1.oids.md5:
+        md = forge$a.md.md5.create();
+        macKeyBytes = 16;
+        break;
+    }
+    if (md === null) {
+      throw new Error("PKCS#12 uses unsupported MAC algorithm: " + macAlgorithm);
+    }
+    var macSalt = new forge$a.util.ByteBuffer(capture.macSalt);
+    var macIterations = "macIterations" in capture ? parseInt(forge$a.util.bytesToHex(capture.macIterations), 16) : 1;
+    var macKey = p12.generateKey(
+      password,
+      macSalt,
+      3,
+      macIterations,
+      macKeyBytes,
+      md
+    );
+    var mac = forge$a.hmac.create();
+    mac.start(md, macKey);
+    mac.update(data.value);
+    var macValue = mac.getMac();
+    if (macValue.getBytes() !== capture.macDigest) {
+      throw new Error("PKCS#12 MAC could not be verified. Invalid password?");
+    }
+  } else if (Array.isArray(obj.value) && obj.value.length > 2) {
+    throw new Error("Invalid PKCS#12. macData field present but MAC was not validated.");
+  }
+  _decodeAuthenticatedSafe(pfx, data.value, strict, password);
+  return pfx;
+};
+function _decodePkcs7Data(data) {
+  if (data.composed || data.constructed) {
+    var value = forge$a.util.createBuffer();
+    for (var i = 0; i < data.value.length; ++i) {
+      value.putBytes(data.value[i].value);
+    }
+    data.composed = data.constructed = false;
+    data.value = value.getBytes();
+  }
+  return data;
+}
+function _decodeAuthenticatedSafe(pfx, authSafe, strict, password) {
+  authSafe = asn1$3.fromDer(authSafe, strict);
+  if (authSafe.tagClass !== asn1$3.Class.UNIVERSAL || authSafe.type !== asn1$3.Type.SEQUENCE || authSafe.constructed !== true) {
+    throw new Error("PKCS#12 AuthenticatedSafe expected to be a SEQUENCE OF ContentInfo");
+  }
+  for (var i = 0; i < authSafe.value.length; i++) {
+    var contentInfo = authSafe.value[i];
+    var capture = {};
+    var errors = [];
+    if (!asn1$3.validate(contentInfo, contentInfoValidator, capture, errors)) {
+      var error = new Error("Cannot read ContentInfo.");
+      error.errors = errors;
+      throw error;
+    }
+    var obj = {
+      encrypted: false
+    };
+    var safeContents = null;
+    var data = capture.content.value[0];
+    switch (asn1$3.derToOid(capture.contentType)) {
+      case pki$1.oids.data:
+        if (data.tagClass !== asn1$3.Class.UNIVERSAL || data.type !== asn1$3.Type.OCTETSTRING) {
+          throw new Error("PKCS#12 SafeContents Data is not an OCTET STRING.");
+        }
+        safeContents = _decodePkcs7Data(data).value;
+        break;
+      case pki$1.oids.encryptedData:
+        safeContents = _decryptSafeContents(data, password);
+        obj.encrypted = true;
         break;
       default:
-        var l = new Error("Unsupported PKCS#12 contentType.");
-        throw l.contentType = g.derToOid(i.contentType), l;
+        var error = new Error("Unsupported PKCS#12 contentType.");
+        error.contentType = asn1$3.derToOid(capture.contentType);
+        throw error;
     }
-    u.safeBags = o0(f, a, r), e.safeContents.push(u);
+    obj.safeBags = _decodeSafeContents(safeContents, strict, password);
+    pfx.safeContents.push(obj);
   }
 }
-function s0(e, t) {
-  var a = {}, r = [];
-  if (!g.validate(
-    e,
-    oe.pkcs7.asn1.encryptedDataValidator,
-    a,
-    r
+function _decryptSafeContents(data, password) {
+  var capture = {};
+  var errors = [];
+  if (!asn1$3.validate(
+    data,
+    forge$a.pkcs7.asn1.encryptedDataValidator,
+    capture,
+    errors
   )) {
-    var n = new Error("Cannot read EncryptedContentInfo.");
-    throw n.errors = r, n;
+    var error = new Error("Cannot read EncryptedContentInfo.");
+    error.errors = errors;
+    throw error;
   }
-  var s = g.derToOid(a.contentType);
-  if (s !== $.oids.data) {
-    var n = new Error(
+  var oid = asn1$3.derToOid(capture.contentType);
+  if (oid !== pki$1.oids.data) {
+    var error = new Error(
       "PKCS#12 EncryptedContentInfo ContentType is not Data."
     );
-    throw n.oid = s, n;
+    error.oid = oid;
+    throw error;
   }
-  s = g.derToOid(a.encAlgorithm);
-  var i = $.pbe.getCipher(s, a.encParameter, t), o = Aa(a.encryptedContentAsn1), l = oe.util.createBuffer(o.value);
-  if (i.update(l), !i.finish())
+  oid = asn1$3.derToOid(capture.encAlgorithm);
+  var cipher = pki$1.pbe.getCipher(oid, capture.encParameter, password);
+  var encryptedContentAsn1 = _decodePkcs7Data(capture.encryptedContentAsn1);
+  var encrypted = forge$a.util.createBuffer(encryptedContentAsn1.value);
+  cipher.update(encrypted);
+  if (!cipher.finish()) {
     throw new Error("Failed to decrypt PKCS#12 SafeContents.");
-  return i.output.getBytes();
+  }
+  return cipher.output.getBytes();
 }
-function o0(e, t, a) {
-  if (!t && e.length === 0)
+function _decodeSafeContents(safeContents, strict, password) {
+  if (!strict && safeContents.length === 0) {
     return [];
-  if (e = g.fromDer(e, t), e.tagClass !== g.Class.UNIVERSAL || e.type !== g.Type.SEQUENCE || e.constructed !== !0)
+  }
+  safeContents = asn1$3.fromDer(safeContents, strict);
+  if (safeContents.tagClass !== asn1$3.Class.UNIVERSAL || safeContents.type !== asn1$3.Type.SEQUENCE || safeContents.constructed !== true) {
     throw new Error(
       "PKCS#12 SafeContents expected to be a SEQUENCE OF SafeBag."
     );
-  for (var r = [], n = 0; n < e.value.length; n++) {
-    var s = e.value[n], i = {}, o = [];
-    if (!g.validate(s, r0, i, o)) {
-      var l = new Error("Cannot read SafeBag.");
-      throw l.errors = o, l;
+  }
+  var res = [];
+  for (var i = 0; i < safeContents.value.length; i++) {
+    var safeBag = safeContents.value[i];
+    var capture = {};
+    var errors = [];
+    if (!asn1$3.validate(safeBag, safeBagValidator, capture, errors)) {
+      var error = new Error("Cannot read SafeBag.");
+      error.errors = errors;
+      throw error;
     }
-    var u = {
-      type: g.derToOid(i.bagId),
-      attributes: u0(i.bagAttributes)
+    var bag = {
+      type: asn1$3.derToOid(capture.bagId),
+      attributes: _decodeBagAttributes(capture.bagAttributes)
     };
-    r.push(u);
-    var f, c, v = i.bagValue.value[0];
-    switch (u.type) {
-      case $.oids.pkcs8ShroudedKeyBag:
-        if (v = $.decryptPrivateKeyInfo(v, a), v === null)
+    res.push(bag);
+    var validator, decoder;
+    var bagAsn1 = capture.bagValue.value[0];
+    switch (bag.type) {
+      case pki$1.oids.pkcs8ShroudedKeyBag:
+        bagAsn1 = pki$1.decryptPrivateKeyInfo(bagAsn1, password);
+        if (bagAsn1 === null) {
           throw new Error(
             "Unable to decrypt PKCS#8 ShroudedKeyBag, wrong password?"
           );
-      case $.oids.keyBag:
+        }
+      case pki$1.oids.keyBag:
         try {
-          u.key = $.privateKeyFromAsn1(v);
-        } catch {
-          u.key = null, u.asn1 = v;
+          bag.key = pki$1.privateKeyFromAsn1(bagAsn1);
+        } catch (e) {
+          bag.key = null;
+          bag.asn1 = bagAsn1;
         }
         continue;
-      case $.oids.certBag:
-        f = n0, c = function() {
-          if (g.derToOid(i.certId) !== $.oids.x509Certificate) {
-            var y = new Error(
+      case pki$1.oids.certBag:
+        validator = certBagValidator;
+        decoder = function() {
+          if (asn1$3.derToOid(capture.certId) !== pki$1.oids.x509Certificate) {
+            var error2 = new Error(
               "Unsupported certificate type, only X.509 supported."
             );
-            throw y.oid = g.derToOid(i.certId), y;
+            error2.oid = asn1$3.derToOid(capture.certId);
+            throw error2;
           }
-          var x = g.fromDer(i.cert, t);
+          var certAsn1 = asn1$3.fromDer(capture.cert, strict);
           try {
-            u.cert = $.certificateFromAsn1(x, !0);
-          } catch {
-            u.cert = null, u.asn1 = x;
+            bag.cert = pki$1.certificateFromAsn1(certAsn1, true);
+          } catch (e) {
+            bag.cert = null;
+            bag.asn1 = certAsn1;
           }
         };
         break;
       default:
-        var l = new Error("Unsupported PKCS#12 SafeBag type.");
-        throw l.oid = u.type, l;
+        var error = new Error("Unsupported PKCS#12 SafeBag type.");
+        error.oid = bag.type;
+        throw error;
     }
-    if (f !== void 0 && !g.validate(v, f, i, o)) {
-      var l = new Error("Cannot read PKCS#12 " + f.name);
-      throw l.errors = o, l;
+    if (validator !== void 0 && !asn1$3.validate(bagAsn1, validator, capture, errors)) {
+      var error = new Error("Cannot read PKCS#12 " + validator.name);
+      error.errors = errors;
+      throw error;
     }
-    c();
+    decoder();
   }
-  return r;
+  return res;
 }
-function u0(e) {
-  var t = {};
-  if (e !== void 0)
-    for (var a = 0; a < e.length; ++a) {
-      var r = {}, n = [];
-      if (!g.validate(e[a], a0, r, n)) {
-        var s = new Error("Cannot read PKCS#12 BagAttribute.");
-        throw s.errors = n, s;
+function _decodeBagAttributes(attributes) {
+  var decodedAttrs = {};
+  if (attributes !== void 0) {
+    for (var i = 0; i < attributes.length; ++i) {
+      var capture = {};
+      var errors = [];
+      if (!asn1$3.validate(attributes[i], attributeValidator, capture, errors)) {
+        var error = new Error("Cannot read PKCS#12 BagAttribute.");
+        error.errors = errors;
+        throw error;
       }
-      var i = g.derToOid(r.oid);
-      if ($.oids[i] !== void 0) {
-        t[$.oids[i]] = [];
-        for (var o = 0; o < r.values.length; ++o)
-          t[$.oids[i]].push(r.values[o].value);
+      var oid = asn1$3.derToOid(capture.oid);
+      if (pki$1.oids[oid] === void 0) {
+        continue;
+      }
+      decodedAttrs[pki$1.oids[oid]] = [];
+      for (var j = 0; j < capture.values.length; ++j) {
+        decodedAttrs[pki$1.oids[oid]].push(capture.values[j].value);
       }
     }
-  return t;
+  }
+  return decodedAttrs;
 }
-fr.toPkcs12Asn1 = function(e, t, a, r) {
-  r = r || {}, r.saltSize = r.saltSize || 8, r.count = r.count || 2048, r.algorithm = r.algorithm || r.encAlgorithm || "aes128", "useMac" in r || (r.useMac = !0), "localKeyId" in r || (r.localKeyId = null), "generateLocalKeyId" in r || (r.generateLocalKeyId = !0);
-  var n = r.localKeyId, s;
-  if (n !== null)
-    n = oe.util.hexToBytes(n);
-  else if (r.generateLocalKeyId)
-    if (t) {
-      var i = oe.util.isArray(t) ? t[0] : t;
-      typeof i == "string" && (i = $.certificateFromPem(i));
-      var o = oe.md.sha1.create();
-      o.update(g.toDer($.certificateToAsn1(i)).getBytes()), n = o.digest().getBytes();
-    } else
-      n = oe.random.getBytes(20);
-  var l = [];
-  n !== null && l.push(
-    // localKeyID
-    g.create(g.Class.UNIVERSAL, g.Type.SEQUENCE, !0, [
-      // attrId
-      g.create(
-        g.Class.UNIVERSAL,
-        g.Type.OID,
-        !1,
-        g.oidToDer($.oids.localKeyId).getBytes()
-      ),
-      // attrValues
-      g.create(g.Class.UNIVERSAL, g.Type.SET, !0, [
-        g.create(
-          g.Class.UNIVERSAL,
-          g.Type.OCTETSTRING,
-          !1,
-          n
-        )
+p12.toPkcs12Asn1 = function(key, cert, password, options) {
+  options = options || {};
+  options.saltSize = options.saltSize || 8;
+  options.count = options.count || 2048;
+  options.algorithm = options.algorithm || options.encAlgorithm || "aes128";
+  if (!("useMac" in options)) {
+    options.useMac = true;
+  }
+  if (!("localKeyId" in options)) {
+    options.localKeyId = null;
+  }
+  if (!("generateLocalKeyId" in options)) {
+    options.generateLocalKeyId = true;
+  }
+  var localKeyId = options.localKeyId;
+  var bagAttrs;
+  if (localKeyId !== null) {
+    localKeyId = forge$a.util.hexToBytes(localKeyId);
+  } else if (options.generateLocalKeyId) {
+    if (cert) {
+      var pairedCert = forge$a.util.isArray(cert) ? cert[0] : cert;
+      if (typeof pairedCert === "string") {
+        pairedCert = pki$1.certificateFromPem(pairedCert);
+      }
+      var sha12 = forge$a.md.sha1.create();
+      sha12.update(asn1$3.toDer(pki$1.certificateToAsn1(pairedCert)).getBytes());
+      localKeyId = sha12.digest().getBytes();
+    } else {
+      localKeyId = forge$a.random.getBytes(20);
+    }
+  }
+  var attrs = [];
+  if (localKeyId !== null) {
+    attrs.push(
+      // localKeyID
+      asn1$3.create(asn1$3.Class.UNIVERSAL, asn1$3.Type.SEQUENCE, true, [
+        // attrId
+        asn1$3.create(
+          asn1$3.Class.UNIVERSAL,
+          asn1$3.Type.OID,
+          false,
+          asn1$3.oidToDer(pki$1.oids.localKeyId).getBytes()
+        ),
+        // attrValues
+        asn1$3.create(asn1$3.Class.UNIVERSAL, asn1$3.Type.SET, true, [
+          asn1$3.create(
+            asn1$3.Class.UNIVERSAL,
+            asn1$3.Type.OCTETSTRING,
+            false,
+            localKeyId
+          )
+        ])
       ])
-    ])
-  ), "friendlyName" in r && l.push(
-    // friendlyName
-    g.create(g.Class.UNIVERSAL, g.Type.SEQUENCE, !0, [
-      // attrId
-      g.create(
-        g.Class.UNIVERSAL,
-        g.Type.OID,
-        !1,
-        g.oidToDer($.oids.friendlyName).getBytes()
-      ),
-      // attrValues
-      g.create(g.Class.UNIVERSAL, g.Type.SET, !0, [
-        g.create(
-          g.Class.UNIVERSAL,
-          g.Type.BMPSTRING,
-          !1,
-          r.friendlyName
-        )
+    );
+  }
+  if ("friendlyName" in options) {
+    attrs.push(
+      // friendlyName
+      asn1$3.create(asn1$3.Class.UNIVERSAL, asn1$3.Type.SEQUENCE, true, [
+        // attrId
+        asn1$3.create(
+          asn1$3.Class.UNIVERSAL,
+          asn1$3.Type.OID,
+          false,
+          asn1$3.oidToDer(pki$1.oids.friendlyName).getBytes()
+        ),
+        // attrValues
+        asn1$3.create(asn1$3.Class.UNIVERSAL, asn1$3.Type.SET, true, [
+          asn1$3.create(
+            asn1$3.Class.UNIVERSAL,
+            asn1$3.Type.BMPSTRING,
+            false,
+            options.friendlyName
+          )
+        ])
       ])
-    ])
-  ), l.length > 0 && (s = g.create(g.Class.UNIVERSAL, g.Type.SET, !0, l));
-  var u = [], f = [];
-  t !== null && (oe.util.isArray(t) ? f = t : f = [t]);
-  for (var c = [], v = 0; v < f.length; ++v) {
-    t = f[v], typeof t == "string" && (t = $.certificateFromPem(t));
-    var m = v === 0 ? s : void 0, y = $.certificateToAsn1(t), x = g.create(g.Class.UNIVERSAL, g.Type.SEQUENCE, !0, [
+    );
+  }
+  if (attrs.length > 0) {
+    bagAttrs = asn1$3.create(asn1$3.Class.UNIVERSAL, asn1$3.Type.SET, true, attrs);
+  }
+  var contents = [];
+  var chain = [];
+  if (cert !== null) {
+    if (forge$a.util.isArray(cert)) {
+      chain = cert;
+    } else {
+      chain = [cert];
+    }
+  }
+  var certSafeBags = [];
+  for (var i = 0; i < chain.length; ++i) {
+    cert = chain[i];
+    if (typeof cert === "string") {
+      cert = pki$1.certificateFromPem(cert);
+    }
+    var certBagAttrs = i === 0 ? bagAttrs : void 0;
+    var certAsn1 = pki$1.certificateToAsn1(cert);
+    var certSafeBag = asn1$3.create(asn1$3.Class.UNIVERSAL, asn1$3.Type.SEQUENCE, true, [
       // bagId
-      g.create(
-        g.Class.UNIVERSAL,
-        g.Type.OID,
-        !1,
-        g.oidToDer($.oids.certBag).getBytes()
+      asn1$3.create(
+        asn1$3.Class.UNIVERSAL,
+        asn1$3.Type.OID,
+        false,
+        asn1$3.oidToDer(pki$1.oids.certBag).getBytes()
       ),
       // bagValue
-      g.create(g.Class.CONTEXT_SPECIFIC, 0, !0, [
+      asn1$3.create(asn1$3.Class.CONTEXT_SPECIFIC, 0, true, [
         // CertBag
-        g.create(g.Class.UNIVERSAL, g.Type.SEQUENCE, !0, [
+        asn1$3.create(asn1$3.Class.UNIVERSAL, asn1$3.Type.SEQUENCE, true, [
           // certId
-          g.create(
-            g.Class.UNIVERSAL,
-            g.Type.OID,
-            !1,
-            g.oidToDer($.oids.x509Certificate).getBytes()
+          asn1$3.create(
+            asn1$3.Class.UNIVERSAL,
+            asn1$3.Type.OID,
+            false,
+            asn1$3.oidToDer(pki$1.oids.x509Certificate).getBytes()
           ),
           // certValue (x509Certificate)
-          g.create(g.Class.CONTEXT_SPECIFIC, 0, !0, [
-            g.create(
-              g.Class.UNIVERSAL,
-              g.Type.OCTETSTRING,
-              !1,
-              g.toDer(y).getBytes()
+          asn1$3.create(asn1$3.Class.CONTEXT_SPECIFIC, 0, true, [
+            asn1$3.create(
+              asn1$3.Class.UNIVERSAL,
+              asn1$3.Type.OCTETSTRING,
+              false,
+              asn1$3.toDer(certAsn1).getBytes()
             )
           ])
         ])
       ]),
       // bagAttributes (OPTIONAL)
-      m
+      certBagAttrs
     ]);
-    c.push(x);
+    certSafeBags.push(certSafeBag);
   }
-  if (c.length > 0) {
-    var S = g.create(
-      g.Class.UNIVERSAL,
-      g.Type.SEQUENCE,
-      !0,
-      c
-    ), I = (
+  if (certSafeBags.length > 0) {
+    var certSafeContents = asn1$3.create(
+      asn1$3.Class.UNIVERSAL,
+      asn1$3.Type.SEQUENCE,
+      true,
+      certSafeBags
+    );
+    var certCI = (
       // PKCS#7 ContentInfo
-      g.create(g.Class.UNIVERSAL, g.Type.SEQUENCE, !0, [
+      asn1$3.create(asn1$3.Class.UNIVERSAL, asn1$3.Type.SEQUENCE, true, [
         // contentType
-        g.create(
-          g.Class.UNIVERSAL,
-          g.Type.OID,
-          !1,
+        asn1$3.create(
+          asn1$3.Class.UNIVERSAL,
+          asn1$3.Type.OID,
+          false,
           // OID for the content type is 'data'
-          g.oidToDer($.oids.data).getBytes()
+          asn1$3.oidToDer(pki$1.oids.data).getBytes()
         ),
         // content
-        g.create(g.Class.CONTEXT_SPECIFIC, 0, !0, [
-          g.create(
-            g.Class.UNIVERSAL,
-            g.Type.OCTETSTRING,
-            !1,
-            g.toDer(S).getBytes()
+        asn1$3.create(asn1$3.Class.CONTEXT_SPECIFIC, 0, true, [
+          asn1$3.create(
+            asn1$3.Class.UNIVERSAL,
+            asn1$3.Type.OCTETSTRING,
+            false,
+            asn1$3.toDer(certSafeContents).getBytes()
           )
         ])
       ])
     );
-    u.push(I);
+    contents.push(certCI);
   }
-  var b = null;
-  if (e !== null) {
-    var _ = $.wrapRsaPrivateKey($.privateKeyToAsn1(e));
-    a === null ? b = g.create(g.Class.UNIVERSAL, g.Type.SEQUENCE, !0, [
-      // bagId
-      g.create(
-        g.Class.UNIVERSAL,
-        g.Type.OID,
-        !1,
-        g.oidToDer($.oids.keyBag).getBytes()
-      ),
-      // bagValue
-      g.create(g.Class.CONTEXT_SPECIFIC, 0, !0, [
-        // PrivateKeyInfo
-        _
-      ]),
-      // bagAttributes (OPTIONAL)
-      s
-    ]) : b = g.create(g.Class.UNIVERSAL, g.Type.SEQUENCE, !0, [
-      // bagId
-      g.create(
-        g.Class.UNIVERSAL,
-        g.Type.OID,
-        !1,
-        g.oidToDer($.oids.pkcs8ShroudedKeyBag).getBytes()
-      ),
-      // bagValue
-      g.create(g.Class.CONTEXT_SPECIFIC, 0, !0, [
-        // EncryptedPrivateKeyInfo
-        $.encryptPrivateKeyInfo(_, a, r)
-      ]),
-      // bagAttributes (OPTIONAL)
-      s
-    ]);
-    var V = g.create(g.Class.UNIVERSAL, g.Type.SEQUENCE, !0, [b]), k = (
+  var keyBag = null;
+  if (key !== null) {
+    var pkAsn1 = pki$1.wrapRsaPrivateKey(pki$1.privateKeyToAsn1(key));
+    if (password === null) {
+      keyBag = asn1$3.create(asn1$3.Class.UNIVERSAL, asn1$3.Type.SEQUENCE, true, [
+        // bagId
+        asn1$3.create(
+          asn1$3.Class.UNIVERSAL,
+          asn1$3.Type.OID,
+          false,
+          asn1$3.oidToDer(pki$1.oids.keyBag).getBytes()
+        ),
+        // bagValue
+        asn1$3.create(asn1$3.Class.CONTEXT_SPECIFIC, 0, true, [
+          // PrivateKeyInfo
+          pkAsn1
+        ]),
+        // bagAttributes (OPTIONAL)
+        bagAttrs
+      ]);
+    } else {
+      keyBag = asn1$3.create(asn1$3.Class.UNIVERSAL, asn1$3.Type.SEQUENCE, true, [
+        // bagId
+        asn1$3.create(
+          asn1$3.Class.UNIVERSAL,
+          asn1$3.Type.OID,
+          false,
+          asn1$3.oidToDer(pki$1.oids.pkcs8ShroudedKeyBag).getBytes()
+        ),
+        // bagValue
+        asn1$3.create(asn1$3.Class.CONTEXT_SPECIFIC, 0, true, [
+          // EncryptedPrivateKeyInfo
+          pki$1.encryptPrivateKeyInfo(pkAsn1, password, options)
+        ]),
+        // bagAttributes (OPTIONAL)
+        bagAttrs
+      ]);
+    }
+    var keySafeContents = asn1$3.create(asn1$3.Class.UNIVERSAL, asn1$3.Type.SEQUENCE, true, [keyBag]);
+    var keyCI = (
       // PKCS#7 ContentInfo
-      g.create(g.Class.UNIVERSAL, g.Type.SEQUENCE, !0, [
+      asn1$3.create(asn1$3.Class.UNIVERSAL, asn1$3.Type.SEQUENCE, true, [
         // contentType
-        g.create(
-          g.Class.UNIVERSAL,
-          g.Type.OID,
-          !1,
+        asn1$3.create(
+          asn1$3.Class.UNIVERSAL,
+          asn1$3.Type.OID,
+          false,
           // OID for the content type is 'data'
-          g.oidToDer($.oids.data).getBytes()
+          asn1$3.oidToDer(pki$1.oids.data).getBytes()
         ),
         // content
-        g.create(g.Class.CONTEXT_SPECIFIC, 0, !0, [
-          g.create(
-            g.Class.UNIVERSAL,
-            g.Type.OCTETSTRING,
-            !1,
-            g.toDer(V).getBytes()
+        asn1$3.create(asn1$3.Class.CONTEXT_SPECIFIC, 0, true, [
+          asn1$3.create(
+            asn1$3.Class.UNIVERSAL,
+            asn1$3.Type.OCTETSTRING,
+            false,
+            asn1$3.toDer(keySafeContents).getBytes()
           )
         ])
       ])
     );
-    u.push(k);
+    contents.push(keyCI);
   }
-  var w = g.create(
-    g.Class.UNIVERSAL,
-    g.Type.SEQUENCE,
-    !0,
-    u
-  ), G;
-  if (r.useMac) {
-    var o = oe.md.sha1.create(), Y = new oe.util.ByteBuffer(
-      oe.random.getBytes(r.saltSize)
-    ), re = r.count, e = fr.generateKey(a, Y, 3, re, 20), ae = oe.hmac.create();
-    ae.start(o, e), ae.update(g.toDer(w).getBytes());
-    var ne = ae.getMac();
-    G = g.create(g.Class.UNIVERSAL, g.Type.SEQUENCE, !0, [
+  var safe = asn1$3.create(
+    asn1$3.Class.UNIVERSAL,
+    asn1$3.Type.SEQUENCE,
+    true,
+    contents
+  );
+  var macData;
+  if (options.useMac) {
+    var sha12 = forge$a.md.sha1.create();
+    var macSalt = new forge$a.util.ByteBuffer(
+      forge$a.random.getBytes(options.saltSize)
+    );
+    var count = options.count;
+    var key = p12.generateKey(password, macSalt, 3, count, 20);
+    var mac = forge$a.hmac.create();
+    mac.start(sha12, key);
+    mac.update(asn1$3.toDer(safe).getBytes());
+    var macValue = mac.getMac();
+    macData = asn1$3.create(asn1$3.Class.UNIVERSAL, asn1$3.Type.SEQUENCE, true, [
       // mac DigestInfo
-      g.create(g.Class.UNIVERSAL, g.Type.SEQUENCE, !0, [
+      asn1$3.create(asn1$3.Class.UNIVERSAL, asn1$3.Type.SEQUENCE, true, [
         // digestAlgorithm
-        g.create(g.Class.UNIVERSAL, g.Type.SEQUENCE, !0, [
+        asn1$3.create(asn1$3.Class.UNIVERSAL, asn1$3.Type.SEQUENCE, true, [
           // algorithm = SHA-1
-          g.create(
-            g.Class.UNIVERSAL,
-            g.Type.OID,
-            !1,
-            g.oidToDer($.oids.sha1).getBytes()
+          asn1$3.create(
+            asn1$3.Class.UNIVERSAL,
+            asn1$3.Type.OID,
+            false,
+            asn1$3.oidToDer(pki$1.oids.sha1).getBytes()
           ),
           // parameters = Null
-          g.create(g.Class.UNIVERSAL, g.Type.NULL, !1, "")
+          asn1$3.create(asn1$3.Class.UNIVERSAL, asn1$3.Type.NULL, false, "")
         ]),
         // digest
-        g.create(
-          g.Class.UNIVERSAL,
-          g.Type.OCTETSTRING,
-          !1,
-          ne.getBytes()
+        asn1$3.create(
+          asn1$3.Class.UNIVERSAL,
+          asn1$3.Type.OCTETSTRING,
+          false,
+          macValue.getBytes()
         )
       ]),
       // macSalt OCTET STRING
-      g.create(
-        g.Class.UNIVERSAL,
-        g.Type.OCTETSTRING,
-        !1,
-        Y.getBytes()
+      asn1$3.create(
+        asn1$3.Class.UNIVERSAL,
+        asn1$3.Type.OCTETSTRING,
+        false,
+        macSalt.getBytes()
       ),
       // iterations INTEGER (XXX: Only support count < 65536)
-      g.create(
-        g.Class.UNIVERSAL,
-        g.Type.INTEGER,
-        !1,
-        g.integerToDer(re).getBytes()
+      asn1$3.create(
+        asn1$3.Class.UNIVERSAL,
+        asn1$3.Type.INTEGER,
+        false,
+        asn1$3.integerToDer(count).getBytes()
       )
     ]);
   }
-  return g.create(g.Class.UNIVERSAL, g.Type.SEQUENCE, !0, [
+  return asn1$3.create(asn1$3.Class.UNIVERSAL, asn1$3.Type.SEQUENCE, true, [
     // version (3)
-    g.create(
-      g.Class.UNIVERSAL,
-      g.Type.INTEGER,
-      !1,
-      g.integerToDer(3).getBytes()
+    asn1$3.create(
+      asn1$3.Class.UNIVERSAL,
+      asn1$3.Type.INTEGER,
+      false,
+      asn1$3.integerToDer(3).getBytes()
     ),
     // PKCS#7 ContentInfo
-    g.create(g.Class.UNIVERSAL, g.Type.SEQUENCE, !0, [
+    asn1$3.create(asn1$3.Class.UNIVERSAL, asn1$3.Type.SEQUENCE, true, [
       // contentType
-      g.create(
-        g.Class.UNIVERSAL,
-        g.Type.OID,
-        !1,
+      asn1$3.create(
+        asn1$3.Class.UNIVERSAL,
+        asn1$3.Type.OID,
+        false,
         // OID for the content type is 'data'
-        g.oidToDer($.oids.data).getBytes()
+        asn1$3.oidToDer(pki$1.oids.data).getBytes()
       ),
       // content
-      g.create(g.Class.CONTEXT_SPECIFIC, 0, !0, [
-        g.create(
-          g.Class.UNIVERSAL,
-          g.Type.OCTETSTRING,
-          !1,
-          g.toDer(w).getBytes()
+      asn1$3.create(asn1$3.Class.CONTEXT_SPECIFIC, 0, true, [
+        asn1$3.create(
+          asn1$3.Class.UNIVERSAL,
+          asn1$3.Type.OCTETSTRING,
+          false,
+          asn1$3.toDer(safe).getBytes()
         )
       ])
     ]),
-    G
+    macData
   ]);
 };
-fr.generateKey = oe.pbe.generatePkcs12Key;
-var Nt = z, Ba = Nt.asn1, jt = Nt.pki = Nt.pki || {};
-jt.pemToDer = function(e) {
-  var t = Nt.pem.decode(e)[0];
-  if (t.procType && t.procType.type === "ENCRYPTED")
+p12.generateKey = forge$a.pbe.generatePkcs12Key;
+var forge$9 = forge$C;
+var asn1$2 = forge$9.asn1;
+var pki = forge$9.pki = forge$9.pki || {};
+pki.pemToDer = function(pem2) {
+  var msg = forge$9.pem.decode(pem2)[0];
+  if (msg.procType && msg.procType.type === "ENCRYPTED") {
     throw new Error("Could not convert PEM to DER; PEM is encrypted.");
-  return Nt.util.createBuffer(t.body);
-};
-jt.privateKeyFromPem = function(e) {
-  var t = Nt.pem.decode(e)[0];
-  if (t.type !== "PRIVATE KEY" && t.type !== "RSA PRIVATE KEY") {
-    var a = new Error('Could not convert private key from PEM; PEM header type is not "PRIVATE KEY" or "RSA PRIVATE KEY".');
-    throw a.headerType = t.type, a;
   }
-  if (t.procType && t.procType.type === "ENCRYPTED")
+  return forge$9.util.createBuffer(msg.body);
+};
+pki.privateKeyFromPem = function(pem2) {
+  var msg = forge$9.pem.decode(pem2)[0];
+  if (msg.type !== "PRIVATE KEY" && msg.type !== "RSA PRIVATE KEY") {
+    var error = new Error('Could not convert private key from PEM; PEM header type is not "PRIVATE KEY" or "RSA PRIVATE KEY".');
+    error.headerType = msg.type;
+    throw error;
+  }
+  if (msg.procType && msg.procType.type === "ENCRYPTED") {
     throw new Error("Could not convert private key from PEM; PEM is encrypted.");
-  var r = Ba.fromDer(t.body);
-  return jt.privateKeyFromAsn1(r);
+  }
+  var obj = asn1$2.fromDer(msg.body);
+  return pki.privateKeyFromAsn1(obj);
 };
-jt.privateKeyToPem = function(e, t) {
-  var a = {
+pki.privateKeyToPem = function(key, maxline) {
+  var msg = {
     type: "RSA PRIVATE KEY",
-    body: Ba.toDer(jt.privateKeyToAsn1(e)).getBytes()
+    body: asn1$2.toDer(pki.privateKeyToAsn1(key)).getBytes()
   };
-  return Nt.pem.encode(a, { maxline: t });
+  return forge$9.pem.encode(msg, { maxline });
 };
-jt.privateKeyInfoToPem = function(e, t) {
-  var a = {
+pki.privateKeyInfoToPem = function(pki2, maxline) {
+  var msg = {
     type: "PRIVATE KEY",
-    body: Ba.toDer(e).getBytes()
+    body: asn1$2.toDer(pki2).getBytes()
   };
-  return Nt.pem.encode(a, { maxline: t });
+  return forge$9.pem.encode(msg, { maxline });
 };
-var N = z, Mr = function(e, t, a, r) {
-  var n = N.util.createBuffer(), s = e.length >> 1, i = s + (e.length & 1), o = e.substr(0, i), l = e.substr(s, i), u = N.util.createBuffer(), f = N.hmac.create();
-  a = t + a;
-  var c = Math.ceil(r / 16), v = Math.ceil(r / 20);
-  f.start("MD5", o);
-  var m = N.util.createBuffer();
-  u.putBytes(a);
-  for (var y = 0; y < c; ++y)
-    f.start(null, null), f.update(u.getBytes()), u.putBuffer(f.digest()), f.start(null, null), f.update(u.bytes() + a), m.putBuffer(f.digest());
-  f.start("SHA1", l);
-  var x = N.util.createBuffer();
-  u.clear(), u.putBytes(a);
-  for (var y = 0; y < v; ++y)
-    f.start(null, null), f.update(u.getBytes()), u.putBuffer(f.digest()), f.start(null, null), f.update(u.bytes() + a), x.putBuffer(f.digest());
-  return n.putBytes(N.util.xorBytes(
-    m.getBytes(),
-    x.getBytes(),
-    r
-  )), n;
-}, l0 = function(e, t, a) {
-  var r = N.hmac.create();
-  r.start("SHA1", e);
-  var n = N.util.createBuffer();
-  return n.putInt32(t[0]), n.putInt32(t[1]), n.putByte(a.type), n.putByte(a.version.major), n.putByte(a.version.minor), n.putInt16(a.length), n.putBytes(a.fragment.bytes()), r.update(n.getBytes()), r.digest().getBytes();
-}, f0 = function(e, t, a) {
-  var r = !1;
-  try {
-    var n = e.deflate(t.fragment.getBytes());
-    t.fragment = N.util.createBuffer(n), t.length = n.length, r = !0;
-  } catch {
+var forge$8 = forge$C;
+var prf_TLS1 = function(secret, label, seed, length) {
+  var rval = forge$8.util.createBuffer();
+  var idx = secret.length >> 1;
+  var slen = idx + (secret.length & 1);
+  var s1 = secret.substr(0, slen);
+  var s2 = secret.substr(idx, slen);
+  var ai = forge$8.util.createBuffer();
+  var hmac2 = forge$8.hmac.create();
+  seed = label + seed;
+  var md5itr = Math.ceil(length / 16);
+  var sha1itr = Math.ceil(length / 20);
+  hmac2.start("MD5", s1);
+  var md5bytes = forge$8.util.createBuffer();
+  ai.putBytes(seed);
+  for (var i = 0; i < md5itr; ++i) {
+    hmac2.start(null, null);
+    hmac2.update(ai.getBytes());
+    ai.putBuffer(hmac2.digest());
+    hmac2.start(null, null);
+    hmac2.update(ai.bytes() + seed);
+    md5bytes.putBuffer(hmac2.digest());
   }
-  return r;
-}, c0 = function(e, t, a) {
-  var r = !1;
-  try {
-    var n = e.inflate(t.fragment.getBytes());
-    t.fragment = N.util.createBuffer(n), t.length = n.length, r = !0;
-  } catch {
+  hmac2.start("SHA1", s2);
+  var sha1bytes = forge$8.util.createBuffer();
+  ai.clear();
+  ai.putBytes(seed);
+  for (var i = 0; i < sha1itr; ++i) {
+    hmac2.start(null, null);
+    hmac2.update(ai.getBytes());
+    ai.putBuffer(hmac2.digest());
+    hmac2.start(null, null);
+    hmac2.update(ai.bytes() + seed);
+    sha1bytes.putBuffer(hmac2.digest());
   }
-  return r;
-}, $e = function(e, t) {
-  var a = 0;
-  switch (t) {
+  rval.putBytes(forge$8.util.xorBytes(
+    md5bytes.getBytes(),
+    sha1bytes.getBytes(),
+    length
+  ));
+  return rval;
+};
+var hmac_sha1 = function(key, seqNum, record) {
+  var hmac2 = forge$8.hmac.create();
+  hmac2.start("SHA1", key);
+  var b = forge$8.util.createBuffer();
+  b.putInt32(seqNum[0]);
+  b.putInt32(seqNum[1]);
+  b.putByte(record.type);
+  b.putByte(record.version.major);
+  b.putByte(record.version.minor);
+  b.putInt16(record.length);
+  b.putBytes(record.fragment.bytes());
+  hmac2.update(b.getBytes());
+  return hmac2.digest().getBytes();
+};
+var deflate = function(c, record, s2) {
+  var rval = false;
+  try {
+    var bytes = c.deflate(record.fragment.getBytes());
+    record.fragment = forge$8.util.createBuffer(bytes);
+    record.length = bytes.length;
+    rval = true;
+  } catch (ex) {
+  }
+  return rval;
+};
+var inflate = function(c, record, s2) {
+  var rval = false;
+  try {
+    var bytes = c.inflate(record.fragment.getBytes());
+    record.fragment = forge$8.util.createBuffer(bytes);
+    record.length = bytes.length;
+    rval = true;
+  } catch (ex) {
+  }
+  return rval;
+};
+var readVector = function(b, lenBytes) {
+  var len = 0;
+  switch (lenBytes) {
     case 1:
-      a = e.getByte();
+      len = b.getByte();
       break;
     case 2:
-      a = e.getInt16();
+      len = b.getInt16();
       break;
     case 3:
-      a = e.getInt24();
+      len = b.getInt24();
       break;
     case 4:
-      a = e.getInt32();
+      len = b.getInt32();
       break;
   }
-  return N.util.createBuffer(e.getBytes(a));
-}, je = function(e, t, a) {
-  e.putInt(a.length(), t << 3), e.putBuffer(a);
-}, p = {};
-p.Versions = {
+  return forge$8.util.createBuffer(b.getBytes(len));
+};
+var writeVector = function(b, lenBytes, v) {
+  b.putInt(v.length(), lenBytes << 3);
+  b.putBuffer(v);
+};
+var tls$1 = {};
+tls$1.Versions = {
   TLS_1_0: { major: 3, minor: 1 },
   TLS_1_1: { major: 3, minor: 2 },
   TLS_1_2: { major: 3, minor: 3 }
 };
-p.SupportedVersions = [
-  p.Versions.TLS_1_1,
-  p.Versions.TLS_1_0
+tls$1.SupportedVersions = [
+  tls$1.Versions.TLS_1_1,
+  tls$1.Versions.TLS_1_0
 ];
-p.Version = p.SupportedVersions[0];
-p.MaxFragment = 15360;
-p.ConnectionEnd = {
+tls$1.Version = tls$1.SupportedVersions[0];
+tls$1.MaxFragment = 16384 - 1024;
+tls$1.ConnectionEnd = {
   server: 0,
   client: 1
 };
-p.PRFAlgorithm = {
+tls$1.PRFAlgorithm = {
   tls_prf_sha256: 0
 };
-p.BulkCipherAlgorithm = {
+tls$1.BulkCipherAlgorithm = {
   none: null,
   rc4: 0,
   des3: 1,
   aes: 2
 };
-p.CipherType = {
+tls$1.CipherType = {
   stream: 0,
   block: 1,
   aead: 2
 };
-p.MACAlgorithm = {
+tls$1.MACAlgorithm = {
   none: null,
   hmac_md5: 0,
   hmac_sha1: 1,
@@ -8407,18 +12473,18 @@ p.MACAlgorithm = {
   hmac_sha384: 3,
   hmac_sha512: 4
 };
-p.CompressionMethod = {
+tls$1.CompressionMethod = {
   none: 0,
   deflate: 1
 };
-p.ContentType = {
+tls$1.ContentType = {
   change_cipher_spec: 20,
   alert: 21,
   handshake: 22,
   application_data: 23,
   heartbeat: 24
 };
-p.HandshakeType = {
+tls$1.HandshakeType = {
   hello_request: 0,
   client_hello: 1,
   server_hello: 2,
@@ -8430,12 +12496,12 @@ p.HandshakeType = {
   client_key_exchange: 16,
   finished: 20
 };
-p.Alert = {};
-p.Alert.Level = {
+tls$1.Alert = {};
+tls$1.Alert.Level = {
   warning: 1,
   fatal: 2
 };
-p.Alert.Description = {
+tls$1.Alert.Description = {
   close_notify: 0,
   unexpected_message: 10,
   bad_record_mac: 20,
@@ -8460,113 +12526,153 @@ p.Alert.Description = {
   user_canceled: 90,
   no_renegotiation: 100
 };
-p.HeartbeatMessageType = {
+tls$1.HeartbeatMessageType = {
   heartbeat_request: 1,
   heartbeat_response: 2
 };
-p.CipherSuites = {};
-p.getCipherSuite = function(e) {
-  var t = null;
-  for (var a in p.CipherSuites) {
-    var r = p.CipherSuites[a];
-    if (r.id[0] === e.charCodeAt(0) && r.id[1] === e.charCodeAt(1)) {
-      t = r;
+tls$1.CipherSuites = {};
+tls$1.getCipherSuite = function(twoBytes) {
+  var rval = null;
+  for (var key in tls$1.CipherSuites) {
+    var cs = tls$1.CipherSuites[key];
+    if (cs.id[0] === twoBytes.charCodeAt(0) && cs.id[1] === twoBytes.charCodeAt(1)) {
+      rval = cs;
       break;
     }
   }
-  return t;
+  return rval;
 };
-p.handleUnexpected = function(e, t) {
-  var a = !e.open && e.entity === p.ConnectionEnd.client;
-  a || e.error(e, {
-    message: "Unexpected message. Received TLS record out of order.",
-    send: !0,
-    alert: {
-      level: p.Alert.Level.fatal,
-      description: p.Alert.Description.unexpected_message
-    }
-  });
-};
-p.handleHelloRequest = function(e, t, a) {
-  !e.handshaking && e.handshakes > 0 && (p.queue(e, p.createAlert(e, {
-    level: p.Alert.Level.warning,
-    description: p.Alert.Description.no_renegotiation
-  })), p.flush(e)), e.process();
-};
-p.parseHelloMessage = function(e, t, a) {
-  var r = null, n = e.entity === p.ConnectionEnd.client;
-  if (a < 38)
-    e.error(e, {
-      message: n ? "Invalid ServerHello message. Message too short." : "Invalid ClientHello message. Message too short.",
-      send: !0,
+tls$1.handleUnexpected = function(c, record) {
+  var ignore = !c.open && c.entity === tls$1.ConnectionEnd.client;
+  if (!ignore) {
+    c.error(c, {
+      message: "Unexpected message. Received TLS record out of order.",
+      send: true,
       alert: {
-        level: p.Alert.Level.fatal,
-        description: p.Alert.Description.illegal_parameter
+        level: tls$1.Alert.Level.fatal,
+        description: tls$1.Alert.Description.unexpected_message
       }
     });
-  else {
-    var s = t.fragment, i = s.length();
-    if (r = {
+  }
+};
+tls$1.handleHelloRequest = function(c, record, length) {
+  if (!c.handshaking && c.handshakes > 0) {
+    tls$1.queue(c, tls$1.createAlert(c, {
+      level: tls$1.Alert.Level.warning,
+      description: tls$1.Alert.Description.no_renegotiation
+    }));
+    tls$1.flush(c);
+  }
+  c.process();
+};
+tls$1.parseHelloMessage = function(c, record, length) {
+  var msg = null;
+  var client = c.entity === tls$1.ConnectionEnd.client;
+  if (length < 38) {
+    c.error(c, {
+      message: client ? "Invalid ServerHello message. Message too short." : "Invalid ClientHello message. Message too short.",
+      send: true,
+      alert: {
+        level: tls$1.Alert.Level.fatal,
+        description: tls$1.Alert.Description.illegal_parameter
+      }
+    });
+  } else {
+    var b = record.fragment;
+    var remaining = b.length();
+    msg = {
       version: {
-        major: s.getByte(),
-        minor: s.getByte()
+        major: b.getByte(),
+        minor: b.getByte()
       },
-      random: N.util.createBuffer(s.getBytes(32)),
-      session_id: $e(s, 1),
+      random: forge$8.util.createBuffer(b.getBytes(32)),
+      session_id: readVector(b, 1),
       extensions: []
-    }, n ? (r.cipher_suite = s.getBytes(2), r.compression_method = s.getByte()) : (r.cipher_suites = $e(s, 2), r.compression_methods = $e(s, 1)), i = a - (i - s.length()), i > 0) {
-      for (var o = $e(s, 2); o.length() > 0; )
-        r.extensions.push({
-          type: [o.getByte(), o.getByte()],
-          data: $e(o, 2)
+    };
+    if (client) {
+      msg.cipher_suite = b.getBytes(2);
+      msg.compression_method = b.getByte();
+    } else {
+      msg.cipher_suites = readVector(b, 2);
+      msg.compression_methods = readVector(b, 1);
+    }
+    remaining = length - (remaining - b.length());
+    if (remaining > 0) {
+      var exts = readVector(b, 2);
+      while (exts.length() > 0) {
+        msg.extensions.push({
+          type: [exts.getByte(), exts.getByte()],
+          data: readVector(exts, 2)
         });
-      if (!n)
-        for (var l = 0; l < r.extensions.length; ++l) {
-          var u = r.extensions[l];
-          if (u.type[0] === 0 && u.type[1] === 0)
-            for (var f = $e(u.data, 2); f.length() > 0; ) {
-              var c = f.getByte();
-              if (c !== 0)
+      }
+      if (!client) {
+        for (var i = 0; i < msg.extensions.length; ++i) {
+          var ext = msg.extensions[i];
+          if (ext.type[0] === 0 && ext.type[1] === 0) {
+            var snl = readVector(ext.data, 2);
+            while (snl.length() > 0) {
+              var snType = snl.getByte();
+              if (snType !== 0) {
                 break;
-              e.session.extensions.server_name.serverNameList.push(
-                $e(f, 2).getBytes()
+              }
+              c.session.extensions.server_name.serverNameList.push(
+                readVector(snl, 2).getBytes()
               );
             }
+          }
         }
+      }
     }
-    if (e.session.version && (r.version.major !== e.session.version.major || r.version.minor !== e.session.version.minor))
-      return e.error(e, {
-        message: "TLS version change is disallowed during renegotiation.",
-        send: !0,
-        alert: {
-          level: p.Alert.Level.fatal,
-          description: p.Alert.Description.protocol_version
+    if (c.session.version) {
+      if (msg.version.major !== c.session.version.major || msg.version.minor !== c.session.version.minor) {
+        return c.error(c, {
+          message: "TLS version change is disallowed during renegotiation.",
+          send: true,
+          alert: {
+            level: tls$1.Alert.Level.fatal,
+            description: tls$1.Alert.Description.protocol_version
+          }
+        });
+      }
+    }
+    if (client) {
+      c.session.cipherSuite = tls$1.getCipherSuite(msg.cipher_suite);
+    } else {
+      var tmp = forge$8.util.createBuffer(msg.cipher_suites.bytes());
+      while (tmp.length() > 0) {
+        c.session.cipherSuite = tls$1.getCipherSuite(tmp.getBytes(2));
+        if (c.session.cipherSuite !== null) {
+          break;
         }
-      });
-    if (n)
-      e.session.cipherSuite = p.getCipherSuite(r.cipher_suite);
-    else
-      for (var v = N.util.createBuffer(r.cipher_suites.bytes()); v.length() > 0 && (e.session.cipherSuite = p.getCipherSuite(v.getBytes(2)), e.session.cipherSuite === null); )
-        ;
-    if (e.session.cipherSuite === null)
-      return e.error(e, {
+      }
+    }
+    if (c.session.cipherSuite === null) {
+      return c.error(c, {
         message: "No cipher suites in common.",
-        send: !0,
+        send: true,
         alert: {
-          level: p.Alert.Level.fatal,
-          description: p.Alert.Description.handshake_failure
+          level: tls$1.Alert.Level.fatal,
+          description: tls$1.Alert.Description.handshake_failure
         },
-        cipherSuite: N.util.bytesToHex(r.cipher_suite)
+        cipherSuite: forge$8.util.bytesToHex(msg.cipher_suite)
       });
-    n ? e.session.compressionMethod = r.compression_method : e.session.compressionMethod = p.CompressionMethod.none;
+    }
+    if (client) {
+      c.session.compressionMethod = msg.compression_method;
+    } else {
+      c.session.compressionMethod = tls$1.CompressionMethod.none;
+    }
   }
-  return r;
+  return msg;
 };
-p.createSecurityParameters = function(e, t) {
-  var a = e.entity === p.ConnectionEnd.client, r = t.random.bytes(), n = a ? e.session.sp.client_random : r, s = a ? r : p.createRandom().getBytes();
-  e.session.sp = {
-    entity: e.entity,
-    prf_algorithm: p.PRFAlgorithm.tls_prf_sha256,
+tls$1.createSecurityParameters = function(c, msg) {
+  var client = c.entity === tls$1.ConnectionEnd.client;
+  var msgRandom = msg.random.bytes();
+  var cRandom = client ? c.session.sp.client_random : msgRandom;
+  var sRandom = client ? msgRandom : tls$1.createRandom().getBytes();
+  c.session.sp = {
+    entity: c.entity,
+    prf_algorithm: tls$1.PRFAlgorithm.tls_prf_sha256,
     bulk_cipher_algorithm: null,
     cipher_type: null,
     enc_key_length: null,
@@ -8576,1032 +12682,1566 @@ p.createSecurityParameters = function(e, t) {
     mac_algorithm: null,
     mac_length: null,
     mac_key_length: null,
-    compression_algorithm: e.session.compressionMethod,
+    compression_algorithm: c.session.compressionMethod,
     pre_master_secret: null,
     master_secret: null,
-    client_random: n,
-    server_random: s
+    client_random: cRandom,
+    server_random: sRandom
   };
 };
-p.handleServerHello = function(e, t, a) {
-  var r = p.parseHelloMessage(e, t, a);
-  if (!e.fail) {
-    if (r.version.minor <= e.version.minor)
-      e.version.minor = r.version.minor;
-    else
-      return e.error(e, {
-        message: "Incompatible TLS version.",
-        send: !0,
-        alert: {
-          level: p.Alert.Level.fatal,
-          description: p.Alert.Description.protocol_version
-        }
-      });
-    e.session.version = e.version;
-    var n = r.session_id.bytes();
-    n.length > 0 && n === e.session.id ? (e.expect = Mn, e.session.resuming = !0, e.session.sp.server_random = r.random.bytes()) : (e.expect = d0, e.session.resuming = !1, p.createSecurityParameters(e, r)), e.session.id = n, e.process();
+tls$1.handleServerHello = function(c, record, length) {
+  var msg = tls$1.parseHelloMessage(c, record, length);
+  if (c.fail) {
+    return;
   }
+  if (msg.version.minor <= c.version.minor) {
+    c.version.minor = msg.version.minor;
+  } else {
+    return c.error(c, {
+      message: "Incompatible TLS version.",
+      send: true,
+      alert: {
+        level: tls$1.Alert.Level.fatal,
+        description: tls$1.Alert.Description.protocol_version
+      }
+    });
+  }
+  c.session.version = c.version;
+  var sessionId = msg.session_id.bytes();
+  if (sessionId.length > 0 && sessionId === c.session.id) {
+    c.expect = SCC;
+    c.session.resuming = true;
+    c.session.sp.server_random = msg.random.bytes();
+  } else {
+    c.expect = SCE;
+    c.session.resuming = false;
+    tls$1.createSecurityParameters(c, msg);
+  }
+  c.session.id = sessionId;
+  c.process();
 };
-p.handleClientHello = function(e, t, a) {
-  var r = p.parseHelloMessage(e, t, a);
-  if (!e.fail) {
-    var n = r.session_id.bytes(), s = null;
-    if (e.sessionCache && (s = e.sessionCache.getSession(n), s === null ? n = "" : (s.version.major !== r.version.major || s.version.minor > r.version.minor) && (s = null, n = "")), n.length === 0 && (n = N.random.getBytes(32)), e.session.id = n, e.session.clientHelloVersion = r.version, e.session.sp = {}, s)
-      e.version = e.session.version = s.version, e.session.sp = s.sp;
-    else {
-      for (var i, o = 1; o < p.SupportedVersions.length && (i = p.SupportedVersions[o], !(i.minor <= r.version.minor)); ++o)
-        ;
-      e.version = { major: i.major, minor: i.minor }, e.session.version = e.version;
+tls$1.handleClientHello = function(c, record, length) {
+  var msg = tls$1.parseHelloMessage(c, record, length);
+  if (c.fail) {
+    return;
+  }
+  var sessionId = msg.session_id.bytes();
+  var session = null;
+  if (c.sessionCache) {
+    session = c.sessionCache.getSession(sessionId);
+    if (session === null) {
+      sessionId = "";
+    } else if (session.version.major !== msg.version.major || session.version.minor > msg.version.minor) {
+      session = null;
+      sessionId = "";
     }
-    s !== null ? (e.expect = ba, e.session.resuming = !0, e.session.sp.client_random = r.random.bytes()) : (e.expect = e.verifyClient !== !1 ? E0 : ia, e.session.resuming = !1, p.createSecurityParameters(e, r)), e.open = !0, p.queue(e, p.createRecord(e, {
-      type: p.ContentType.handshake,
-      data: p.createServerHello(e)
-    })), e.session.resuming ? (p.queue(e, p.createRecord(e, {
-      type: p.ContentType.change_cipher_spec,
-      data: p.createChangeCipherSpec()
-    })), e.state.pending = p.createConnectionState(e), e.state.current.write = e.state.pending.write, p.queue(e, p.createRecord(e, {
-      type: p.ContentType.handshake,
-      data: p.createFinished(e)
-    }))) : (p.queue(e, p.createRecord(e, {
-      type: p.ContentType.handshake,
-      data: p.createCertificate(e)
-    })), e.fail || (p.queue(e, p.createRecord(e, {
-      type: p.ContentType.handshake,
-      data: p.createServerKeyExchange(e)
-    })), e.verifyClient !== !1 && p.queue(e, p.createRecord(e, {
-      type: p.ContentType.handshake,
-      data: p.createCertificateRequest(e)
-    })), p.queue(e, p.createRecord(e, {
-      type: p.ContentType.handshake,
-      data: p.createServerHelloDone(e)
-    })))), p.flush(e), e.process();
   }
+  if (sessionId.length === 0) {
+    sessionId = forge$8.random.getBytes(32);
+  }
+  c.session.id = sessionId;
+  c.session.clientHelloVersion = msg.version;
+  c.session.sp = {};
+  if (session) {
+    c.version = c.session.version = session.version;
+    c.session.sp = session.sp;
+  } else {
+    var version;
+    for (var i = 1; i < tls$1.SupportedVersions.length; ++i) {
+      version = tls$1.SupportedVersions[i];
+      if (version.minor <= msg.version.minor) {
+        break;
+      }
+    }
+    c.version = { major: version.major, minor: version.minor };
+    c.session.version = c.version;
+  }
+  if (session !== null) {
+    c.expect = CCC;
+    c.session.resuming = true;
+    c.session.sp.client_random = msg.random.bytes();
+  } else {
+    c.expect = c.verifyClient !== false ? CCE : CKE;
+    c.session.resuming = false;
+    tls$1.createSecurityParameters(c, msg);
+  }
+  c.open = true;
+  tls$1.queue(c, tls$1.createRecord(c, {
+    type: tls$1.ContentType.handshake,
+    data: tls$1.createServerHello(c)
+  }));
+  if (c.session.resuming) {
+    tls$1.queue(c, tls$1.createRecord(c, {
+      type: tls$1.ContentType.change_cipher_spec,
+      data: tls$1.createChangeCipherSpec()
+    }));
+    c.state.pending = tls$1.createConnectionState(c);
+    c.state.current.write = c.state.pending.write;
+    tls$1.queue(c, tls$1.createRecord(c, {
+      type: tls$1.ContentType.handshake,
+      data: tls$1.createFinished(c)
+    }));
+  } else {
+    tls$1.queue(c, tls$1.createRecord(c, {
+      type: tls$1.ContentType.handshake,
+      data: tls$1.createCertificate(c)
+    }));
+    if (!c.fail) {
+      tls$1.queue(c, tls$1.createRecord(c, {
+        type: tls$1.ContentType.handshake,
+        data: tls$1.createServerKeyExchange(c)
+      }));
+      if (c.verifyClient !== false) {
+        tls$1.queue(c, tls$1.createRecord(c, {
+          type: tls$1.ContentType.handshake,
+          data: tls$1.createCertificateRequest(c)
+        }));
+      }
+      tls$1.queue(c, tls$1.createRecord(c, {
+        type: tls$1.ContentType.handshake,
+        data: tls$1.createServerHelloDone(c)
+      }));
+    }
+  }
+  tls$1.flush(c);
+  c.process();
 };
-p.handleCertificate = function(e, t, a) {
-  if (a < 3)
-    return e.error(e, {
+tls$1.handleCertificate = function(c, record, length) {
+  if (length < 3) {
+    return c.error(c, {
       message: "Invalid Certificate message. Message too short.",
-      send: !0,
+      send: true,
       alert: {
-        level: p.Alert.Level.fatal,
-        description: p.Alert.Description.illegal_parameter
-      }
-    });
-  var r = t.fragment, n = {
-    certificate_list: $e(r, 3)
-  }, s, i, o = [];
-  try {
-    for (; n.certificate_list.length() > 0; )
-      s = $e(n.certificate_list, 3), i = N.asn1.fromDer(s), s = N.pki.certificateFromAsn1(i, !0), o.push(s);
-  } catch (u) {
-    return e.error(e, {
-      message: "Could not parse certificate list.",
-      cause: u,
-      send: !0,
-      alert: {
-        level: p.Alert.Level.fatal,
-        description: p.Alert.Description.bad_certificate
+        level: tls$1.Alert.Level.fatal,
+        description: tls$1.Alert.Description.illegal_parameter
       }
     });
   }
-  var l = e.entity === p.ConnectionEnd.client;
-  (l || e.verifyClient === !0) && o.length === 0 ? e.error(e, {
-    message: l ? "No server certificate provided." : "No client certificate provided.",
-    send: !0,
-    alert: {
-      level: p.Alert.Level.fatal,
-      description: p.Alert.Description.illegal_parameter
+  var b = record.fragment;
+  var msg = {
+    certificate_list: readVector(b, 3)
+  };
+  var cert, asn12;
+  var certs = [];
+  try {
+    while (msg.certificate_list.length() > 0) {
+      cert = readVector(msg.certificate_list, 3);
+      asn12 = forge$8.asn1.fromDer(cert);
+      cert = forge$8.pki.certificateFromAsn1(asn12, true);
+      certs.push(cert);
     }
-  }) : o.length === 0 ? e.expect = l ? Ja : ia : (l ? e.session.serverCertificate = o[0] : e.session.clientCertificate = o[0], p.verifyCertificateChain(e, o) && (e.expect = l ? Ja : ia)), e.process();
-};
-p.handleServerKeyExchange = function(e, t, a) {
-  if (a > 0)
-    return e.error(e, {
-      message: "Invalid key parameters. Only RSA is supported.",
-      send: !0,
+  } catch (ex) {
+    return c.error(c, {
+      message: "Could not parse certificate list.",
+      cause: ex,
+      send: true,
       alert: {
-        level: p.Alert.Level.fatal,
-        description: p.Alert.Description.unsupported_certificate
+        level: tls$1.Alert.Level.fatal,
+        description: tls$1.Alert.Description.bad_certificate
       }
     });
-  e.expect = p0, e.process();
-};
-p.handleClientKeyExchange = function(e, t, a) {
-  if (a < 48)
-    return e.error(e, {
-      message: "Invalid key parameters. Only RSA is supported.",
-      send: !0,
+  }
+  var client = c.entity === tls$1.ConnectionEnd.client;
+  if ((client || c.verifyClient === true) && certs.length === 0) {
+    c.error(c, {
+      message: client ? "No server certificate provided." : "No client certificate provided.",
+      send: true,
       alert: {
-        level: p.Alert.Level.fatal,
-        description: p.Alert.Description.unsupported_certificate
+        level: tls$1.Alert.Level.fatal,
+        description: tls$1.Alert.Description.illegal_parameter
       }
     });
-  var r = t.fragment, n = {
-    enc_pre_master_secret: $e(r, 2).getBytes()
-  }, s = null;
-  if (e.getPrivateKey)
+  } else if (certs.length === 0) {
+    c.expect = client ? SKE : CKE;
+  } else {
+    if (client) {
+      c.session.serverCertificate = certs[0];
+    } else {
+      c.session.clientCertificate = certs[0];
+    }
+    if (tls$1.verifyCertificateChain(c, certs)) {
+      c.expect = client ? SKE : CKE;
+    }
+  }
+  c.process();
+};
+tls$1.handleServerKeyExchange = function(c, record, length) {
+  if (length > 0) {
+    return c.error(c, {
+      message: "Invalid key parameters. Only RSA is supported.",
+      send: true,
+      alert: {
+        level: tls$1.Alert.Level.fatal,
+        description: tls$1.Alert.Description.unsupported_certificate
+      }
+    });
+  }
+  c.expect = SCR;
+  c.process();
+};
+tls$1.handleClientKeyExchange = function(c, record, length) {
+  if (length < 48) {
+    return c.error(c, {
+      message: "Invalid key parameters. Only RSA is supported.",
+      send: true,
+      alert: {
+        level: tls$1.Alert.Level.fatal,
+        description: tls$1.Alert.Description.unsupported_certificate
+      }
+    });
+  }
+  var b = record.fragment;
+  var msg = {
+    enc_pre_master_secret: readVector(b, 2).getBytes()
+  };
+  var privateKey = null;
+  if (c.getPrivateKey) {
     try {
-      s = e.getPrivateKey(e, e.session.serverCertificate), s = N.pki.privateKeyFromPem(s);
-    } catch (l) {
-      e.error(e, {
+      privateKey = c.getPrivateKey(c, c.session.serverCertificate);
+      privateKey = forge$8.pki.privateKeyFromPem(privateKey);
+    } catch (ex) {
+      c.error(c, {
         message: "Could not get private key.",
-        cause: l,
-        send: !0,
+        cause: ex,
+        send: true,
         alert: {
-          level: p.Alert.Level.fatal,
-          description: p.Alert.Description.internal_error
+          level: tls$1.Alert.Level.fatal,
+          description: tls$1.Alert.Description.internal_error
         }
       });
     }
-  if (s === null)
-    return e.error(e, {
+  }
+  if (privateKey === null) {
+    return c.error(c, {
       message: "No private key set.",
-      send: !0,
+      send: true,
       alert: {
-        level: p.Alert.Level.fatal,
-        description: p.Alert.Description.internal_error
+        level: tls$1.Alert.Level.fatal,
+        description: tls$1.Alert.Description.internal_error
       }
     });
+  }
   try {
-    var i = e.session.sp;
-    i.pre_master_secret = s.decrypt(n.enc_pre_master_secret);
-    var o = e.session.clientHelloVersion;
-    if (o.major !== i.pre_master_secret.charCodeAt(0) || o.minor !== i.pre_master_secret.charCodeAt(1))
+    var sp = c.session.sp;
+    sp.pre_master_secret = privateKey.decrypt(msg.enc_pre_master_secret);
+    var version = c.session.clientHelloVersion;
+    if (version.major !== sp.pre_master_secret.charCodeAt(0) || version.minor !== sp.pre_master_secret.charCodeAt(1)) {
       throw new Error("TLS version rollback attack detected.");
-  } catch {
-    i.pre_master_secret = N.random.getBytes(48);
+    }
+  } catch (ex) {
+    sp.pre_master_secret = forge$8.random.getBytes(48);
   }
-  e.expect = ba, e.session.clientCertificate !== null && (e.expect = x0), e.process();
+  c.expect = CCC;
+  if (c.session.clientCertificate !== null) {
+    c.expect = CCV;
+  }
+  c.process();
 };
-p.handleCertificateRequest = function(e, t, a) {
-  if (a < 3)
-    return e.error(e, {
+tls$1.handleCertificateRequest = function(c, record, length) {
+  if (length < 3) {
+    return c.error(c, {
       message: "Invalid CertificateRequest. Message too short.",
-      send: !0,
+      send: true,
       alert: {
-        level: p.Alert.Level.fatal,
-        description: p.Alert.Description.illegal_parameter
+        level: tls$1.Alert.Level.fatal,
+        description: tls$1.Alert.Description.illegal_parameter
       }
     });
-  var r = t.fragment, n = {
-    certificate_types: $e(r, 1),
-    certificate_authorities: $e(r, 2)
+  }
+  var b = record.fragment;
+  var msg = {
+    certificate_types: readVector(b, 1),
+    certificate_authorities: readVector(b, 2)
   };
-  e.session.certificateRequest = n, e.expect = v0, e.process();
+  c.session.certificateRequest = msg;
+  c.expect = SHD;
+  c.process();
 };
-p.handleCertificateVerify = function(e, t, a) {
-  if (a < 2)
-    return e.error(e, {
+tls$1.handleCertificateVerify = function(c, record, length) {
+  if (length < 2) {
+    return c.error(c, {
       message: "Invalid CertificateVerify. Message too short.",
-      send: !0,
+      send: true,
       alert: {
-        level: p.Alert.Level.fatal,
-        description: p.Alert.Description.illegal_parameter
-      }
-    });
-  var r = t.fragment;
-  r.read -= 4;
-  var n = r.bytes();
-  r.read += 4;
-  var s = {
-    signature: $e(r, 2).getBytes()
-  }, i = N.util.createBuffer();
-  i.putBuffer(e.session.md5.digest()), i.putBuffer(e.session.sha1.digest()), i = i.getBytes();
-  try {
-    var o = e.session.clientCertificate;
-    if (!o.publicKey.verify(i, s.signature, "NONE"))
-      throw new Error("CertificateVerify signature does not match.");
-    e.session.md5.update(n), e.session.sha1.update(n);
-  } catch {
-    return e.error(e, {
-      message: "Bad signature in CertificateVerify.",
-      send: !0,
-      alert: {
-        level: p.Alert.Level.fatal,
-        description: p.Alert.Description.handshake_failure
+        level: tls$1.Alert.Level.fatal,
+        description: tls$1.Alert.Description.illegal_parameter
       }
     });
   }
-  e.expect = ba, e.process();
-};
-p.handleServerHelloDone = function(e, t, a) {
-  if (a > 0)
-    return e.error(e, {
-      message: "Invalid ServerHelloDone message. Invalid length.",
-      send: !0,
-      alert: {
-        level: p.Alert.Level.fatal,
-        description: p.Alert.Description.record_overflow
-      }
-    });
-  if (e.serverCertificate === null) {
-    var r = {
-      message: "No server certificate provided. Not enough security.",
-      send: !0,
-      alert: {
-        level: p.Alert.Level.fatal,
-        description: p.Alert.Description.insufficient_security
-      }
-    }, n = 0, s = e.verify(e, r.alert.description, n, []);
-    if (s !== !0)
-      return (s || s === 0) && (typeof s == "object" && !N.util.isArray(s) ? (s.message && (r.message = s.message), s.alert && (r.alert.description = s.alert)) : typeof s == "number" && (r.alert.description = s)), e.error(e, r);
-  }
-  e.session.certificateRequest !== null && (t = p.createRecord(e, {
-    type: p.ContentType.handshake,
-    data: p.createCertificate(e)
-  }), p.queue(e, t)), t = p.createRecord(e, {
-    type: p.ContentType.handshake,
-    data: p.createClientKeyExchange(e)
-  }), p.queue(e, t), e.expect = m0;
-  var i = function(o, l) {
-    o.session.certificateRequest !== null && o.session.clientCertificate !== null && p.queue(o, p.createRecord(o, {
-      type: p.ContentType.handshake,
-      data: p.createCertificateVerify(o, l)
-    })), p.queue(o, p.createRecord(o, {
-      type: p.ContentType.change_cipher_spec,
-      data: p.createChangeCipherSpec()
-    })), o.state.pending = p.createConnectionState(o), o.state.current.write = o.state.pending.write, p.queue(o, p.createRecord(o, {
-      type: p.ContentType.handshake,
-      data: p.createFinished(o)
-    })), o.expect = Mn, p.flush(o), o.process();
+  var b = record.fragment;
+  b.read -= 4;
+  var msgBytes = b.bytes();
+  b.read += 4;
+  var msg = {
+    signature: readVector(b, 2).getBytes()
   };
-  if (e.session.certificateRequest === null || e.session.clientCertificate === null)
-    return i(e, null);
-  p.getClientSignature(e, i);
+  var verify = forge$8.util.createBuffer();
+  verify.putBuffer(c.session.md5.digest());
+  verify.putBuffer(c.session.sha1.digest());
+  verify = verify.getBytes();
+  try {
+    var cert = c.session.clientCertificate;
+    if (!cert.publicKey.verify(verify, msg.signature, "NONE")) {
+      throw new Error("CertificateVerify signature does not match.");
+    }
+    c.session.md5.update(msgBytes);
+    c.session.sha1.update(msgBytes);
+  } catch (ex) {
+    return c.error(c, {
+      message: "Bad signature in CertificateVerify.",
+      send: true,
+      alert: {
+        level: tls$1.Alert.Level.fatal,
+        description: tls$1.Alert.Description.handshake_failure
+      }
+    });
+  }
+  c.expect = CCC;
+  c.process();
 };
-p.handleChangeCipherSpec = function(e, t) {
-  if (t.fragment.getByte() !== 1)
-    return e.error(e, {
+tls$1.handleServerHelloDone = function(c, record, length) {
+  if (length > 0) {
+    return c.error(c, {
+      message: "Invalid ServerHelloDone message. Invalid length.",
+      send: true,
+      alert: {
+        level: tls$1.Alert.Level.fatal,
+        description: tls$1.Alert.Description.record_overflow
+      }
+    });
+  }
+  if (c.serverCertificate === null) {
+    var error = {
+      message: "No server certificate provided. Not enough security.",
+      send: true,
+      alert: {
+        level: tls$1.Alert.Level.fatal,
+        description: tls$1.Alert.Description.insufficient_security
+      }
+    };
+    var depth = 0;
+    var ret = c.verify(c, error.alert.description, depth, []);
+    if (ret !== true) {
+      if (ret || ret === 0) {
+        if (typeof ret === "object" && !forge$8.util.isArray(ret)) {
+          if (ret.message) {
+            error.message = ret.message;
+          }
+          if (ret.alert) {
+            error.alert.description = ret.alert;
+          }
+        } else if (typeof ret === "number") {
+          error.alert.description = ret;
+        }
+      }
+      return c.error(c, error);
+    }
+  }
+  if (c.session.certificateRequest !== null) {
+    record = tls$1.createRecord(c, {
+      type: tls$1.ContentType.handshake,
+      data: tls$1.createCertificate(c)
+    });
+    tls$1.queue(c, record);
+  }
+  record = tls$1.createRecord(c, {
+    type: tls$1.ContentType.handshake,
+    data: tls$1.createClientKeyExchange(c)
+  });
+  tls$1.queue(c, record);
+  c.expect = SER;
+  var callback = function(c2, signature) {
+    if (c2.session.certificateRequest !== null && c2.session.clientCertificate !== null) {
+      tls$1.queue(c2, tls$1.createRecord(c2, {
+        type: tls$1.ContentType.handshake,
+        data: tls$1.createCertificateVerify(c2, signature)
+      }));
+    }
+    tls$1.queue(c2, tls$1.createRecord(c2, {
+      type: tls$1.ContentType.change_cipher_spec,
+      data: tls$1.createChangeCipherSpec()
+    }));
+    c2.state.pending = tls$1.createConnectionState(c2);
+    c2.state.current.write = c2.state.pending.write;
+    tls$1.queue(c2, tls$1.createRecord(c2, {
+      type: tls$1.ContentType.handshake,
+      data: tls$1.createFinished(c2)
+    }));
+    c2.expect = SCC;
+    tls$1.flush(c2);
+    c2.process();
+  };
+  if (c.session.certificateRequest === null || c.session.clientCertificate === null) {
+    return callback(c, null);
+  }
+  tls$1.getClientSignature(c, callback);
+};
+tls$1.handleChangeCipherSpec = function(c, record) {
+  if (record.fragment.getByte() !== 1) {
+    return c.error(c, {
       message: "Invalid ChangeCipherSpec message received.",
-      send: !0,
+      send: true,
       alert: {
-        level: p.Alert.Level.fatal,
-        description: p.Alert.Description.illegal_parameter
+        level: tls$1.Alert.Level.fatal,
+        description: tls$1.Alert.Description.illegal_parameter
       }
     });
-  var a = e.entity === p.ConnectionEnd.client;
-  (e.session.resuming && a || !e.session.resuming && !a) && (e.state.pending = p.createConnectionState(e)), e.state.current.read = e.state.pending.read, (!e.session.resuming && a || e.session.resuming && !a) && (e.state.pending = null), e.expect = a ? y0 : S0, e.process();
+  }
+  var client = c.entity === tls$1.ConnectionEnd.client;
+  if (c.session.resuming && client || !c.session.resuming && !client) {
+    c.state.pending = tls$1.createConnectionState(c);
+  }
+  c.state.current.read = c.state.pending.read;
+  if (!c.session.resuming && client || c.session.resuming && !client) {
+    c.state.pending = null;
+  }
+  c.expect = client ? SFI : CFI;
+  c.process();
 };
-p.handleFinished = function(e, t, a) {
-  var r = t.fragment;
-  r.read -= 4;
-  var n = r.bytes();
-  r.read += 4;
-  var s = t.fragment.getBytes();
-  r = N.util.createBuffer(), r.putBuffer(e.session.md5.digest()), r.putBuffer(e.session.sha1.digest());
-  var i = e.entity === p.ConnectionEnd.client, o = i ? "server finished" : "client finished", l = e.session.sp, u = 12, f = Mr;
-  if (r = f(l.master_secret, o, r.getBytes(), u), r.getBytes() !== s)
-    return e.error(e, {
+tls$1.handleFinished = function(c, record, length) {
+  var b = record.fragment;
+  b.read -= 4;
+  var msgBytes = b.bytes();
+  b.read += 4;
+  var vd = record.fragment.getBytes();
+  b = forge$8.util.createBuffer();
+  b.putBuffer(c.session.md5.digest());
+  b.putBuffer(c.session.sha1.digest());
+  var client = c.entity === tls$1.ConnectionEnd.client;
+  var label = client ? "server finished" : "client finished";
+  var sp = c.session.sp;
+  var vdl = 12;
+  var prf = prf_TLS1;
+  b = prf(sp.master_secret, label, b.getBytes(), vdl);
+  if (b.getBytes() !== vd) {
+    return c.error(c, {
       message: "Invalid verify_data in Finished message.",
-      send: !0,
+      send: true,
       alert: {
-        level: p.Alert.Level.fatal,
-        description: p.Alert.Description.decrypt_error
+        level: tls$1.Alert.Level.fatal,
+        description: tls$1.Alert.Description.decrypt_error
       }
     });
-  e.session.md5.update(n), e.session.sha1.update(n), (e.session.resuming && i || !e.session.resuming && !i) && (p.queue(e, p.createRecord(e, {
-    type: p.ContentType.change_cipher_spec,
-    data: p.createChangeCipherSpec()
-  })), e.state.current.write = e.state.pending.write, e.state.pending = null, p.queue(e, p.createRecord(e, {
-    type: p.ContentType.handshake,
-    data: p.createFinished(e)
-  }))), e.expect = i ? g0 : T0, e.handshaking = !1, ++e.handshakes, e.peerCertificate = i ? e.session.serverCertificate : e.session.clientCertificate, p.flush(e), e.isConnected = !0, e.connected(e), e.process();
+  }
+  c.session.md5.update(msgBytes);
+  c.session.sha1.update(msgBytes);
+  if (c.session.resuming && client || !c.session.resuming && !client) {
+    tls$1.queue(c, tls$1.createRecord(c, {
+      type: tls$1.ContentType.change_cipher_spec,
+      data: tls$1.createChangeCipherSpec()
+    }));
+    c.state.current.write = c.state.pending.write;
+    c.state.pending = null;
+    tls$1.queue(c, tls$1.createRecord(c, {
+      type: tls$1.ContentType.handshake,
+      data: tls$1.createFinished(c)
+    }));
+  }
+  c.expect = client ? SAD : CAD;
+  c.handshaking = false;
+  ++c.handshakes;
+  c.peerCertificate = client ? c.session.serverCertificate : c.session.clientCertificate;
+  tls$1.flush(c);
+  c.isConnected = true;
+  c.connected(c);
+  c.process();
 };
-p.handleAlert = function(e, t) {
-  var a = t.fragment, r = {
-    level: a.getByte(),
-    description: a.getByte()
-  }, n;
-  switch (r.description) {
-    case p.Alert.Description.close_notify:
-      n = "Connection closed.";
+tls$1.handleAlert = function(c, record) {
+  var b = record.fragment;
+  var alert = {
+    level: b.getByte(),
+    description: b.getByte()
+  };
+  var msg;
+  switch (alert.description) {
+    case tls$1.Alert.Description.close_notify:
+      msg = "Connection closed.";
       break;
-    case p.Alert.Description.unexpected_message:
-      n = "Unexpected message.";
+    case tls$1.Alert.Description.unexpected_message:
+      msg = "Unexpected message.";
       break;
-    case p.Alert.Description.bad_record_mac:
-      n = "Bad record MAC.";
+    case tls$1.Alert.Description.bad_record_mac:
+      msg = "Bad record MAC.";
       break;
-    case p.Alert.Description.decryption_failed:
-      n = "Decryption failed.";
+    case tls$1.Alert.Description.decryption_failed:
+      msg = "Decryption failed.";
       break;
-    case p.Alert.Description.record_overflow:
-      n = "Record overflow.";
+    case tls$1.Alert.Description.record_overflow:
+      msg = "Record overflow.";
       break;
-    case p.Alert.Description.decompression_failure:
-      n = "Decompression failed.";
+    case tls$1.Alert.Description.decompression_failure:
+      msg = "Decompression failed.";
       break;
-    case p.Alert.Description.handshake_failure:
-      n = "Handshake failure.";
+    case tls$1.Alert.Description.handshake_failure:
+      msg = "Handshake failure.";
       break;
-    case p.Alert.Description.bad_certificate:
-      n = "Bad certificate.";
+    case tls$1.Alert.Description.bad_certificate:
+      msg = "Bad certificate.";
       break;
-    case p.Alert.Description.unsupported_certificate:
-      n = "Unsupported certificate.";
+    case tls$1.Alert.Description.unsupported_certificate:
+      msg = "Unsupported certificate.";
       break;
-    case p.Alert.Description.certificate_revoked:
-      n = "Certificate revoked.";
+    case tls$1.Alert.Description.certificate_revoked:
+      msg = "Certificate revoked.";
       break;
-    case p.Alert.Description.certificate_expired:
-      n = "Certificate expired.";
+    case tls$1.Alert.Description.certificate_expired:
+      msg = "Certificate expired.";
       break;
-    case p.Alert.Description.certificate_unknown:
-      n = "Certificate unknown.";
+    case tls$1.Alert.Description.certificate_unknown:
+      msg = "Certificate unknown.";
       break;
-    case p.Alert.Description.illegal_parameter:
-      n = "Illegal parameter.";
+    case tls$1.Alert.Description.illegal_parameter:
+      msg = "Illegal parameter.";
       break;
-    case p.Alert.Description.unknown_ca:
-      n = "Unknown certificate authority.";
+    case tls$1.Alert.Description.unknown_ca:
+      msg = "Unknown certificate authority.";
       break;
-    case p.Alert.Description.access_denied:
-      n = "Access denied.";
+    case tls$1.Alert.Description.access_denied:
+      msg = "Access denied.";
       break;
-    case p.Alert.Description.decode_error:
-      n = "Decode error.";
+    case tls$1.Alert.Description.decode_error:
+      msg = "Decode error.";
       break;
-    case p.Alert.Description.decrypt_error:
-      n = "Decrypt error.";
+    case tls$1.Alert.Description.decrypt_error:
+      msg = "Decrypt error.";
       break;
-    case p.Alert.Description.export_restriction:
-      n = "Export restriction.";
+    case tls$1.Alert.Description.export_restriction:
+      msg = "Export restriction.";
       break;
-    case p.Alert.Description.protocol_version:
-      n = "Unsupported protocol version.";
+    case tls$1.Alert.Description.protocol_version:
+      msg = "Unsupported protocol version.";
       break;
-    case p.Alert.Description.insufficient_security:
-      n = "Insufficient security.";
+    case tls$1.Alert.Description.insufficient_security:
+      msg = "Insufficient security.";
       break;
-    case p.Alert.Description.internal_error:
-      n = "Internal error.";
+    case tls$1.Alert.Description.internal_error:
+      msg = "Internal error.";
       break;
-    case p.Alert.Description.user_canceled:
-      n = "User canceled.";
+    case tls$1.Alert.Description.user_canceled:
+      msg = "User canceled.";
       break;
-    case p.Alert.Description.no_renegotiation:
-      n = "Renegotiation not supported.";
+    case tls$1.Alert.Description.no_renegotiation:
+      msg = "Renegotiation not supported.";
       break;
     default:
-      n = "Unknown error.";
+      msg = "Unknown error.";
       break;
   }
-  if (r.description === p.Alert.Description.close_notify)
-    return e.close();
-  e.error(e, {
-    message: n,
-    send: !1,
-    // origin is the opposite end
-    origin: e.entity === p.ConnectionEnd.client ? "server" : "client",
-    alert: r
-  }), e.process();
-};
-p.handleHandshake = function(e, t) {
-  var a = t.fragment, r = a.getByte(), n = a.getInt24();
-  if (n > a.length())
-    return e.fragmented = t, t.fragment = N.util.createBuffer(), a.read -= 4, e.process();
-  e.fragmented = null, a.read -= 4;
-  var s = a.bytes(n + 4);
-  a.read += 4, r in Nr[e.entity][e.expect] ? (e.entity === p.ConnectionEnd.server && !e.open && !e.fail && (e.handshaking = !0, e.session = {
-    version: null,
-    extensions: {
-      server_name: {
-        serverNameList: []
-      }
-    },
-    cipherSuite: null,
-    compressionMethod: null,
-    serverCertificate: null,
-    clientCertificate: null,
-    md5: N.md.md5.create(),
-    sha1: N.md.sha1.create()
-  }), r !== p.HandshakeType.hello_request && r !== p.HandshakeType.certificate_verify && r !== p.HandshakeType.finished && (e.session.md5.update(s), e.session.sha1.update(s)), Nr[e.entity][e.expect][r](e, t, n)) : p.handleUnexpected(e, t);
-};
-p.handleApplicationData = function(e, t) {
-  e.data.putBuffer(t.fragment), e.dataReady(e), e.process();
-};
-p.handleHeartbeat = function(e, t) {
-  var a = t.fragment, r = a.getByte(), n = a.getInt16(), s = a.getBytes(n);
-  if (r === p.HeartbeatMessageType.heartbeat_request) {
-    if (e.handshaking || n > s.length)
-      return e.process();
-    p.queue(e, p.createRecord(e, {
-      type: p.ContentType.heartbeat,
-      data: p.createHeartbeat(
-        p.HeartbeatMessageType.heartbeat_response,
-        s
-      )
-    })), p.flush(e);
-  } else if (r === p.HeartbeatMessageType.heartbeat_response) {
-    if (s !== e.expectedHeartbeatPayload)
-      return e.process();
-    e.heartbeatReceived && e.heartbeatReceived(e, N.util.createBuffer(s));
+  if (alert.description === tls$1.Alert.Description.close_notify) {
+    return c.close();
   }
-  e.process();
+  c.error(c, {
+    message: msg,
+    send: false,
+    // origin is the opposite end
+    origin: c.entity === tls$1.ConnectionEnd.client ? "server" : "client",
+    alert
+  });
+  c.process();
 };
-var h0 = 0, d0 = 1, Ja = 2, p0 = 3, v0 = 4, Mn = 5, y0 = 6, g0 = 7, m0 = 8, C0 = 0, E0 = 1, ia = 2, x0 = 3, ba = 4, S0 = 5, T0 = 6, d = p.handleUnexpected, Hn = p.handleChangeCipherSpec, Ie = p.handleAlert, He = p.handleHandshake, Gn = p.handleApplicationData, Ae = p.handleHeartbeat, _a = [];
-_a[p.ConnectionEnd.client] = [
+tls$1.handleHandshake = function(c, record) {
+  var b = record.fragment;
+  var type = b.getByte();
+  var length = b.getInt24();
+  if (length > b.length()) {
+    c.fragmented = record;
+    record.fragment = forge$8.util.createBuffer();
+    b.read -= 4;
+    return c.process();
+  }
+  c.fragmented = null;
+  b.read -= 4;
+  var bytes = b.bytes(length + 4);
+  b.read += 4;
+  if (type in hsTable[c.entity][c.expect]) {
+    if (c.entity === tls$1.ConnectionEnd.server && !c.open && !c.fail) {
+      c.handshaking = true;
+      c.session = {
+        version: null,
+        extensions: {
+          server_name: {
+            serverNameList: []
+          }
+        },
+        cipherSuite: null,
+        compressionMethod: null,
+        serverCertificate: null,
+        clientCertificate: null,
+        md5: forge$8.md.md5.create(),
+        sha1: forge$8.md.sha1.create()
+      };
+    }
+    if (type !== tls$1.HandshakeType.hello_request && type !== tls$1.HandshakeType.certificate_verify && type !== tls$1.HandshakeType.finished) {
+      c.session.md5.update(bytes);
+      c.session.sha1.update(bytes);
+    }
+    hsTable[c.entity][c.expect][type](c, record, length);
+  } else {
+    tls$1.handleUnexpected(c, record);
+  }
+};
+tls$1.handleApplicationData = function(c, record) {
+  c.data.putBuffer(record.fragment);
+  c.dataReady(c);
+  c.process();
+};
+tls$1.handleHeartbeat = function(c, record) {
+  var b = record.fragment;
+  var type = b.getByte();
+  var length = b.getInt16();
+  var payload = b.getBytes(length);
+  if (type === tls$1.HeartbeatMessageType.heartbeat_request) {
+    if (c.handshaking || length > payload.length) {
+      return c.process();
+    }
+    tls$1.queue(c, tls$1.createRecord(c, {
+      type: tls$1.ContentType.heartbeat,
+      data: tls$1.createHeartbeat(
+        tls$1.HeartbeatMessageType.heartbeat_response,
+        payload
+      )
+    }));
+    tls$1.flush(c);
+  } else if (type === tls$1.HeartbeatMessageType.heartbeat_response) {
+    if (payload !== c.expectedHeartbeatPayload) {
+      return c.process();
+    }
+    if (c.heartbeatReceived) {
+      c.heartbeatReceived(c, forge$8.util.createBuffer(payload));
+    }
+  }
+  c.process();
+};
+var SHE = 0;
+var SCE = 1;
+var SKE = 2;
+var SCR = 3;
+var SHD = 4;
+var SCC = 5;
+var SFI = 6;
+var SAD = 7;
+var SER = 8;
+var CHE = 0;
+var CCE = 1;
+var CKE = 2;
+var CCV = 3;
+var CCC = 4;
+var CFI = 5;
+var CAD = 6;
+var __ = tls$1.handleUnexpected;
+var R0 = tls$1.handleChangeCipherSpec;
+var R1 = tls$1.handleAlert;
+var R2 = tls$1.handleHandshake;
+var R3 = tls$1.handleApplicationData;
+var R4 = tls$1.handleHeartbeat;
+var ctTable = [];
+ctTable[tls$1.ConnectionEnd.client] = [
   //      CC,AL,HS,AD,HB
   /*SHE*/
-  [d, Ie, He, d, Ae],
+  [__, R1, R2, __, R4],
   /*SCE*/
-  [d, Ie, He, d, Ae],
+  [__, R1, R2, __, R4],
   /*SKE*/
-  [d, Ie, He, d, Ae],
+  [__, R1, R2, __, R4],
   /*SCR*/
-  [d, Ie, He, d, Ae],
+  [__, R1, R2, __, R4],
   /*SHD*/
-  [d, Ie, He, d, Ae],
+  [__, R1, R2, __, R4],
   /*SCC*/
-  [Hn, Ie, d, d, Ae],
+  [R0, R1, __, __, R4],
   /*SFI*/
-  [d, Ie, He, d, Ae],
+  [__, R1, R2, __, R4],
   /*SAD*/
-  [d, Ie, He, Gn, Ae],
+  [__, R1, R2, R3, R4],
   /*SER*/
-  [d, Ie, He, d, Ae]
+  [__, R1, R2, __, R4]
 ];
-_a[p.ConnectionEnd.server] = [
+ctTable[tls$1.ConnectionEnd.server] = [
   //      CC,AL,HS,AD
   /*CHE*/
-  [d, Ie, He, d, Ae],
+  [__, R1, R2, __, R4],
   /*CCE*/
-  [d, Ie, He, d, Ae],
+  [__, R1, R2, __, R4],
   /*CKE*/
-  [d, Ie, He, d, Ae],
+  [__, R1, R2, __, R4],
   /*CCV*/
-  [d, Ie, He, d, Ae],
+  [__, R1, R2, __, R4],
   /*CCC*/
-  [Hn, Ie, d, d, Ae],
+  [R0, R1, __, __, R4],
   /*CFI*/
-  [d, Ie, He, d, Ae],
+  [__, R1, R2, __, R4],
   /*CAD*/
-  [d, Ie, He, Gn, Ae],
+  [__, R1, R2, R3, R4],
   /*CER*/
-  [d, Ie, He, d, Ae]
+  [__, R1, R2, __, R4]
 ];
-var Ct = p.handleHelloRequest, I0 = p.handleServerHello, qn = p.handleCertificate, en = p.handleServerKeyExchange, qr = p.handleCertificateRequest, vr = p.handleServerHelloDone, Qn = p.handleFinished, Nr = [];
-Nr[p.ConnectionEnd.client] = [
+var H0 = tls$1.handleHelloRequest;
+var H1 = tls$1.handleServerHello;
+var H2 = tls$1.handleCertificate;
+var H3 = tls$1.handleServerKeyExchange;
+var H4 = tls$1.handleCertificateRequest;
+var H5 = tls$1.handleServerHelloDone;
+var H6 = tls$1.handleFinished;
+var hsTable = [];
+hsTable[tls$1.ConnectionEnd.client] = [
   //      HR,01,SH,03,04,05,06,07,08,09,10,SC,SK,CR,HD,15,CK,17,18,19,FI
   /*SHE*/
-  [d, d, I0, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d],
+  [__, __, H1, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __],
   /*SCE*/
-  [Ct, d, d, d, d, d, d, d, d, d, d, qn, en, qr, vr, d, d, d, d, d, d],
+  [H0, __, __, __, __, __, __, __, __, __, __, H2, H3, H4, H5, __, __, __, __, __, __],
   /*SKE*/
-  [Ct, d, d, d, d, d, d, d, d, d, d, d, en, qr, vr, d, d, d, d, d, d],
+  [H0, __, __, __, __, __, __, __, __, __, __, __, H3, H4, H5, __, __, __, __, __, __],
   /*SCR*/
-  [Ct, d, d, d, d, d, d, d, d, d, d, d, d, qr, vr, d, d, d, d, d, d],
+  [H0, __, __, __, __, __, __, __, __, __, __, __, __, H4, H5, __, __, __, __, __, __],
   /*SHD*/
-  [Ct, d, d, d, d, d, d, d, d, d, d, d, d, d, vr, d, d, d, d, d, d],
+  [H0, __, __, __, __, __, __, __, __, __, __, __, __, __, H5, __, __, __, __, __, __],
   /*SCC*/
-  [Ct, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d],
+  [H0, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __],
   /*SFI*/
-  [Ct, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, Qn],
+  [H0, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, H6],
   /*SAD*/
-  [Ct, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d],
+  [H0, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __],
   /*SER*/
-  [Ct, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d]
+  [H0, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __]
 ];
-var A0 = p.handleClientHello, B0 = p.handleClientKeyExchange, b0 = p.handleCertificateVerify;
-Nr[p.ConnectionEnd.server] = [
+var H7 = tls$1.handleClientHello;
+var H8 = tls$1.handleClientKeyExchange;
+var H9 = tls$1.handleCertificateVerify;
+hsTable[tls$1.ConnectionEnd.server] = [
   //      01,CH,02,03,04,05,06,07,08,09,10,CC,12,13,14,CV,CK,17,18,19,FI
   /*CHE*/
-  [d, A0, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d],
+  [__, H7, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __],
   /*CCE*/
-  [d, d, d, d, d, d, d, d, d, d, d, qn, d, d, d, d, d, d, d, d, d],
+  [__, __, __, __, __, __, __, __, __, __, __, H2, __, __, __, __, __, __, __, __, __],
   /*CKE*/
-  [d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, B0, d, d, d, d],
+  [__, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, H8, __, __, __, __],
   /*CCV*/
-  [d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, b0, d, d, d, d, d],
+  [__, __, __, __, __, __, __, __, __, __, __, __, __, __, __, H9, __, __, __, __, __],
   /*CCC*/
-  [d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d],
+  [__, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __],
   /*CFI*/
-  [d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, Qn],
+  [__, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, H6],
   /*CAD*/
-  [d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d],
+  [__, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __],
   /*CER*/
-  [d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d]
+  [__, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __]
 ];
-p.generateKeys = function(e, t) {
-  var a = Mr, r = t.client_random + t.server_random;
-  e.session.resuming || (t.master_secret = a(
-    t.pre_master_secret,
-    "master secret",
-    r,
-    48
-  ).bytes(), t.pre_master_secret = null), r = t.server_random + t.client_random;
-  var n = 2 * t.mac_key_length + 2 * t.enc_key_length, s = e.version.major === p.Versions.TLS_1_0.major && e.version.minor === p.Versions.TLS_1_0.minor;
-  s && (n += 2 * t.fixed_iv_length);
-  var i = a(t.master_secret, "key expansion", r, n), o = {
-    client_write_MAC_key: i.getBytes(t.mac_key_length),
-    server_write_MAC_key: i.getBytes(t.mac_key_length),
-    client_write_key: i.getBytes(t.enc_key_length),
-    server_write_key: i.getBytes(t.enc_key_length)
+tls$1.generateKeys = function(c, sp) {
+  var prf = prf_TLS1;
+  var random = sp.client_random + sp.server_random;
+  if (!c.session.resuming) {
+    sp.master_secret = prf(
+      sp.pre_master_secret,
+      "master secret",
+      random,
+      48
+    ).bytes();
+    sp.pre_master_secret = null;
+  }
+  random = sp.server_random + sp.client_random;
+  var length = 2 * sp.mac_key_length + 2 * sp.enc_key_length;
+  var tls10 = c.version.major === tls$1.Versions.TLS_1_0.major && c.version.minor === tls$1.Versions.TLS_1_0.minor;
+  if (tls10) {
+    length += 2 * sp.fixed_iv_length;
+  }
+  var km = prf(sp.master_secret, "key expansion", random, length);
+  var rval = {
+    client_write_MAC_key: km.getBytes(sp.mac_key_length),
+    server_write_MAC_key: km.getBytes(sp.mac_key_length),
+    client_write_key: km.getBytes(sp.enc_key_length),
+    server_write_key: km.getBytes(sp.enc_key_length)
   };
-  return s && (o.client_write_IV = i.getBytes(t.fixed_iv_length), o.server_write_IV = i.getBytes(t.fixed_iv_length)), o;
+  if (tls10) {
+    rval.client_write_IV = km.getBytes(sp.fixed_iv_length);
+    rval.server_write_IV = km.getBytes(sp.fixed_iv_length);
+  }
+  return rval;
 };
-p.createConnectionState = function(e) {
-  var t = e.entity === p.ConnectionEnd.client, a = function() {
-    var s = {
+tls$1.createConnectionState = function(c) {
+  var client = c.entity === tls$1.ConnectionEnd.client;
+  var createMode = function() {
+    var mode = {
       // two 32-bit numbers, first is most significant
       sequenceNumber: [0, 0],
       macKey: null,
       macLength: 0,
       macFunction: null,
       cipherState: null,
-      cipherFunction: function(i) {
-        return !0;
+      cipherFunction: function(record) {
+        return true;
       },
       compressionState: null,
-      compressFunction: function(i) {
-        return !0;
+      compressFunction: function(record) {
+        return true;
       },
       updateSequenceNumber: function() {
-        s.sequenceNumber[1] === 4294967295 ? (s.sequenceNumber[1] = 0, ++s.sequenceNumber[0]) : ++s.sequenceNumber[1];
+        if (mode.sequenceNumber[1] === 4294967295) {
+          mode.sequenceNumber[1] = 0;
+          ++mode.sequenceNumber[0];
+        } else {
+          ++mode.sequenceNumber[1];
+        }
       }
     };
-    return s;
-  }, r = {
-    read: a(),
-    write: a()
+    return mode;
   };
-  if (r.read.update = function(s, i) {
-    return r.read.cipherFunction(i, r.read) ? r.read.compressFunction(s, i, r.read) || s.error(s, {
-      message: "Could not decompress record.",
-      send: !0,
-      alert: {
-        level: p.Alert.Level.fatal,
-        description: p.Alert.Description.decompression_failure
-      }
-    }) : s.error(s, {
-      message: "Could not decrypt record or bad MAC.",
-      send: !0,
-      alert: {
-        level: p.Alert.Level.fatal,
-        // doesn't matter if decryption failed or MAC was
-        // invalid, return the same error so as not to reveal
-        // which one occurred
-        description: p.Alert.Description.bad_record_mac
-      }
-    }), !s.fail;
-  }, r.write.update = function(s, i) {
-    return r.write.compressFunction(s, i, r.write) ? r.write.cipherFunction(i, r.write) || s.error(s, {
-      message: "Could not encrypt record.",
-      send: !1,
-      alert: {
-        level: p.Alert.Level.fatal,
-        description: p.Alert.Description.internal_error
-      }
-    }) : s.error(s, {
-      message: "Could not compress record.",
-      send: !1,
-      alert: {
-        level: p.Alert.Level.fatal,
-        description: p.Alert.Description.internal_error
-      }
-    }), !s.fail;
-  }, e.session) {
-    var n = e.session.sp;
-    switch (e.session.cipherSuite.initSecurityParameters(n), n.keys = p.generateKeys(e, n), r.read.macKey = t ? n.keys.server_write_MAC_key : n.keys.client_write_MAC_key, r.write.macKey = t ? n.keys.client_write_MAC_key : n.keys.server_write_MAC_key, e.session.cipherSuite.initConnectionState(r, e, n), n.compression_algorithm) {
-      case p.CompressionMethod.none:
+  var state = {
+    read: createMode(),
+    write: createMode()
+  };
+  state.read.update = function(c2, record) {
+    if (!state.read.cipherFunction(record, state.read)) {
+      c2.error(c2, {
+        message: "Could not decrypt record or bad MAC.",
+        send: true,
+        alert: {
+          level: tls$1.Alert.Level.fatal,
+          // doesn't matter if decryption failed or MAC was
+          // invalid, return the same error so as not to reveal
+          // which one occurred
+          description: tls$1.Alert.Description.bad_record_mac
+        }
+      });
+    } else if (!state.read.compressFunction(c2, record, state.read)) {
+      c2.error(c2, {
+        message: "Could not decompress record.",
+        send: true,
+        alert: {
+          level: tls$1.Alert.Level.fatal,
+          description: tls$1.Alert.Description.decompression_failure
+        }
+      });
+    }
+    return !c2.fail;
+  };
+  state.write.update = function(c2, record) {
+    if (!state.write.compressFunction(c2, record, state.write)) {
+      c2.error(c2, {
+        message: "Could not compress record.",
+        send: false,
+        alert: {
+          level: tls$1.Alert.Level.fatal,
+          description: tls$1.Alert.Description.internal_error
+        }
+      });
+    } else if (!state.write.cipherFunction(record, state.write)) {
+      c2.error(c2, {
+        message: "Could not encrypt record.",
+        send: false,
+        alert: {
+          level: tls$1.Alert.Level.fatal,
+          description: tls$1.Alert.Description.internal_error
+        }
+      });
+    }
+    return !c2.fail;
+  };
+  if (c.session) {
+    var sp = c.session.sp;
+    c.session.cipherSuite.initSecurityParameters(sp);
+    sp.keys = tls$1.generateKeys(c, sp);
+    state.read.macKey = client ? sp.keys.server_write_MAC_key : sp.keys.client_write_MAC_key;
+    state.write.macKey = client ? sp.keys.client_write_MAC_key : sp.keys.server_write_MAC_key;
+    c.session.cipherSuite.initConnectionState(state, c, sp);
+    switch (sp.compression_algorithm) {
+      case tls$1.CompressionMethod.none:
         break;
-      case p.CompressionMethod.deflate:
-        r.read.compressFunction = c0, r.write.compressFunction = f0;
+      case tls$1.CompressionMethod.deflate:
+        state.read.compressFunction = inflate;
+        state.write.compressFunction = deflate;
         break;
       default:
         throw new Error("Unsupported compression algorithm.");
     }
   }
-  return r;
+  return state;
 };
-p.createRandom = function() {
-  var e = /* @__PURE__ */ new Date(), t = +e + e.getTimezoneOffset() * 6e4, a = N.util.createBuffer();
-  return a.putInt32(t), a.putBytes(N.random.getBytes(28)), a;
+tls$1.createRandom = function() {
+  var d = /* @__PURE__ */ new Date();
+  var utc = +d + d.getTimezoneOffset() * 6e4;
+  var rval = forge$8.util.createBuffer();
+  rval.putInt32(utc);
+  rval.putBytes(forge$8.random.getBytes(28));
+  return rval;
 };
-p.createRecord = function(e, t) {
-  if (!t.data)
+tls$1.createRecord = function(c, options) {
+  if (!options.data) {
     return null;
-  var a = {
-    type: t.type,
+  }
+  var record = {
+    type: options.type,
     version: {
-      major: e.version.major,
-      minor: e.version.minor
+      major: c.version.major,
+      minor: c.version.minor
     },
-    length: t.data.length(),
-    fragment: t.data
+    length: options.data.length(),
+    fragment: options.data
   };
-  return a;
+  return record;
 };
-p.createAlert = function(e, t) {
-  var a = N.util.createBuffer();
-  return a.putByte(t.level), a.putByte(t.description), p.createRecord(e, {
-    type: p.ContentType.alert,
-    data: a
+tls$1.createAlert = function(c, alert) {
+  var b = forge$8.util.createBuffer();
+  b.putByte(alert.level);
+  b.putByte(alert.description);
+  return tls$1.createRecord(c, {
+    type: tls$1.ContentType.alert,
+    data: b
   });
 };
-p.createClientHello = function(e) {
-  e.session.clientHelloVersion = {
-    major: e.version.major,
-    minor: e.version.minor
+tls$1.createClientHello = function(c) {
+  c.session.clientHelloVersion = {
+    major: c.version.major,
+    minor: c.version.minor
   };
-  for (var t = N.util.createBuffer(), a = 0; a < e.cipherSuites.length; ++a) {
-    var r = e.cipherSuites[a];
-    t.putByte(r.id[0]), t.putByte(r.id[1]);
+  var cipherSuites = forge$8.util.createBuffer();
+  for (var i = 0; i < c.cipherSuites.length; ++i) {
+    var cs = c.cipherSuites[i];
+    cipherSuites.putByte(cs.id[0]);
+    cipherSuites.putByte(cs.id[1]);
   }
-  var n = t.length(), s = N.util.createBuffer();
-  s.putByte(p.CompressionMethod.none);
-  var i = s.length(), o = N.util.createBuffer();
-  if (e.virtualHost) {
-    var l = N.util.createBuffer();
-    l.putByte(0), l.putByte(0);
-    var u = N.util.createBuffer();
-    u.putByte(0), je(u, 2, N.util.createBuffer(e.virtualHost));
-    var f = N.util.createBuffer();
-    je(f, 2, u), je(l, 2, f), o.putBuffer(l);
+  var cSuites = cipherSuites.length();
+  var compressionMethods = forge$8.util.createBuffer();
+  compressionMethods.putByte(tls$1.CompressionMethod.none);
+  var cMethods = compressionMethods.length();
+  var extensions = forge$8.util.createBuffer();
+  if (c.virtualHost) {
+    var ext = forge$8.util.createBuffer();
+    ext.putByte(0);
+    ext.putByte(0);
+    var serverName = forge$8.util.createBuffer();
+    serverName.putByte(0);
+    writeVector(serverName, 2, forge$8.util.createBuffer(c.virtualHost));
+    var snList = forge$8.util.createBuffer();
+    writeVector(snList, 2, serverName);
+    writeVector(ext, 2, snList);
+    extensions.putBuffer(ext);
   }
-  var c = o.length();
-  c > 0 && (c += 2);
-  var v = e.session.id, m = v.length + 1 + // session ID vector
+  var extLength = extensions.length();
+  if (extLength > 0) {
+    extLength += 2;
+  }
+  var sessionId = c.session.id;
+  var length = sessionId.length + 1 + // session ID vector
   2 + // version (major + minor)
   4 + 28 + // random time and random bytes
-  2 + n + // cipher suites vector
-  1 + i + // compression methods vector
-  c, y = N.util.createBuffer();
-  return y.putByte(p.HandshakeType.client_hello), y.putInt24(m), y.putByte(e.version.major), y.putByte(e.version.minor), y.putBytes(e.session.sp.client_random), je(y, 1, N.util.createBuffer(v)), je(y, 2, t), je(y, 1, s), c > 0 && je(y, 2, o), y;
+  2 + cSuites + // cipher suites vector
+  1 + cMethods + // compression methods vector
+  extLength;
+  var rval = forge$8.util.createBuffer();
+  rval.putByte(tls$1.HandshakeType.client_hello);
+  rval.putInt24(length);
+  rval.putByte(c.version.major);
+  rval.putByte(c.version.minor);
+  rval.putBytes(c.session.sp.client_random);
+  writeVector(rval, 1, forge$8.util.createBuffer(sessionId));
+  writeVector(rval, 2, cipherSuites);
+  writeVector(rval, 1, compressionMethods);
+  if (extLength > 0) {
+    writeVector(rval, 2, extensions);
+  }
+  return rval;
 };
-p.createServerHello = function(e) {
-  var t = e.session.id, a = t.length + 1 + // session ID vector
+tls$1.createServerHello = function(c) {
+  var sessionId = c.session.id;
+  var length = sessionId.length + 1 + // session ID vector
   2 + // version (major + minor)
   4 + 28 + // random time and random bytes
   2 + // chosen cipher suite
-  1, r = N.util.createBuffer();
-  return r.putByte(p.HandshakeType.server_hello), r.putInt24(a), r.putByte(e.version.major), r.putByte(e.version.minor), r.putBytes(e.session.sp.server_random), je(r, 1, N.util.createBuffer(t)), r.putByte(e.session.cipherSuite.id[0]), r.putByte(e.session.cipherSuite.id[1]), r.putByte(e.session.compressionMethod), r;
+  1;
+  var rval = forge$8.util.createBuffer();
+  rval.putByte(tls$1.HandshakeType.server_hello);
+  rval.putInt24(length);
+  rval.putByte(c.version.major);
+  rval.putByte(c.version.minor);
+  rval.putBytes(c.session.sp.server_random);
+  writeVector(rval, 1, forge$8.util.createBuffer(sessionId));
+  rval.putByte(c.session.cipherSuite.id[0]);
+  rval.putByte(c.session.cipherSuite.id[1]);
+  rval.putByte(c.session.compressionMethod);
+  return rval;
 };
-p.createCertificate = function(e) {
-  var t = e.entity === p.ConnectionEnd.client, a = null;
-  if (e.getCertificate) {
-    var r;
-    t ? r = e.session.certificateRequest : r = e.session.extensions.server_name.serverNameList, a = e.getCertificate(e, r);
+tls$1.createCertificate = function(c) {
+  var client = c.entity === tls$1.ConnectionEnd.client;
+  var cert = null;
+  if (c.getCertificate) {
+    var hint;
+    if (client) {
+      hint = c.session.certificateRequest;
+    } else {
+      hint = c.session.extensions.server_name.serverNameList;
+    }
+    cert = c.getCertificate(c, hint);
   }
-  var n = N.util.createBuffer();
-  if (a !== null)
+  var certList = forge$8.util.createBuffer();
+  if (cert !== null) {
     try {
-      N.util.isArray(a) || (a = [a]);
-      for (var s = null, i = 0; i < a.length; ++i) {
-        var o = N.pem.decode(a[i])[0];
-        if (o.type !== "CERTIFICATE" && o.type !== "X509 CERTIFICATE" && o.type !== "TRUSTED CERTIFICATE") {
-          var l = new Error('Could not convert certificate from PEM; PEM header type is not "CERTIFICATE", "X509 CERTIFICATE", or "TRUSTED CERTIFICATE".');
-          throw l.headerType = o.type, l;
-        }
-        if (o.procType && o.procType.type === "ENCRYPTED")
-          throw new Error("Could not convert certificate from PEM; PEM is encrypted.");
-        var u = N.util.createBuffer(o.body);
-        s === null && (s = N.asn1.fromDer(u.bytes(), !1));
-        var f = N.util.createBuffer();
-        je(f, 3, u), n.putBuffer(f);
+      if (!forge$8.util.isArray(cert)) {
+        cert = [cert];
       }
-      a = N.pki.certificateFromAsn1(s), t ? e.session.clientCertificate = a : e.session.serverCertificate = a;
-    } catch (m) {
-      return e.error(e, {
+      var asn12 = null;
+      for (var i = 0; i < cert.length; ++i) {
+        var msg = forge$8.pem.decode(cert[i])[0];
+        if (msg.type !== "CERTIFICATE" && msg.type !== "X509 CERTIFICATE" && msg.type !== "TRUSTED CERTIFICATE") {
+          var error = new Error('Could not convert certificate from PEM; PEM header type is not "CERTIFICATE", "X509 CERTIFICATE", or "TRUSTED CERTIFICATE".');
+          error.headerType = msg.type;
+          throw error;
+        }
+        if (msg.procType && msg.procType.type === "ENCRYPTED") {
+          throw new Error("Could not convert certificate from PEM; PEM is encrypted.");
+        }
+        var der = forge$8.util.createBuffer(msg.body);
+        if (asn12 === null) {
+          asn12 = forge$8.asn1.fromDer(der.bytes(), false);
+        }
+        var certBuffer = forge$8.util.createBuffer();
+        writeVector(certBuffer, 3, der);
+        certList.putBuffer(certBuffer);
+      }
+      cert = forge$8.pki.certificateFromAsn1(asn12);
+      if (client) {
+        c.session.clientCertificate = cert;
+      } else {
+        c.session.serverCertificate = cert;
+      }
+    } catch (ex) {
+      return c.error(c, {
         message: "Could not send certificate list.",
-        cause: m,
-        send: !0,
+        cause: ex,
+        send: true,
         alert: {
-          level: p.Alert.Level.fatal,
-          description: p.Alert.Description.bad_certificate
+          level: tls$1.Alert.Level.fatal,
+          description: tls$1.Alert.Description.bad_certificate
         }
       });
     }
-  var c = 3 + n.length(), v = N.util.createBuffer();
-  return v.putByte(p.HandshakeType.certificate), v.putInt24(c), je(v, 3, n), v;
+  }
+  var length = 3 + certList.length();
+  var rval = forge$8.util.createBuffer();
+  rval.putByte(tls$1.HandshakeType.certificate);
+  rval.putInt24(length);
+  writeVector(rval, 3, certList);
+  return rval;
 };
-p.createClientKeyExchange = function(e) {
-  var t = N.util.createBuffer();
-  t.putByte(e.session.clientHelloVersion.major), t.putByte(e.session.clientHelloVersion.minor), t.putBytes(N.random.getBytes(46));
-  var a = e.session.sp;
-  a.pre_master_secret = t.getBytes();
-  var r = e.session.serverCertificate.publicKey;
-  t = r.encrypt(a.pre_master_secret);
-  var n = t.length + 2, s = N.util.createBuffer();
-  return s.putByte(p.HandshakeType.client_key_exchange), s.putInt24(n), s.putInt16(t.length), s.putBytes(t), s;
+tls$1.createClientKeyExchange = function(c) {
+  var b = forge$8.util.createBuffer();
+  b.putByte(c.session.clientHelloVersion.major);
+  b.putByte(c.session.clientHelloVersion.minor);
+  b.putBytes(forge$8.random.getBytes(46));
+  var sp = c.session.sp;
+  sp.pre_master_secret = b.getBytes();
+  var key = c.session.serverCertificate.publicKey;
+  b = key.encrypt(sp.pre_master_secret);
+  var length = b.length + 2;
+  var rval = forge$8.util.createBuffer();
+  rval.putByte(tls$1.HandshakeType.client_key_exchange);
+  rval.putInt24(length);
+  rval.putInt16(b.length);
+  rval.putBytes(b);
+  return rval;
 };
-p.createServerKeyExchange = function(e) {
-  var t = N.util.createBuffer();
-  return t;
+tls$1.createServerKeyExchange = function(c) {
+  var rval = forge$8.util.createBuffer();
+  return rval;
 };
-p.getClientSignature = function(e, t) {
-  var a = N.util.createBuffer();
-  a.putBuffer(e.session.md5.digest()), a.putBuffer(e.session.sha1.digest()), a = a.getBytes(), e.getSignature = e.getSignature || function(r, n, s) {
-    var i = null;
-    if (r.getPrivateKey)
+tls$1.getClientSignature = function(c, callback) {
+  var b = forge$8.util.createBuffer();
+  b.putBuffer(c.session.md5.digest());
+  b.putBuffer(c.session.sha1.digest());
+  b = b.getBytes();
+  c.getSignature = c.getSignature || function(c2, b2, callback2) {
+    var privateKey = null;
+    if (c2.getPrivateKey) {
       try {
-        i = r.getPrivateKey(r, r.session.clientCertificate), i = N.pki.privateKeyFromPem(i);
-      } catch (o) {
-        r.error(r, {
+        privateKey = c2.getPrivateKey(c2, c2.session.clientCertificate);
+        privateKey = forge$8.pki.privateKeyFromPem(privateKey);
+      } catch (ex) {
+        c2.error(c2, {
           message: "Could not get private key.",
-          cause: o,
-          send: !0,
+          cause: ex,
+          send: true,
           alert: {
-            level: p.Alert.Level.fatal,
-            description: p.Alert.Description.internal_error
+            level: tls$1.Alert.Level.fatal,
+            description: tls$1.Alert.Description.internal_error
           }
         });
       }
-    i === null ? r.error(r, {
-      message: "No private key set.",
-      send: !0,
-      alert: {
-        level: p.Alert.Level.fatal,
-        description: p.Alert.Description.internal_error
-      }
-    }) : n = i.sign(n, null), s(r, n);
-  }, e.getSignature(e, a, t);
-};
-p.createCertificateVerify = function(e, t) {
-  var a = t.length + 2, r = N.util.createBuffer();
-  return r.putByte(p.HandshakeType.certificate_verify), r.putInt24(a), r.putInt16(t.length), r.putBytes(t), r;
-};
-p.createCertificateRequest = function(e) {
-  var t = N.util.createBuffer();
-  t.putByte(1);
-  var a = N.util.createBuffer();
-  for (var r in e.caStore.certs) {
-    var n = e.caStore.certs[r], s = N.pki.distinguishedNameToAsn1(n.subject), i = N.asn1.toDer(s);
-    a.putInt16(i.length()), a.putBuffer(i);
-  }
-  var o = 1 + t.length() + 2 + a.length(), l = N.util.createBuffer();
-  return l.putByte(p.HandshakeType.certificate_request), l.putInt24(o), je(l, 1, t), je(l, 2, a), l;
-};
-p.createServerHelloDone = function(e) {
-  var t = N.util.createBuffer();
-  return t.putByte(p.HandshakeType.server_hello_done), t.putInt24(0), t;
-};
-p.createChangeCipherSpec = function() {
-  var e = N.util.createBuffer();
-  return e.putByte(1), e;
-};
-p.createFinished = function(e) {
-  var t = N.util.createBuffer();
-  t.putBuffer(e.session.md5.digest()), t.putBuffer(e.session.sha1.digest());
-  var a = e.entity === p.ConnectionEnd.client, r = e.session.sp, n = 12, s = Mr, i = a ? "client finished" : "server finished";
-  t = s(r.master_secret, i, t.getBytes(), n);
-  var o = N.util.createBuffer();
-  return o.putByte(p.HandshakeType.finished), o.putInt24(t.length()), o.putBuffer(t), o;
-};
-p.createHeartbeat = function(e, t, a) {
-  typeof a > "u" && (a = t.length);
-  var r = N.util.createBuffer();
-  r.putByte(e), r.putInt16(a), r.putBytes(t);
-  var n = r.length(), s = Math.max(16, n - a - 3);
-  return r.putBytes(N.random.getBytes(s)), r;
-};
-p.queue = function(e, t) {
-  if (t && !(t.fragment.length() === 0 && (t.type === p.ContentType.handshake || t.type === p.ContentType.alert || t.type === p.ContentType.change_cipher_spec))) {
-    if (t.type === p.ContentType.handshake) {
-      var a = t.fragment.bytes();
-      e.session.md5.update(a), e.session.sha1.update(a), a = null;
     }
-    var r;
-    if (t.fragment.length() <= p.MaxFragment)
-      r = [t];
-    else {
-      r = [];
-      for (var n = t.fragment.bytes(); n.length > p.MaxFragment; )
-        r.push(p.createRecord(e, {
-          type: t.type,
-          data: N.util.createBuffer(n.slice(0, p.MaxFragment))
-        })), n = n.slice(p.MaxFragment);
-      n.length > 0 && r.push(p.createRecord(e, {
-        type: t.type,
-        data: N.util.createBuffer(n)
+    if (privateKey === null) {
+      c2.error(c2, {
+        message: "No private key set.",
+        send: true,
+        alert: {
+          level: tls$1.Alert.Level.fatal,
+          description: tls$1.Alert.Description.internal_error
+        }
+      });
+    } else {
+      b2 = privateKey.sign(b2, null);
+    }
+    callback2(c2, b2);
+  };
+  c.getSignature(c, b, callback);
+};
+tls$1.createCertificateVerify = function(c, signature) {
+  var length = signature.length + 2;
+  var rval = forge$8.util.createBuffer();
+  rval.putByte(tls$1.HandshakeType.certificate_verify);
+  rval.putInt24(length);
+  rval.putInt16(signature.length);
+  rval.putBytes(signature);
+  return rval;
+};
+tls$1.createCertificateRequest = function(c) {
+  var certTypes = forge$8.util.createBuffer();
+  certTypes.putByte(1);
+  var cAs = forge$8.util.createBuffer();
+  for (var key in c.caStore.certs) {
+    var cert = c.caStore.certs[key];
+    var dn = forge$8.pki.distinguishedNameToAsn1(cert.subject);
+    var byteBuffer = forge$8.asn1.toDer(dn);
+    cAs.putInt16(byteBuffer.length());
+    cAs.putBuffer(byteBuffer);
+  }
+  var length = 1 + certTypes.length() + 2 + cAs.length();
+  var rval = forge$8.util.createBuffer();
+  rval.putByte(tls$1.HandshakeType.certificate_request);
+  rval.putInt24(length);
+  writeVector(rval, 1, certTypes);
+  writeVector(rval, 2, cAs);
+  return rval;
+};
+tls$1.createServerHelloDone = function(c) {
+  var rval = forge$8.util.createBuffer();
+  rval.putByte(tls$1.HandshakeType.server_hello_done);
+  rval.putInt24(0);
+  return rval;
+};
+tls$1.createChangeCipherSpec = function() {
+  var rval = forge$8.util.createBuffer();
+  rval.putByte(1);
+  return rval;
+};
+tls$1.createFinished = function(c) {
+  var b = forge$8.util.createBuffer();
+  b.putBuffer(c.session.md5.digest());
+  b.putBuffer(c.session.sha1.digest());
+  var client = c.entity === tls$1.ConnectionEnd.client;
+  var sp = c.session.sp;
+  var vdl = 12;
+  var prf = prf_TLS1;
+  var label = client ? "client finished" : "server finished";
+  b = prf(sp.master_secret, label, b.getBytes(), vdl);
+  var rval = forge$8.util.createBuffer();
+  rval.putByte(tls$1.HandshakeType.finished);
+  rval.putInt24(b.length());
+  rval.putBuffer(b);
+  return rval;
+};
+tls$1.createHeartbeat = function(type, payload, payloadLength) {
+  if (typeof payloadLength === "undefined") {
+    payloadLength = payload.length;
+  }
+  var rval = forge$8.util.createBuffer();
+  rval.putByte(type);
+  rval.putInt16(payloadLength);
+  rval.putBytes(payload);
+  var plaintextLength = rval.length();
+  var paddingLength = Math.max(16, plaintextLength - payloadLength - 3);
+  rval.putBytes(forge$8.random.getBytes(paddingLength));
+  return rval;
+};
+tls$1.queue = function(c, record) {
+  if (!record) {
+    return;
+  }
+  if (record.fragment.length() === 0) {
+    if (record.type === tls$1.ContentType.handshake || record.type === tls$1.ContentType.alert || record.type === tls$1.ContentType.change_cipher_spec) {
+      return;
+    }
+  }
+  if (record.type === tls$1.ContentType.handshake) {
+    var bytes = record.fragment.bytes();
+    c.session.md5.update(bytes);
+    c.session.sha1.update(bytes);
+    bytes = null;
+  }
+  var records;
+  if (record.fragment.length() <= tls$1.MaxFragment) {
+    records = [record];
+  } else {
+    records = [];
+    var data = record.fragment.bytes();
+    while (data.length > tls$1.MaxFragment) {
+      records.push(tls$1.createRecord(c, {
+        type: record.type,
+        data: forge$8.util.createBuffer(data.slice(0, tls$1.MaxFragment))
+      }));
+      data = data.slice(tls$1.MaxFragment);
+    }
+    if (data.length > 0) {
+      records.push(tls$1.createRecord(c, {
+        type: record.type,
+        data: forge$8.util.createBuffer(data)
       }));
     }
-    for (var s = 0; s < r.length && !e.fail; ++s) {
-      var i = r[s], o = e.state.current.write;
-      o.update(e, i) && e.records.push(i);
+  }
+  for (var i = 0; i < records.length && !c.fail; ++i) {
+    var rec = records[i];
+    var s2 = c.state.current.write;
+    if (s2.update(c, rec)) {
+      c.records.push(rec);
     }
   }
 };
-p.flush = function(e) {
-  for (var t = 0; t < e.records.length; ++t) {
-    var a = e.records[t];
-    e.tlsData.putByte(a.type), e.tlsData.putByte(a.version.major), e.tlsData.putByte(a.version.minor), e.tlsData.putInt16(a.fragment.length()), e.tlsData.putBuffer(e.records[t].fragment);
+tls$1.flush = function(c) {
+  for (var i = 0; i < c.records.length; ++i) {
+    var record = c.records[i];
+    c.tlsData.putByte(record.type);
+    c.tlsData.putByte(record.version.major);
+    c.tlsData.putByte(record.version.minor);
+    c.tlsData.putInt16(record.fragment.length());
+    c.tlsData.putBuffer(c.records[i].fragment);
   }
-  return e.records = [], e.tlsDataReady(e);
+  c.records = [];
+  return c.tlsDataReady(c);
 };
-var Qr = function(e) {
-  switch (e) {
-    case !0:
-      return !0;
-    case N.pki.certificateError.bad_certificate:
-      return p.Alert.Description.bad_certificate;
-    case N.pki.certificateError.unsupported_certificate:
-      return p.Alert.Description.unsupported_certificate;
-    case N.pki.certificateError.certificate_revoked:
-      return p.Alert.Description.certificate_revoked;
-    case N.pki.certificateError.certificate_expired:
-      return p.Alert.Description.certificate_expired;
-    case N.pki.certificateError.certificate_unknown:
-      return p.Alert.Description.certificate_unknown;
-    case N.pki.certificateError.unknown_ca:
-      return p.Alert.Description.unknown_ca;
+var _certErrorToAlertDesc = function(error) {
+  switch (error) {
+    case true:
+      return true;
+    case forge$8.pki.certificateError.bad_certificate:
+      return tls$1.Alert.Description.bad_certificate;
+    case forge$8.pki.certificateError.unsupported_certificate:
+      return tls$1.Alert.Description.unsupported_certificate;
+    case forge$8.pki.certificateError.certificate_revoked:
+      return tls$1.Alert.Description.certificate_revoked;
+    case forge$8.pki.certificateError.certificate_expired:
+      return tls$1.Alert.Description.certificate_expired;
+    case forge$8.pki.certificateError.certificate_unknown:
+      return tls$1.Alert.Description.certificate_unknown;
+    case forge$8.pki.certificateError.unknown_ca:
+      return tls$1.Alert.Description.unknown_ca;
     default:
-      return p.Alert.Description.bad_certificate;
-  }
-}, _0 = function(e) {
-  switch (e) {
-    case !0:
-      return !0;
-    case p.Alert.Description.bad_certificate:
-      return N.pki.certificateError.bad_certificate;
-    case p.Alert.Description.unsupported_certificate:
-      return N.pki.certificateError.unsupported_certificate;
-    case p.Alert.Description.certificate_revoked:
-      return N.pki.certificateError.certificate_revoked;
-    case p.Alert.Description.certificate_expired:
-      return N.pki.certificateError.certificate_expired;
-    case p.Alert.Description.certificate_unknown:
-      return N.pki.certificateError.certificate_unknown;
-    case p.Alert.Description.unknown_ca:
-      return N.pki.certificateError.unknown_ca;
-    default:
-      return N.pki.certificateError.bad_certificate;
+      return tls$1.Alert.Description.bad_certificate;
   }
 };
-p.verifyCertificateChain = function(e, t) {
+var _alertDescToCertError = function(desc) {
+  switch (desc) {
+    case true:
+      return true;
+    case tls$1.Alert.Description.bad_certificate:
+      return forge$8.pki.certificateError.bad_certificate;
+    case tls$1.Alert.Description.unsupported_certificate:
+      return forge$8.pki.certificateError.unsupported_certificate;
+    case tls$1.Alert.Description.certificate_revoked:
+      return forge$8.pki.certificateError.certificate_revoked;
+    case tls$1.Alert.Description.certificate_expired:
+      return forge$8.pki.certificateError.certificate_expired;
+    case tls$1.Alert.Description.certificate_unknown:
+      return forge$8.pki.certificateError.certificate_unknown;
+    case tls$1.Alert.Description.unknown_ca:
+      return forge$8.pki.certificateError.unknown_ca;
+    default:
+      return forge$8.pki.certificateError.bad_certificate;
+  }
+};
+tls$1.verifyCertificateChain = function(c, chain) {
   try {
-    var a = {};
-    for (var r in e.verifyOptions)
-      a[r] = e.verifyOptions[r];
-    a.verify = function(s, i, o) {
-      var l = Qr(s), u = e.verify(e, s, i, o);
-      if (u !== !0) {
-        if (typeof u == "object" && !N.util.isArray(u)) {
-          var f = new Error("The application rejected the certificate.");
-          throw f.send = !0, f.alert = {
-            level: p.Alert.Level.fatal,
-            description: p.Alert.Description.bad_certificate
-          }, u.message && (f.message = u.message), u.alert && (f.alert.description = u.alert), f;
+    var options = {};
+    for (var key in c.verifyOptions) {
+      options[key] = c.verifyOptions[key];
+    }
+    options.verify = function(vfd, depth, chain2) {
+      var desc = _certErrorToAlertDesc(vfd);
+      var ret = c.verify(c, vfd, depth, chain2);
+      if (ret !== true) {
+        if (typeof ret === "object" && !forge$8.util.isArray(ret)) {
+          var error = new Error("The application rejected the certificate.");
+          error.send = true;
+          error.alert = {
+            level: tls$1.Alert.Level.fatal,
+            description: tls$1.Alert.Description.bad_certificate
+          };
+          if (ret.message) {
+            error.message = ret.message;
+          }
+          if (ret.alert) {
+            error.alert.description = ret.alert;
+          }
+          throw error;
         }
-        u !== s && (u = _0(u));
+        if (ret !== vfd) {
+          ret = _alertDescToCertError(ret);
+        }
       }
-      return u;
-    }, N.pki.verifyCertificateChain(e.caStore, t, a);
-  } catch (s) {
-    var n = s;
-    (typeof n != "object" || N.util.isArray(n)) && (n = {
-      send: !0,
-      alert: {
-        level: p.Alert.Level.fatal,
-        description: Qr(s)
-      }
-    }), "send" in n || (n.send = !0), "alert" in n || (n.alert = {
-      level: p.Alert.Level.fatal,
-      description: Qr(n.error)
-    }), e.error(e, n);
+      return ret;
+    };
+    forge$8.pki.verifyCertificateChain(c.caStore, chain, options);
+  } catch (ex) {
+    var err = ex;
+    if (typeof err !== "object" || forge$8.util.isArray(err)) {
+      err = {
+        send: true,
+        alert: {
+          level: tls$1.Alert.Level.fatal,
+          description: _certErrorToAlertDesc(ex)
+        }
+      };
+    }
+    if (!("send" in err)) {
+      err.send = true;
+    }
+    if (!("alert" in err)) {
+      err.alert = {
+        level: tls$1.Alert.Level.fatal,
+        description: _certErrorToAlertDesc(err.error)
+      };
+    }
+    c.error(c, err);
   }
-  return !e.fail;
+  return !c.fail;
 };
-p.createSessionCache = function(e, t) {
-  var a = null;
-  if (e && e.getSession && e.setSession && e.order)
-    a = e;
-  else {
-    a = {}, a.cache = e || {}, a.capacity = Math.max(t || 100, 1), a.order = [];
-    for (var r in e)
-      a.order.length <= t ? a.order.push(r) : delete e[r];
-    a.getSession = function(n) {
-      var s = null, i = null;
-      if (n ? i = N.util.bytesToHex(n) : a.order.length > 0 && (i = a.order[0]), i !== null && i in a.cache) {
-        s = a.cache[i], delete a.cache[i];
-        for (var o in a.order)
-          if (a.order[o] === i) {
-            a.order.splice(o, 1);
+tls$1.createSessionCache = function(cache, capacity) {
+  var rval = null;
+  if (cache && cache.getSession && cache.setSession && cache.order) {
+    rval = cache;
+  } else {
+    rval = {};
+    rval.cache = cache || {};
+    rval.capacity = Math.max(capacity || 100, 1);
+    rval.order = [];
+    for (var key in cache) {
+      if (rval.order.length <= capacity) {
+        rval.order.push(key);
+      } else {
+        delete cache[key];
+      }
+    }
+    rval.getSession = function(sessionId) {
+      var session = null;
+      var key2 = null;
+      if (sessionId) {
+        key2 = forge$8.util.bytesToHex(sessionId);
+      } else if (rval.order.length > 0) {
+        key2 = rval.order[0];
+      }
+      if (key2 !== null && key2 in rval.cache) {
+        session = rval.cache[key2];
+        delete rval.cache[key2];
+        for (var i in rval.order) {
+          if (rval.order[i] === key2) {
+            rval.order.splice(i, 1);
             break;
           }
+        }
       }
-      return s;
-    }, a.setSession = function(n, s) {
-      if (a.order.length === a.capacity) {
-        var i = a.order.shift();
-        delete a.cache[i];
+      return session;
+    };
+    rval.setSession = function(sessionId, session) {
+      if (rval.order.length === rval.capacity) {
+        var key2 = rval.order.shift();
+        delete rval.cache[key2];
       }
-      var i = N.util.bytesToHex(n);
-      a.order.push(i), a.cache[i] = s;
+      var key2 = forge$8.util.bytesToHex(sessionId);
+      rval.order.push(key2);
+      rval.cache[key2] = session;
     };
   }
-  return a;
+  return rval;
 };
-p.createConnection = function(e) {
-  var t = null;
-  e.caStore ? N.util.isArray(e.caStore) ? t = N.pki.createCaStore(e.caStore) : t = e.caStore : t = N.pki.createCaStore();
-  var a = e.cipherSuites || null;
-  if (a === null) {
-    a = [];
-    for (var r in p.CipherSuites)
-      a.push(p.CipherSuites[r]);
+tls$1.createConnection = function(options) {
+  var caStore = null;
+  if (options.caStore) {
+    if (forge$8.util.isArray(options.caStore)) {
+      caStore = forge$8.pki.createCaStore(options.caStore);
+    } else {
+      caStore = options.caStore;
+    }
+  } else {
+    caStore = forge$8.pki.createCaStore();
   }
-  var n = e.server ? p.ConnectionEnd.server : p.ConnectionEnd.client, s = e.sessionCache ? p.createSessionCache(e.sessionCache) : null, i = {
-    version: { major: p.Version.major, minor: p.Version.minor },
-    entity: n,
-    sessionId: e.sessionId,
-    caStore: t,
-    sessionCache: s,
-    cipherSuites: a,
-    connected: e.connected,
-    virtualHost: e.virtualHost || null,
-    verifyClient: e.verifyClient || !1,
-    verify: e.verify || function(f, c, v, m) {
-      return c;
+  var cipherSuites = options.cipherSuites || null;
+  if (cipherSuites === null) {
+    cipherSuites = [];
+    for (var key in tls$1.CipherSuites) {
+      cipherSuites.push(tls$1.CipherSuites[key]);
+    }
+  }
+  var entity = options.server || false ? tls$1.ConnectionEnd.server : tls$1.ConnectionEnd.client;
+  var sessionCache = options.sessionCache ? tls$1.createSessionCache(options.sessionCache) : null;
+  var c = {
+    version: { major: tls$1.Version.major, minor: tls$1.Version.minor },
+    entity,
+    sessionId: options.sessionId,
+    caStore,
+    sessionCache,
+    cipherSuites,
+    connected: options.connected,
+    virtualHost: options.virtualHost || null,
+    verifyClient: options.verifyClient || false,
+    verify: options.verify || function(cn, vfd, dpth, cts) {
+      return vfd;
     },
-    verifyOptions: e.verifyOptions || {},
-    getCertificate: e.getCertificate || null,
-    getPrivateKey: e.getPrivateKey || null,
-    getSignature: e.getSignature || null,
-    input: N.util.createBuffer(),
-    tlsData: N.util.createBuffer(),
-    data: N.util.createBuffer(),
-    tlsDataReady: e.tlsDataReady,
-    dataReady: e.dataReady,
-    heartbeatReceived: e.heartbeatReceived,
-    closed: e.closed,
-    error: function(f, c) {
-      c.origin = c.origin || (f.entity === p.ConnectionEnd.client ? "client" : "server"), c.send && (p.queue(f, p.createAlert(f, c.alert)), p.flush(f));
-      var v = c.fatal !== !1;
-      v && (f.fail = !0), e.error(f, c), v && f.close(!1);
+    verifyOptions: options.verifyOptions || {},
+    getCertificate: options.getCertificate || null,
+    getPrivateKey: options.getPrivateKey || null,
+    getSignature: options.getSignature || null,
+    input: forge$8.util.createBuffer(),
+    tlsData: forge$8.util.createBuffer(),
+    data: forge$8.util.createBuffer(),
+    tlsDataReady: options.tlsDataReady,
+    dataReady: options.dataReady,
+    heartbeatReceived: options.heartbeatReceived,
+    closed: options.closed,
+    error: function(c2, ex) {
+      ex.origin = ex.origin || (c2.entity === tls$1.ConnectionEnd.client ? "client" : "server");
+      if (ex.send) {
+        tls$1.queue(c2, tls$1.createAlert(c2, ex.alert));
+        tls$1.flush(c2);
+      }
+      var fatal = ex.fatal !== false;
+      if (fatal) {
+        c2.fail = true;
+      }
+      options.error(c2, ex);
+      if (fatal) {
+        c2.close(false);
+      }
     },
-    deflate: e.deflate || null,
-    inflate: e.inflate || null
+    deflate: options.deflate || null,
+    inflate: options.inflate || null
   };
-  i.reset = function(f) {
-    i.version = { major: p.Version.major, minor: p.Version.minor }, i.record = null, i.session = null, i.peerCertificate = null, i.state = {
+  c.reset = function(clearFail) {
+    c.version = { major: tls$1.Version.major, minor: tls$1.Version.minor };
+    c.record = null;
+    c.session = null;
+    c.peerCertificate = null;
+    c.state = {
       pending: null,
       current: null
-    }, i.expect = i.entity === p.ConnectionEnd.client ? h0 : C0, i.fragmented = null, i.records = [], i.open = !1, i.handshakes = 0, i.handshaking = !1, i.isConnected = !1, i.fail = !(f || typeof f > "u"), i.input.clear(), i.tlsData.clear(), i.data.clear(), i.state.current = p.createConnectionState(i);
-  }, i.reset();
-  var o = function(f, c) {
-    var v = c.type - p.ContentType.change_cipher_spec, m = _a[f.entity][f.expect];
-    v in m ? m[v](f, c) : p.handleUnexpected(f, c);
-  }, l = function(f) {
-    var c = 0, v = f.input, m = v.length();
-    if (m < 5)
-      c = 5 - m;
-    else {
-      f.record = {
-        type: v.getByte(),
-        version: {
-          major: v.getByte(),
-          minor: v.getByte()
-        },
-        length: v.getInt16(),
-        fragment: N.util.createBuffer(),
-        ready: !1
-      };
-      var y = f.record.version.major === f.version.major;
-      y && f.session && f.session.version && (y = f.record.version.minor === f.version.minor), y || f.error(f, {
-        message: "Incompatible TLS version.",
-        send: !0,
-        alert: {
-          level: p.Alert.Level.fatal,
-          description: p.Alert.Description.protocol_version
-        }
-      });
-    }
-    return c;
-  }, u = function(f) {
-    var c = 0, v = f.input, m = v.length();
-    if (m < f.record.length)
-      c = f.record.length - m;
-    else {
-      f.record.fragment.putBytes(v.getBytes(f.record.length)), v.compact();
-      var y = f.state.current.read;
-      y.update(f, f.record) && (f.fragmented !== null && (f.fragmented.type === f.record.type ? (f.fragmented.fragment.putBuffer(f.record.fragment), f.record = f.fragmented) : f.error(f, {
-        message: "Invalid fragmented record.",
-        send: !0,
-        alert: {
-          level: p.Alert.Level.fatal,
-          description: p.Alert.Description.unexpected_message
-        }
-      })), f.record.ready = !0);
-    }
-    return c;
+    };
+    c.expect = c.entity === tls$1.ConnectionEnd.client ? SHE : CHE;
+    c.fragmented = null;
+    c.records = [];
+    c.open = false;
+    c.handshakes = 0;
+    c.handshaking = false;
+    c.isConnected = false;
+    c.fail = !(clearFail || typeof clearFail === "undefined");
+    c.input.clear();
+    c.tlsData.clear();
+    c.data.clear();
+    c.state.current = tls$1.createConnectionState(c);
   };
-  return i.handshake = function(f) {
-    if (i.entity !== p.ConnectionEnd.client)
-      i.error(i, {
+  c.reset();
+  var _update2 = function(c2, record) {
+    var aligned = record.type - tls$1.ContentType.change_cipher_spec;
+    var handlers = ctTable[c2.entity][c2.expect];
+    if (aligned in handlers) {
+      handlers[aligned](c2, record);
+    } else {
+      tls$1.handleUnexpected(c2, record);
+    }
+  };
+  var _readRecordHeader = function(c2) {
+    var rval = 0;
+    var b = c2.input;
+    var len = b.length();
+    if (len < 5) {
+      rval = 5 - len;
+    } else {
+      c2.record = {
+        type: b.getByte(),
+        version: {
+          major: b.getByte(),
+          minor: b.getByte()
+        },
+        length: b.getInt16(),
+        fragment: forge$8.util.createBuffer(),
+        ready: false
+      };
+      var compatibleVersion = c2.record.version.major === c2.version.major;
+      if (compatibleVersion && c2.session && c2.session.version) {
+        compatibleVersion = c2.record.version.minor === c2.version.minor;
+      }
+      if (!compatibleVersion) {
+        c2.error(c2, {
+          message: "Incompatible TLS version.",
+          send: true,
+          alert: {
+            level: tls$1.Alert.Level.fatal,
+            description: tls$1.Alert.Description.protocol_version
+          }
+        });
+      }
+    }
+    return rval;
+  };
+  var _readRecord = function(c2) {
+    var rval = 0;
+    var b = c2.input;
+    var len = b.length();
+    if (len < c2.record.length) {
+      rval = c2.record.length - len;
+    } else {
+      c2.record.fragment.putBytes(b.getBytes(c2.record.length));
+      b.compact();
+      var s2 = c2.state.current.read;
+      if (s2.update(c2, c2.record)) {
+        if (c2.fragmented !== null) {
+          if (c2.fragmented.type === c2.record.type) {
+            c2.fragmented.fragment.putBuffer(c2.record.fragment);
+            c2.record = c2.fragmented;
+          } else {
+            c2.error(c2, {
+              message: "Invalid fragmented record.",
+              send: true,
+              alert: {
+                level: tls$1.Alert.Level.fatal,
+                description: tls$1.Alert.Description.unexpected_message
+              }
+            });
+          }
+        }
+        c2.record.ready = true;
+      }
+    }
+    return rval;
+  };
+  c.handshake = function(sessionId) {
+    if (c.entity !== tls$1.ConnectionEnd.client) {
+      c.error(c, {
         message: "Cannot initiate handshake as a server.",
-        fatal: !1
+        fatal: false
       });
-    else if (i.handshaking)
-      i.error(i, {
+    } else if (c.handshaking) {
+      c.error(c, {
         message: "Handshake already in progress.",
-        fatal: !1
+        fatal: false
       });
-    else {
-      i.fail && !i.open && i.handshakes === 0 && (i.fail = !1), i.handshaking = !0, f = f || "";
-      var c = null;
-      f.length > 0 && (i.sessionCache && (c = i.sessionCache.getSession(f)), c === null && (f = "")), f.length === 0 && i.sessionCache && (c = i.sessionCache.getSession(), c !== null && (f = c.id)), i.session = {
-        id: f,
+    } else {
+      if (c.fail && !c.open && c.handshakes === 0) {
+        c.fail = false;
+      }
+      c.handshaking = true;
+      sessionId = sessionId || "";
+      var session = null;
+      if (sessionId.length > 0) {
+        if (c.sessionCache) {
+          session = c.sessionCache.getSession(sessionId);
+        }
+        if (session === null) {
+          sessionId = "";
+        }
+      }
+      if (sessionId.length === 0 && c.sessionCache) {
+        session = c.sessionCache.getSession();
+        if (session !== null) {
+          sessionId = session.id;
+        }
+      }
+      c.session = {
+        id: sessionId,
         version: null,
         cipherSuite: null,
         compressionMethod: null,
@@ -9609,160 +14249,295 @@ p.createConnection = function(e) {
         certificateRequest: null,
         clientCertificate: null,
         sp: {},
-        md5: N.md.md5.create(),
-        sha1: N.md.sha1.create()
-      }, c && (i.version = c.version, i.session.sp = c.sp), i.session.sp.client_random = p.createRandom().getBytes(), i.open = !0, p.queue(i, p.createRecord(i, {
-        type: p.ContentType.handshake,
-        data: p.createClientHello(i)
-      })), p.flush(i);
-    }
-  }, i.process = function(f) {
-    var c = 0;
-    return f && i.input.putBytes(f), i.fail || (i.record !== null && i.record.ready && i.record.fragment.isEmpty() && (i.record = null), i.record === null && (c = l(i)), !i.fail && i.record !== null && !i.record.ready && (c = u(i)), !i.fail && i.record !== null && i.record.ready && o(i, i.record)), c;
-  }, i.prepare = function(f) {
-    return p.queue(i, p.createRecord(i, {
-      type: p.ContentType.application_data,
-      data: N.util.createBuffer(f)
-    })), p.flush(i);
-  }, i.prepareHeartbeatRequest = function(f, c) {
-    return f instanceof N.util.ByteBuffer && (f = f.bytes()), typeof c > "u" && (c = f.length), i.expectedHeartbeatPayload = f, p.queue(i, p.createRecord(i, {
-      type: p.ContentType.heartbeat,
-      data: p.createHeartbeat(
-        p.HeartbeatMessageType.heartbeat_request,
-        f,
-        c
-      )
-    })), p.flush(i);
-  }, i.close = function(f) {
-    if (!i.fail && i.sessionCache && i.session) {
-      var c = {
-        id: i.session.id,
-        version: i.session.version,
-        sp: i.session.sp
+        md5: forge$8.md.md5.create(),
+        sha1: forge$8.md.sha1.create()
       };
-      c.sp.keys = null, i.sessionCache.setSession(c.id, c);
+      if (session) {
+        c.version = session.version;
+        c.session.sp = session.sp;
+      }
+      c.session.sp.client_random = tls$1.createRandom().getBytes();
+      c.open = true;
+      tls$1.queue(c, tls$1.createRecord(c, {
+        type: tls$1.ContentType.handshake,
+        data: tls$1.createClientHello(c)
+      }));
+      tls$1.flush(c);
     }
-    i.open && (i.open = !1, i.input.clear(), (i.isConnected || i.handshaking) && (i.isConnected = i.handshaking = !1, p.queue(i, p.createAlert(i, {
-      level: p.Alert.Level.warning,
-      description: p.Alert.Description.close_notify
-    })), p.flush(i)), i.closed(i)), i.reset(f);
-  }, i;
+  };
+  c.process = function(data) {
+    var rval = 0;
+    if (data) {
+      c.input.putBytes(data);
+    }
+    if (!c.fail) {
+      if (c.record !== null && c.record.ready && c.record.fragment.isEmpty()) {
+        c.record = null;
+      }
+      if (c.record === null) {
+        rval = _readRecordHeader(c);
+      }
+      if (!c.fail && c.record !== null && !c.record.ready) {
+        rval = _readRecord(c);
+      }
+      if (!c.fail && c.record !== null && c.record.ready) {
+        _update2(c, c.record);
+      }
+    }
+    return rval;
+  };
+  c.prepare = function(data) {
+    tls$1.queue(c, tls$1.createRecord(c, {
+      type: tls$1.ContentType.application_data,
+      data: forge$8.util.createBuffer(data)
+    }));
+    return tls$1.flush(c);
+  };
+  c.prepareHeartbeatRequest = function(payload, payloadLength) {
+    if (payload instanceof forge$8.util.ByteBuffer) {
+      payload = payload.bytes();
+    }
+    if (typeof payloadLength === "undefined") {
+      payloadLength = payload.length;
+    }
+    c.expectedHeartbeatPayload = payload;
+    tls$1.queue(c, tls$1.createRecord(c, {
+      type: tls$1.ContentType.heartbeat,
+      data: tls$1.createHeartbeat(
+        tls$1.HeartbeatMessageType.heartbeat_request,
+        payload,
+        payloadLength
+      )
+    }));
+    return tls$1.flush(c);
+  };
+  c.close = function(clearFail) {
+    if (!c.fail && c.sessionCache && c.session) {
+      var session = {
+        id: c.session.id,
+        version: c.session.version,
+        sp: c.session.sp
+      };
+      session.sp.keys = null;
+      c.sessionCache.setSession(session.id, session);
+    }
+    if (c.open) {
+      c.open = false;
+      c.input.clear();
+      if (c.isConnected || c.handshaking) {
+        c.isConnected = c.handshaking = false;
+        tls$1.queue(c, tls$1.createAlert(c, {
+          level: tls$1.Alert.Level.warning,
+          description: tls$1.Alert.Description.close_notify
+        }));
+        tls$1.flush(c);
+      }
+      c.closed(c);
+    }
+    c.reset(clearFail);
+  };
+  return c;
 };
-N.tls = N.tls || {};
-for (var zr in p)
-  typeof p[zr] != "function" && (N.tls[zr] = p[zr]);
-N.tls.prf_tls1 = Mr;
-N.tls.hmac_sha1 = l0;
-N.tls.createSessionCache = p.createSessionCache;
-N.tls.createConnection = p.createConnection;
-var bt = z, tt = bt.tls;
-tt.CipherSuites.TLS_RSA_WITH_AES_128_CBC_SHA = {
+forge$8.tls = forge$8.tls || {};
+for (var key in tls$1) {
+  if (typeof tls$1[key] !== "function") {
+    forge$8.tls[key] = tls$1[key];
+  }
+}
+forge$8.tls.prf_tls1 = prf_TLS1;
+forge$8.tls.hmac_sha1 = hmac_sha1;
+forge$8.tls.createSessionCache = tls$1.createSessionCache;
+forge$8.tls.createConnection = tls$1.createConnection;
+var forge$7 = forge$C;
+var tls = forge$7.tls;
+tls.CipherSuites["TLS_RSA_WITH_AES_128_CBC_SHA"] = {
   id: [0, 47],
   name: "TLS_RSA_WITH_AES_128_CBC_SHA",
-  initSecurityParameters: function(e) {
-    e.bulk_cipher_algorithm = tt.BulkCipherAlgorithm.aes, e.cipher_type = tt.CipherType.block, e.enc_key_length = 16, e.block_length = 16, e.fixed_iv_length = 16, e.record_iv_length = 16, e.mac_algorithm = tt.MACAlgorithm.hmac_sha1, e.mac_length = 20, e.mac_key_length = 20;
+  initSecurityParameters: function(sp) {
+    sp.bulk_cipher_algorithm = tls.BulkCipherAlgorithm.aes;
+    sp.cipher_type = tls.CipherType.block;
+    sp.enc_key_length = 16;
+    sp.block_length = 16;
+    sp.fixed_iv_length = 16;
+    sp.record_iv_length = 16;
+    sp.mac_algorithm = tls.MACAlgorithm.hmac_sha1;
+    sp.mac_length = 20;
+    sp.mac_key_length = 20;
   },
-  initConnectionState: zn
+  initConnectionState
 };
-tt.CipherSuites.TLS_RSA_WITH_AES_256_CBC_SHA = {
+tls.CipherSuites["TLS_RSA_WITH_AES_256_CBC_SHA"] = {
   id: [0, 53],
   name: "TLS_RSA_WITH_AES_256_CBC_SHA",
-  initSecurityParameters: function(e) {
-    e.bulk_cipher_algorithm = tt.BulkCipherAlgorithm.aes, e.cipher_type = tt.CipherType.block, e.enc_key_length = 32, e.block_length = 16, e.fixed_iv_length = 16, e.record_iv_length = 16, e.mac_algorithm = tt.MACAlgorithm.hmac_sha1, e.mac_length = 20, e.mac_key_length = 20;
+  initSecurityParameters: function(sp) {
+    sp.bulk_cipher_algorithm = tls.BulkCipherAlgorithm.aes;
+    sp.cipher_type = tls.CipherType.block;
+    sp.enc_key_length = 32;
+    sp.block_length = 16;
+    sp.fixed_iv_length = 16;
+    sp.record_iv_length = 16;
+    sp.mac_algorithm = tls.MACAlgorithm.hmac_sha1;
+    sp.mac_length = 20;
+    sp.mac_key_length = 20;
   },
-  initConnectionState: zn
+  initConnectionState
 };
-function zn(e, t, a) {
-  var r = t.entity === bt.tls.ConnectionEnd.client;
-  e.read.cipherState = {
-    init: !1,
-    cipher: bt.cipher.createDecipher("AES-CBC", r ? a.keys.server_write_key : a.keys.client_write_key),
-    iv: r ? a.keys.server_write_IV : a.keys.client_write_IV
-  }, e.write.cipherState = {
-    init: !1,
-    cipher: bt.cipher.createCipher("AES-CBC", r ? a.keys.client_write_key : a.keys.server_write_key),
-    iv: r ? a.keys.client_write_IV : a.keys.server_write_IV
-  }, e.read.cipherFunction = L0, e.write.cipherFunction = N0, e.read.macLength = e.write.macLength = a.mac_length, e.read.macFunction = e.write.macFunction = tt.hmac_sha1;
+function initConnectionState(state, c, sp) {
+  var client = c.entity === forge$7.tls.ConnectionEnd.client;
+  state.read.cipherState = {
+    init: false,
+    cipher: forge$7.cipher.createDecipher("AES-CBC", client ? sp.keys.server_write_key : sp.keys.client_write_key),
+    iv: client ? sp.keys.server_write_IV : sp.keys.client_write_IV
+  };
+  state.write.cipherState = {
+    init: false,
+    cipher: forge$7.cipher.createCipher("AES-CBC", client ? sp.keys.client_write_key : sp.keys.server_write_key),
+    iv: client ? sp.keys.client_write_IV : sp.keys.server_write_IV
+  };
+  state.read.cipherFunction = decrypt_aes_cbc_sha1;
+  state.write.cipherFunction = encrypt_aes_cbc_sha1;
+  state.read.macLength = state.write.macLength = sp.mac_length;
+  state.read.macFunction = state.write.macFunction = tls.hmac_sha1;
 }
-function N0(e, t) {
-  var a = !1, r = t.macFunction(t.macKey, t.sequenceNumber, e);
-  e.fragment.putBytes(r), t.updateSequenceNumber();
-  var n;
-  e.version.minor === tt.Versions.TLS_1_0.minor ? n = t.cipherState.init ? null : t.cipherState.iv : n = bt.random.getBytesSync(16), t.cipherState.init = !0;
-  var s = t.cipherState.cipher;
-  return s.start({ iv: n }), e.version.minor >= tt.Versions.TLS_1_1.minor && s.output.putBytes(n), s.update(e.fragment), s.finish(R0) && (e.fragment = s.output, e.length = e.fragment.length(), a = !0), a;
-}
-function R0(e, t, a) {
-  if (!a) {
-    var r = e - t.length() % e;
-    t.fillWithByte(r - 1, r);
+function encrypt_aes_cbc_sha1(record, s2) {
+  var rval = false;
+  var mac = s2.macFunction(s2.macKey, s2.sequenceNumber, record);
+  record.fragment.putBytes(mac);
+  s2.updateSequenceNumber();
+  var iv;
+  if (record.version.minor === tls.Versions.TLS_1_0.minor) {
+    iv = s2.cipherState.init ? null : s2.cipherState.iv;
+  } else {
+    iv = forge$7.random.getBytesSync(16);
   }
-  return !0;
-}
-function w0(e, t, a) {
-  var r = !0;
-  if (a) {
-    for (var n = t.length(), s = t.last(), i = n - 1 - s; i < n - 1; ++i)
-      r = r && t.at(i) == s;
-    r && t.truncate(s + 1);
+  s2.cipherState.init = true;
+  var cipher = s2.cipherState.cipher;
+  cipher.start({ iv });
+  if (record.version.minor >= tls.Versions.TLS_1_1.minor) {
+    cipher.output.putBytes(iv);
   }
-  return r;
+  cipher.update(record.fragment);
+  if (cipher.finish(encrypt_aes_cbc_sha1_padding)) {
+    record.fragment = cipher.output;
+    record.length = record.fragment.length();
+    rval = true;
+  }
+  return rval;
 }
-function L0(e, t) {
-  var a = !1, r;
-  e.version.minor === tt.Versions.TLS_1_0.minor ? r = t.cipherState.init ? null : t.cipherState.iv : r = e.fragment.getBytes(16), t.cipherState.init = !0;
-  var n = t.cipherState.cipher;
-  n.start({ iv: r }), n.update(e.fragment), a = n.finish(w0);
-  var s = t.macLength, i = bt.random.getBytesSync(s), o = n.output.length();
-  o >= s ? (e.fragment = n.output.getBytes(o - s), i = n.output.getBytes(s)) : e.fragment = n.output.getBytes(), e.fragment = bt.util.createBuffer(e.fragment), e.length = e.fragment.length();
-  var l = t.macFunction(t.macKey, t.sequenceNumber, e);
-  return t.updateSequenceNumber(), a = k0(t.macKey, i, l) && a, a;
+function encrypt_aes_cbc_sha1_padding(blockSize, input, decrypt) {
+  if (!decrypt) {
+    var padding = blockSize - input.length() % blockSize;
+    input.fillWithByte(padding - 1, padding);
+  }
+  return true;
 }
-function k0(e, t, a) {
-  var r = bt.hmac.create();
-  return r.start("SHA1", e), r.update(t), t = r.digest().getBytes(), r.start(null, null), r.update(a), a = r.digest().getBytes(), t === a;
+function decrypt_aes_cbc_sha1_padding(blockSize, output, decrypt) {
+  var rval = true;
+  if (decrypt) {
+    var len = output.length();
+    var paddingLength = output.last();
+    for (var i = len - 1 - paddingLength; i < len - 1; ++i) {
+      rval = rval && output.at(i) == paddingLength;
+    }
+    if (rval) {
+      output.truncate(paddingLength + 1);
+    }
+  }
+  return rval;
 }
-var fe = z, dr = fe.sha512 = fe.sha512 || {};
-fe.md.sha512 = fe.md.algorithms.sha512 = dr;
-var Yn = fe.sha384 = fe.sha512.sha384 = fe.sha512.sha384 || {};
-Yn.create = function() {
-  return dr.create("SHA-384");
+function decrypt_aes_cbc_sha1(record, s2) {
+  var rval = false;
+  var iv;
+  if (record.version.minor === tls.Versions.TLS_1_0.minor) {
+    iv = s2.cipherState.init ? null : s2.cipherState.iv;
+  } else {
+    iv = record.fragment.getBytes(16);
+  }
+  s2.cipherState.init = true;
+  var cipher = s2.cipherState.cipher;
+  cipher.start({ iv });
+  cipher.update(record.fragment);
+  rval = cipher.finish(decrypt_aes_cbc_sha1_padding);
+  var macLen = s2.macLength;
+  var mac = forge$7.random.getBytesSync(macLen);
+  var len = cipher.output.length();
+  if (len >= macLen) {
+    record.fragment = cipher.output.getBytes(len - macLen);
+    mac = cipher.output.getBytes(macLen);
+  } else {
+    record.fragment = cipher.output.getBytes();
+  }
+  record.fragment = forge$7.util.createBuffer(record.fragment);
+  record.length = record.fragment.length();
+  var mac2 = s2.macFunction(s2.macKey, s2.sequenceNumber, record);
+  s2.updateSequenceNumber();
+  rval = compareMacs(s2.macKey, mac, mac2) && rval;
+  return rval;
+}
+function compareMacs(key, mac1, mac2) {
+  var hmac2 = forge$7.hmac.create();
+  hmac2.start("SHA1", key);
+  hmac2.update(mac1);
+  mac1 = hmac2.digest().getBytes();
+  hmac2.start(null, null);
+  hmac2.update(mac2);
+  mac2 = hmac2.digest().getBytes();
+  return mac1 === mac2;
+}
+var forge$6 = forge$C;
+var sha512$1 = forge$6.sha512 = forge$6.sha512 || {};
+forge$6.md.sha512 = forge$6.md.algorithms.sha512 = sha512$1;
+var sha384 = forge$6.sha384 = forge$6.sha512.sha384 = forge$6.sha512.sha384 || {};
+sha384.create = function() {
+  return sha512$1.create("SHA-384");
 };
-fe.md.sha384 = fe.md.algorithms.sha384 = Yn;
-fe.sha512.sha256 = fe.sha512.sha256 || {
+forge$6.md.sha384 = forge$6.md.algorithms.sha384 = sha384;
+forge$6.sha512.sha256 = forge$6.sha512.sha256 || {
   create: function() {
-    return dr.create("SHA-512/256");
+    return sha512$1.create("SHA-512/256");
   }
 };
-fe.md["sha512/256"] = fe.md.algorithms["sha512/256"] = fe.sha512.sha256;
-fe.sha512.sha224 = fe.sha512.sha224 || {
+forge$6.md["sha512/256"] = forge$6.md.algorithms["sha512/256"] = forge$6.sha512.sha256;
+forge$6.sha512.sha224 = forge$6.sha512.sha224 || {
   create: function() {
-    return dr.create("SHA-512/224");
+    return sha512$1.create("SHA-512/224");
   }
 };
-fe.md["sha512/224"] = fe.md.algorithms["sha512/224"] = fe.sha512.sha224;
-dr.create = function(e) {
-  if ($n || D0(), typeof e > "u" && (e = "SHA-512"), !(e in Ut))
-    throw new Error("Invalid SHA-512 algorithm: " + e);
-  for (var t = Ut[e], a = null, r = fe.util.createBuffer(), n = new Array(80), s = 0; s < 80; ++s)
-    n[s] = new Array(2);
-  var i = 64;
-  switch (e) {
+forge$6.md["sha512/224"] = forge$6.md.algorithms["sha512/224"] = forge$6.sha512.sha224;
+sha512$1.create = function(algorithm) {
+  if (!_initialized) {
+    _init();
+  }
+  if (typeof algorithm === "undefined") {
+    algorithm = "SHA-512";
+  }
+  if (!(algorithm in _states)) {
+    throw new Error("Invalid SHA-512 algorithm: " + algorithm);
+  }
+  var _state = _states[algorithm];
+  var _h = null;
+  var _input = forge$6.util.createBuffer();
+  var _w = new Array(80);
+  for (var wi = 0; wi < 80; ++wi) {
+    _w[wi] = new Array(2);
+  }
+  var digestLength = 64;
+  switch (algorithm) {
     case "SHA-384":
-      i = 48;
+      digestLength = 48;
       break;
     case "SHA-512/256":
-      i = 32;
+      digestLength = 32;
       break;
     case "SHA-512/224":
-      i = 28;
+      digestLength = 28;
       break;
   }
-  var o = {
+  var md = {
     // SHA-512 => sha512
-    algorithm: e.replace("-", "").toLowerCase(),
+    algorithm: algorithm.replace("-", "").toLowerCase(),
     blockLength: 128,
-    digestLength: i,
+    digestLength,
     // 56-bit length of message so far (does not including padding)
     messageLength: 0,
     // true message length
@@ -9770,42 +14545,89 @@ dr.create = function(e) {
     // size of message length in bytes
     messageLengthSize: 16
   };
-  return o.start = function() {
-    o.messageLength = 0, o.fullMessageLength = o.messageLength128 = [];
-    for (var l = o.messageLengthSize / 4, u = 0; u < l; ++u)
-      o.fullMessageLength.push(0);
-    r = fe.util.createBuffer(), a = new Array(t.length);
-    for (var u = 0; u < t.length; ++u)
-      a[u] = t[u].slice(0);
-    return o;
-  }, o.start(), o.update = function(l, u) {
-    u === "utf8" && (l = fe.util.encodeUtf8(l));
-    var f = l.length;
-    o.messageLength += f, f = [f / 4294967296 >>> 0, f >>> 0];
-    for (var c = o.fullMessageLength.length - 1; c >= 0; --c)
-      o.fullMessageLength[c] += f[1], f[1] = f[0] + (o.fullMessageLength[c] / 4294967296 >>> 0), o.fullMessageLength[c] = o.fullMessageLength[c] >>> 0, f[0] = f[1] / 4294967296 >>> 0;
-    return r.putBytes(l), tn(a, n, r), (r.read > 2048 || r.length() === 0) && r.compact(), o;
-  }, o.digest = function() {
-    var l = fe.util.createBuffer();
-    l.putBytes(r.bytes());
-    var u = o.fullMessageLength[o.fullMessageLength.length - 1] + o.messageLengthSize, f = u & o.blockLength - 1;
-    l.putBytes(sa.substr(0, o.blockLength - f));
-    for (var c, v, m = o.fullMessageLength[0] * 8, y = 0; y < o.fullMessageLength.length - 1; ++y)
-      c = o.fullMessageLength[y + 1] * 8, v = c / 4294967296 >>> 0, m += v, l.putInt32(m >>> 0), m = c >>> 0;
-    l.putInt32(m);
-    for (var x = new Array(a.length), y = 0; y < a.length; ++y)
-      x[y] = a[y].slice(0);
-    tn(x, n, l);
-    var S = fe.util.createBuffer(), I;
-    e === "SHA-512" ? I = x.length : e === "SHA-384" ? I = x.length - 2 : I = x.length - 4;
-    for (var y = 0; y < I; ++y)
-      S.putInt32(x[y][0]), (y !== I - 1 || e !== "SHA-512/224") && S.putInt32(x[y][1]);
-    return S;
-  }, o;
+  md.start = function() {
+    md.messageLength = 0;
+    md.fullMessageLength = md.messageLength128 = [];
+    var int32s = md.messageLengthSize / 4;
+    for (var i = 0; i < int32s; ++i) {
+      md.fullMessageLength.push(0);
+    }
+    _input = forge$6.util.createBuffer();
+    _h = new Array(_state.length);
+    for (var i = 0; i < _state.length; ++i) {
+      _h[i] = _state[i].slice(0);
+    }
+    return md;
+  };
+  md.start();
+  md.update = function(msg, encoding) {
+    if (encoding === "utf8") {
+      msg = forge$6.util.encodeUtf8(msg);
+    }
+    var len = msg.length;
+    md.messageLength += len;
+    len = [len / 4294967296 >>> 0, len >>> 0];
+    for (var i = md.fullMessageLength.length - 1; i >= 0; --i) {
+      md.fullMessageLength[i] += len[1];
+      len[1] = len[0] + (md.fullMessageLength[i] / 4294967296 >>> 0);
+      md.fullMessageLength[i] = md.fullMessageLength[i] >>> 0;
+      len[0] = len[1] / 4294967296 >>> 0;
+    }
+    _input.putBytes(msg);
+    _update(_h, _w, _input);
+    if (_input.read > 2048 || _input.length() === 0) {
+      _input.compact();
+    }
+    return md;
+  };
+  md.digest = function() {
+    var finalBlock = forge$6.util.createBuffer();
+    finalBlock.putBytes(_input.bytes());
+    var remaining = md.fullMessageLength[md.fullMessageLength.length - 1] + md.messageLengthSize;
+    var overflow = remaining & md.blockLength - 1;
+    finalBlock.putBytes(_padding.substr(0, md.blockLength - overflow));
+    var next, carry;
+    var bits = md.fullMessageLength[0] * 8;
+    for (var i = 0; i < md.fullMessageLength.length - 1; ++i) {
+      next = md.fullMessageLength[i + 1] * 8;
+      carry = next / 4294967296 >>> 0;
+      bits += carry;
+      finalBlock.putInt32(bits >>> 0);
+      bits = next >>> 0;
+    }
+    finalBlock.putInt32(bits);
+    var h = new Array(_h.length);
+    for (var i = 0; i < _h.length; ++i) {
+      h[i] = _h[i].slice(0);
+    }
+    _update(h, _w, finalBlock);
+    var rval = forge$6.util.createBuffer();
+    var hlen;
+    if (algorithm === "SHA-512") {
+      hlen = h.length;
+    } else if (algorithm === "SHA-384") {
+      hlen = h.length - 2;
+    } else {
+      hlen = h.length - 4;
+    }
+    for (var i = 0; i < hlen; ++i) {
+      rval.putInt32(h[i][0]);
+      if (i !== hlen - 1 || algorithm !== "SHA-512/224") {
+        rval.putInt32(h[i][1]);
+      }
+    }
+    return rval;
+  };
+  return md;
 };
-var sa = null, $n = !1, oa = null, Ut = null;
-function D0() {
-  sa = "", sa += fe.util.fillString("\0", 128), oa = [
+var _padding = null;
+var _initialized = false;
+var _k = null;
+var _states = null;
+function _init() {
+  _padding = String.fromCharCode(128);
+  _padding += forge$6.util.fillString(String.fromCharCode(0), 128);
+  _k = [
     [1116352408, 3609767458],
     [1899447441, 602891725],
     [3049323471, 3964484399],
@@ -9886,7 +14708,9 @@ function D0() {
     [1501505948, 4234509866],
     [1607167915, 987167468],
     [1816402316, 1246189591]
-  ], Ut = {}, Ut["SHA-512"] = [
+  ];
+  _states = {};
+  _states["SHA-512"] = [
     [1779033703, 4089235720],
     [3144134277, 2227873595],
     [1013904242, 4271175723],
@@ -9895,7 +14719,8 @@ function D0() {
     [2600822924, 725511199],
     [528734635, 4215389547],
     [1541459225, 327033209]
-  ], Ut["SHA-384"] = [
+  ];
+  _states["SHA-384"] = [
     [3418070365, 3238371032],
     [1654270250, 914150663],
     [2438529370, 812702999],
@@ -9904,7 +14729,8 @@ function D0() {
     [2394180231, 1750603025],
     [3675008525, 1694076839],
     [1203062813, 3204075428]
-  ], Ut["SHA-512/256"] = [
+  ];
+  _states["SHA-512/256"] = [
     [573645204, 4230739756],
     [2673172387, 3360449730],
     [596883563, 1867755857],
@@ -9913,7 +14739,8 @@ function D0() {
     [3193839141, 1401305490],
     [721525244, 746961066],
     [246885852, 2177182882]
-  ], Ut["SHA-512/224"] = [
+  ];
+  _states["SHA-512/224"] = [
     [2352822216, 424955298],
     [1944164710, 2312950998],
     [502970286, 855612546],
@@ -9922,97 +14749,205 @@ function D0() {
     [2011393907, 79989058],
     [1067287976, 1780299464],
     [286451373, 2446758561]
-  ], $n = !0;
+  ];
+  _initialized = true;
 }
-function tn(e, t, a) {
-  for (var r, n, s, i, o, l, u, f, c, v, m, y, x, S, I, b, _, V, k, w, G, Y, re, ae, ne, he, ze, Xe, ie, ye, F, Rt, Mt, ge, me, Ee = a.length(); Ee >= 128; ) {
-    for (ie = 0; ie < 16; ++ie)
-      t[ie][0] = a.getInt32() >>> 0, t[ie][1] = a.getInt32() >>> 0;
-    for (; ie < 80; ++ie)
-      Rt = t[ie - 2], ye = Rt[0], F = Rt[1], r = ((ye >>> 19 | F << 13) ^ // ROTR 19
-      (F >>> 29 | ye << 3) ^ // ROTR 61/(swap + ROTR 29)
-      ye >>> 6) >>> 0, n = ((ye << 13 | F >>> 19) ^ // ROTR 19
-      (F << 3 | ye >>> 29) ^ // ROTR 61/(swap + ROTR 29)
-      (ye << 26 | F >>> 6)) >>> 0, ge = t[ie - 15], ye = ge[0], F = ge[1], s = ((ye >>> 1 | F << 31) ^ // ROTR 1
-      (ye >>> 8 | F << 24) ^ // ROTR 8
-      ye >>> 7) >>> 0, i = ((ye << 31 | F >>> 1) ^ // ROTR 1
-      (ye << 24 | F >>> 8) ^ // ROTR 8
-      (ye << 25 | F >>> 7)) >>> 0, Mt = t[ie - 7], me = t[ie - 16], F = n + Mt[1] + i + me[1], t[ie][0] = r + Mt[0] + s + me[0] + (F / 4294967296 >>> 0) >>> 0, t[ie][1] = F >>> 0;
-    for (x = e[0][0], S = e[0][1], I = e[1][0], b = e[1][1], _ = e[2][0], V = e[2][1], k = e[3][0], w = e[3][1], G = e[4][0], Y = e[4][1], re = e[5][0], ae = e[5][1], ne = e[6][0], he = e[6][1], ze = e[7][0], Xe = e[7][1], ie = 0; ie < 80; ++ie)
-      u = ((G >>> 14 | Y << 18) ^ // ROTR 14
-      (G >>> 18 | Y << 14) ^ // ROTR 18
-      (Y >>> 9 | G << 23)) >>> 0, f = ((G << 18 | Y >>> 14) ^ // ROTR 14
-      (G << 14 | Y >>> 18) ^ // ROTR 18
-      (Y << 23 | G >>> 9)) >>> 0, c = (ne ^ G & (re ^ ne)) >>> 0, v = (he ^ Y & (ae ^ he)) >>> 0, o = ((x >>> 28 | S << 4) ^ // ROTR 28
-      (S >>> 2 | x << 30) ^ // ROTR 34/(swap + ROTR 2)
-      (S >>> 7 | x << 25)) >>> 0, l = ((x << 4 | S >>> 28) ^ // ROTR 28
-      (S << 30 | x >>> 2) ^ // ROTR 34/(swap + ROTR 2)
-      (S << 25 | x >>> 7)) >>> 0, m = (x & I | _ & (x ^ I)) >>> 0, y = (S & b | V & (S ^ b)) >>> 0, F = Xe + f + v + oa[ie][1] + t[ie][1], r = ze + u + c + oa[ie][0] + t[ie][0] + (F / 4294967296 >>> 0) >>> 0, n = F >>> 0, F = l + y, s = o + m + (F / 4294967296 >>> 0) >>> 0, i = F >>> 0, ze = ne, Xe = he, ne = re, he = ae, re = G, ae = Y, F = w + n, G = k + r + (F / 4294967296 >>> 0) >>> 0, Y = F >>> 0, k = _, w = V, _ = I, V = b, I = x, b = S, F = n + i, x = r + s + (F / 4294967296 >>> 0) >>> 0, S = F >>> 0;
-    F = e[0][1] + S, e[0][0] = e[0][0] + x + (F / 4294967296 >>> 0) >>> 0, e[0][1] = F >>> 0, F = e[1][1] + b, e[1][0] = e[1][0] + I + (F / 4294967296 >>> 0) >>> 0, e[1][1] = F >>> 0, F = e[2][1] + V, e[2][0] = e[2][0] + _ + (F / 4294967296 >>> 0) >>> 0, e[2][1] = F >>> 0, F = e[3][1] + w, e[3][0] = e[3][0] + k + (F / 4294967296 >>> 0) >>> 0, e[3][1] = F >>> 0, F = e[4][1] + Y, e[4][0] = e[4][0] + G + (F / 4294967296 >>> 0) >>> 0, e[4][1] = F >>> 0, F = e[5][1] + ae, e[5][0] = e[5][0] + re + (F / 4294967296 >>> 0) >>> 0, e[5][1] = F >>> 0, F = e[6][1] + he, e[6][0] = e[6][0] + ne + (F / 4294967296 >>> 0) >>> 0, e[6][1] = F >>> 0, F = e[7][1] + Xe, e[7][0] = e[7][0] + ze + (F / 4294967296 >>> 0) >>> 0, e[7][1] = F >>> 0, Ee -= 128;
+function _update(s2, w, bytes) {
+  var t1_hi, t1_lo;
+  var t2_hi, t2_lo;
+  var s0_hi, s0_lo;
+  var s1_hi, s1_lo;
+  var ch_hi, ch_lo;
+  var maj_hi, maj_lo;
+  var a_hi, a_lo;
+  var b_hi, b_lo;
+  var c_hi, c_lo;
+  var d_hi, d_lo;
+  var e_hi, e_lo;
+  var f_hi, f_lo;
+  var g_hi, g_lo;
+  var h_hi, h_lo;
+  var i, hi, lo, w2, w7, w15, w16;
+  var len = bytes.length();
+  while (len >= 128) {
+    for (i = 0; i < 16; ++i) {
+      w[i][0] = bytes.getInt32() >>> 0;
+      w[i][1] = bytes.getInt32() >>> 0;
+    }
+    for (; i < 80; ++i) {
+      w2 = w[i - 2];
+      hi = w2[0];
+      lo = w2[1];
+      t1_hi = ((hi >>> 19 | lo << 13) ^ // ROTR 19
+      (lo >>> 29 | hi << 3) ^ // ROTR 61/(swap + ROTR 29)
+      hi >>> 6) >>> 0;
+      t1_lo = ((hi << 13 | lo >>> 19) ^ // ROTR 19
+      (lo << 3 | hi >>> 29) ^ // ROTR 61/(swap + ROTR 29)
+      (hi << 26 | lo >>> 6)) >>> 0;
+      w15 = w[i - 15];
+      hi = w15[0];
+      lo = w15[1];
+      t2_hi = ((hi >>> 1 | lo << 31) ^ // ROTR 1
+      (hi >>> 8 | lo << 24) ^ // ROTR 8
+      hi >>> 7) >>> 0;
+      t2_lo = ((hi << 31 | lo >>> 1) ^ // ROTR 1
+      (hi << 24 | lo >>> 8) ^ // ROTR 8
+      (hi << 25 | lo >>> 7)) >>> 0;
+      w7 = w[i - 7];
+      w16 = w[i - 16];
+      lo = t1_lo + w7[1] + t2_lo + w16[1];
+      w[i][0] = t1_hi + w7[0] + t2_hi + w16[0] + (lo / 4294967296 >>> 0) >>> 0;
+      w[i][1] = lo >>> 0;
+    }
+    a_hi = s2[0][0];
+    a_lo = s2[0][1];
+    b_hi = s2[1][0];
+    b_lo = s2[1][1];
+    c_hi = s2[2][0];
+    c_lo = s2[2][1];
+    d_hi = s2[3][0];
+    d_lo = s2[3][1];
+    e_hi = s2[4][0];
+    e_lo = s2[4][1];
+    f_hi = s2[5][0];
+    f_lo = s2[5][1];
+    g_hi = s2[6][0];
+    g_lo = s2[6][1];
+    h_hi = s2[7][0];
+    h_lo = s2[7][1];
+    for (i = 0; i < 80; ++i) {
+      s1_hi = ((e_hi >>> 14 | e_lo << 18) ^ // ROTR 14
+      (e_hi >>> 18 | e_lo << 14) ^ // ROTR 18
+      (e_lo >>> 9 | e_hi << 23)) >>> 0;
+      s1_lo = ((e_hi << 18 | e_lo >>> 14) ^ // ROTR 14
+      (e_hi << 14 | e_lo >>> 18) ^ // ROTR 18
+      (e_lo << 23 | e_hi >>> 9)) >>> 0;
+      ch_hi = (g_hi ^ e_hi & (f_hi ^ g_hi)) >>> 0;
+      ch_lo = (g_lo ^ e_lo & (f_lo ^ g_lo)) >>> 0;
+      s0_hi = ((a_hi >>> 28 | a_lo << 4) ^ // ROTR 28
+      (a_lo >>> 2 | a_hi << 30) ^ // ROTR 34/(swap + ROTR 2)
+      (a_lo >>> 7 | a_hi << 25)) >>> 0;
+      s0_lo = ((a_hi << 4 | a_lo >>> 28) ^ // ROTR 28
+      (a_lo << 30 | a_hi >>> 2) ^ // ROTR 34/(swap + ROTR 2)
+      (a_lo << 25 | a_hi >>> 7)) >>> 0;
+      maj_hi = (a_hi & b_hi | c_hi & (a_hi ^ b_hi)) >>> 0;
+      maj_lo = (a_lo & b_lo | c_lo & (a_lo ^ b_lo)) >>> 0;
+      lo = h_lo + s1_lo + ch_lo + _k[i][1] + w[i][1];
+      t1_hi = h_hi + s1_hi + ch_hi + _k[i][0] + w[i][0] + (lo / 4294967296 >>> 0) >>> 0;
+      t1_lo = lo >>> 0;
+      lo = s0_lo + maj_lo;
+      t2_hi = s0_hi + maj_hi + (lo / 4294967296 >>> 0) >>> 0;
+      t2_lo = lo >>> 0;
+      h_hi = g_hi;
+      h_lo = g_lo;
+      g_hi = f_hi;
+      g_lo = f_lo;
+      f_hi = e_hi;
+      f_lo = e_lo;
+      lo = d_lo + t1_lo;
+      e_hi = d_hi + t1_hi + (lo / 4294967296 >>> 0) >>> 0;
+      e_lo = lo >>> 0;
+      d_hi = c_hi;
+      d_lo = c_lo;
+      c_hi = b_hi;
+      c_lo = b_lo;
+      b_hi = a_hi;
+      b_lo = a_lo;
+      lo = t1_lo + t2_lo;
+      a_hi = t1_hi + t2_hi + (lo / 4294967296 >>> 0) >>> 0;
+      a_lo = lo >>> 0;
+    }
+    lo = s2[0][1] + a_lo;
+    s2[0][0] = s2[0][0] + a_hi + (lo / 4294967296 >>> 0) >>> 0;
+    s2[0][1] = lo >>> 0;
+    lo = s2[1][1] + b_lo;
+    s2[1][0] = s2[1][0] + b_hi + (lo / 4294967296 >>> 0) >>> 0;
+    s2[1][1] = lo >>> 0;
+    lo = s2[2][1] + c_lo;
+    s2[2][0] = s2[2][0] + c_hi + (lo / 4294967296 >>> 0) >>> 0;
+    s2[2][1] = lo >>> 0;
+    lo = s2[3][1] + d_lo;
+    s2[3][0] = s2[3][0] + d_hi + (lo / 4294967296 >>> 0) >>> 0;
+    s2[3][1] = lo >>> 0;
+    lo = s2[4][1] + e_lo;
+    s2[4][0] = s2[4][0] + e_hi + (lo / 4294967296 >>> 0) >>> 0;
+    s2[4][1] = lo >>> 0;
+    lo = s2[5][1] + f_lo;
+    s2[5][0] = s2[5][0] + f_hi + (lo / 4294967296 >>> 0) >>> 0;
+    s2[5][1] = lo >>> 0;
+    lo = s2[6][1] + g_lo;
+    s2[6][0] = s2[6][0] + g_hi + (lo / 4294967296 >>> 0) >>> 0;
+    s2[6][1] = lo >>> 0;
+    lo = s2[7][1] + h_lo;
+    s2[7][0] = s2[7][0] + h_hi + (lo / 4294967296 >>> 0) >>> 0;
+    s2[7][1] = lo >>> 0;
+    len -= 128;
   }
 }
-var Na = {}, U0 = z, xe = U0.asn1;
-Na.privateKeyValidator = {
+var asn1Validator$1 = {};
+var forge$5 = forge$C;
+var asn1$1 = forge$5.asn1;
+asn1Validator$1.privateKeyValidator = {
   // PrivateKeyInfo
   name: "PrivateKeyInfo",
-  tagClass: xe.Class.UNIVERSAL,
-  type: xe.Type.SEQUENCE,
-  constructed: !0,
+  tagClass: asn1$1.Class.UNIVERSAL,
+  type: asn1$1.Type.SEQUENCE,
+  constructed: true,
   value: [{
     // Version (INTEGER)
     name: "PrivateKeyInfo.version",
-    tagClass: xe.Class.UNIVERSAL,
-    type: xe.Type.INTEGER,
-    constructed: !1,
+    tagClass: asn1$1.Class.UNIVERSAL,
+    type: asn1$1.Type.INTEGER,
+    constructed: false,
     capture: "privateKeyVersion"
   }, {
     // privateKeyAlgorithm
     name: "PrivateKeyInfo.privateKeyAlgorithm",
-    tagClass: xe.Class.UNIVERSAL,
-    type: xe.Type.SEQUENCE,
-    constructed: !0,
+    tagClass: asn1$1.Class.UNIVERSAL,
+    type: asn1$1.Type.SEQUENCE,
+    constructed: true,
     value: [{
       name: "AlgorithmIdentifier.algorithm",
-      tagClass: xe.Class.UNIVERSAL,
-      type: xe.Type.OID,
-      constructed: !1,
+      tagClass: asn1$1.Class.UNIVERSAL,
+      type: asn1$1.Type.OID,
+      constructed: false,
       capture: "privateKeyOid"
     }]
   }, {
     // PrivateKey
     name: "PrivateKeyInfo",
-    tagClass: xe.Class.UNIVERSAL,
-    type: xe.Type.OCTETSTRING,
-    constructed: !1,
+    tagClass: asn1$1.Class.UNIVERSAL,
+    type: asn1$1.Type.OCTETSTRING,
+    constructed: false,
     capture: "privateKey"
   }]
 };
-Na.publicKeyValidator = {
+asn1Validator$1.publicKeyValidator = {
   name: "SubjectPublicKeyInfo",
-  tagClass: xe.Class.UNIVERSAL,
-  type: xe.Type.SEQUENCE,
-  constructed: !0,
+  tagClass: asn1$1.Class.UNIVERSAL,
+  type: asn1$1.Type.SEQUENCE,
+  constructed: true,
   captureAsn1: "subjectPublicKeyInfo",
   value: [
     {
       name: "SubjectPublicKeyInfo.AlgorithmIdentifier",
-      tagClass: xe.Class.UNIVERSAL,
-      type: xe.Type.SEQUENCE,
-      constructed: !0,
+      tagClass: asn1$1.Class.UNIVERSAL,
+      type: asn1$1.Type.SEQUENCE,
+      constructed: true,
       value: [{
         name: "AlgorithmIdentifier.algorithm",
-        tagClass: xe.Class.UNIVERSAL,
-        type: xe.Type.OID,
-        constructed: !1,
+        tagClass: asn1$1.Class.UNIVERSAL,
+        type: asn1$1.Type.OID,
+        constructed: false,
         capture: "publicKeyOid"
       }]
     },
     // capture group for ed25519PublicKey
     {
-      tagClass: xe.Class.UNIVERSAL,
-      type: xe.Type.BITSTRING,
-      constructed: !1,
-      composed: !0,
+      tagClass: asn1$1.Class.UNIVERSAL,
+      type: asn1$1.Type.BITSTRING,
+      constructed: false,
+      composed: true,
       captureBitStringValue: "ed25519PublicKey"
     }
     // FIXME: this is capture group for rsaPublicKey, use it in this API or
@@ -10035,160 +14970,208 @@ Na.publicKeyValidator = {
     } */
   ]
 };
-var Be = z, Wn = Na, P0 = Wn.publicKeyValidator, V0 = Wn.privateKeyValidator;
-if (typeof O0 > "u")
-  var O0 = Be.jsbn.BigInteger;
-var ua = Be.util.ByteBuffer, Qe = typeof Buffer > "u" ? Uint8Array : Buffer;
-Be.pki = Be.pki || {};
-Be.pki.ed25519 = Be.ed25519 = Be.ed25519 || {};
-var W = Be.ed25519;
-W.constants = {};
-W.constants.PUBLIC_KEY_BYTE_LENGTH = 32;
-W.constants.PRIVATE_KEY_BYTE_LENGTH = 64;
-W.constants.SEED_BYTE_LENGTH = 32;
-W.constants.SIGN_BYTE_LENGTH = 64;
-W.constants.HASH_BYTE_LENGTH = 64;
-W.generateKeyPair = function(e) {
-  e = e || {};
-  var t = e.seed;
-  if (t === void 0)
-    t = Be.random.getBytesSync(W.constants.SEED_BYTE_LENGTH);
-  else if (typeof t == "string") {
-    if (t.length !== W.constants.SEED_BYTE_LENGTH)
+var forge$4 = forge$C;
+var asn1Validator = asn1Validator$1;
+var publicKeyValidator = asn1Validator.publicKeyValidator;
+var privateKeyValidator = asn1Validator.privateKeyValidator;
+if (typeof BigInteger$1 === "undefined") {
+  var BigInteger$1 = forge$4.jsbn.BigInteger;
+}
+var ByteBuffer = forge$4.util.ByteBuffer;
+var NativeBuffer = typeof Buffer === "undefined" ? Uint8Array : Buffer;
+forge$4.pki = forge$4.pki || {};
+forge$4.pki.ed25519 = forge$4.ed25519 = forge$4.ed25519 || {};
+var ed25519 = forge$4.ed25519;
+ed25519.constants = {};
+ed25519.constants.PUBLIC_KEY_BYTE_LENGTH = 32;
+ed25519.constants.PRIVATE_KEY_BYTE_LENGTH = 64;
+ed25519.constants.SEED_BYTE_LENGTH = 32;
+ed25519.constants.SIGN_BYTE_LENGTH = 64;
+ed25519.constants.HASH_BYTE_LENGTH = 64;
+ed25519.generateKeyPair = function(options) {
+  options = options || {};
+  var seed = options.seed;
+  if (seed === void 0) {
+    seed = forge$4.random.getBytesSync(ed25519.constants.SEED_BYTE_LENGTH);
+  } else if (typeof seed === "string") {
+    if (seed.length !== ed25519.constants.SEED_BYTE_LENGTH) {
       throw new TypeError(
-        '"seed" must be ' + W.constants.SEED_BYTE_LENGTH + " bytes in length."
+        '"seed" must be ' + ed25519.constants.SEED_BYTE_LENGTH + " bytes in length."
       );
-  } else if (!(t instanceof Uint8Array))
+    }
+  } else if (!(seed instanceof Uint8Array)) {
     throw new TypeError(
       '"seed" must be a node.js Buffer, Uint8Array, or a binary string.'
     );
-  t = gt({ message: t, encoding: "binary" });
-  for (var a = new Qe(W.constants.PUBLIC_KEY_BYTE_LENGTH), r = new Qe(W.constants.PRIVATE_KEY_BYTE_LENGTH), n = 0; n < 32; ++n)
-    r[n] = t[n];
-  return H0(a, r), { publicKey: a, privateKey: r };
-};
-W.privateKeyFromAsn1 = function(e) {
-  var t = {}, a = [], r = Be.asn1.validate(e, V0, t, a);
-  if (!r) {
-    var n = new Error("Invalid Key.");
-    throw n.errors = a, n;
   }
-  var s = Be.asn1.derToOid(t.privateKeyOid), i = Be.oids.EdDSA25519;
-  if (s !== i)
-    throw new Error('Invalid OID "' + s + '"; OID must be "' + i + '".');
-  var o = t.privateKey, l = gt({
-    message: Be.asn1.fromDer(o).value,
+  seed = messageToNativeBuffer({ message: seed, encoding: "binary" });
+  var pk = new NativeBuffer(ed25519.constants.PUBLIC_KEY_BYTE_LENGTH);
+  var sk = new NativeBuffer(ed25519.constants.PRIVATE_KEY_BYTE_LENGTH);
+  for (var i = 0; i < 32; ++i) {
+    sk[i] = seed[i];
+  }
+  crypto_sign_keypair(pk, sk);
+  return { publicKey: pk, privateKey: sk };
+};
+ed25519.privateKeyFromAsn1 = function(obj) {
+  var capture = {};
+  var errors = [];
+  var valid = forge$4.asn1.validate(obj, privateKeyValidator, capture, errors);
+  if (!valid) {
+    var error = new Error("Invalid Key.");
+    error.errors = errors;
+    throw error;
+  }
+  var oid = forge$4.asn1.derToOid(capture.privateKeyOid);
+  var ed25519Oid = forge$4.oids.EdDSA25519;
+  if (oid !== ed25519Oid) {
+    throw new Error('Invalid OID "' + oid + '"; OID must be "' + ed25519Oid + '".');
+  }
+  var privateKey = capture.privateKey;
+  var privateKeyBytes = messageToNativeBuffer({
+    message: forge$4.asn1.fromDer(privateKey).value,
     encoding: "binary"
   });
-  return { privateKeyBytes: l };
+  return { privateKeyBytes };
 };
-W.publicKeyFromAsn1 = function(e) {
-  var t = {}, a = [], r = Be.asn1.validate(e, P0, t, a);
-  if (!r) {
-    var n = new Error("Invalid Key.");
-    throw n.errors = a, n;
+ed25519.publicKeyFromAsn1 = function(obj) {
+  var capture = {};
+  var errors = [];
+  var valid = forge$4.asn1.validate(obj, publicKeyValidator, capture, errors);
+  if (!valid) {
+    var error = new Error("Invalid Key.");
+    error.errors = errors;
+    throw error;
   }
-  var s = Be.asn1.derToOid(t.publicKeyOid), i = Be.oids.EdDSA25519;
-  if (s !== i)
-    throw new Error('Invalid OID "' + s + '"; OID must be "' + i + '".');
-  var o = t.ed25519PublicKey;
-  if (o.length !== W.constants.PUBLIC_KEY_BYTE_LENGTH)
+  var oid = forge$4.asn1.derToOid(capture.publicKeyOid);
+  var ed25519Oid = forge$4.oids.EdDSA25519;
+  if (oid !== ed25519Oid) {
+    throw new Error('Invalid OID "' + oid + '"; OID must be "' + ed25519Oid + '".');
+  }
+  var publicKeyBytes = capture.ed25519PublicKey;
+  if (publicKeyBytes.length !== ed25519.constants.PUBLIC_KEY_BYTE_LENGTH) {
     throw new Error("Key length is invalid.");
-  return gt({
-    message: o,
+  }
+  return messageToNativeBuffer({
+    message: publicKeyBytes,
     encoding: "binary"
   });
 };
-W.publicKeyFromPrivateKey = function(e) {
-  e = e || {};
-  var t = gt({
-    message: e.privateKey,
+ed25519.publicKeyFromPrivateKey = function(options) {
+  options = options || {};
+  var privateKey = messageToNativeBuffer({
+    message: options.privateKey,
     encoding: "binary"
   });
-  if (t.length !== W.constants.PRIVATE_KEY_BYTE_LENGTH)
+  if (privateKey.length !== ed25519.constants.PRIVATE_KEY_BYTE_LENGTH) {
     throw new TypeError(
-      '"options.privateKey" must have a byte length of ' + W.constants.PRIVATE_KEY_BYTE_LENGTH
+      '"options.privateKey" must have a byte length of ' + ed25519.constants.PRIVATE_KEY_BYTE_LENGTH
     );
-  for (var a = new Qe(W.constants.PUBLIC_KEY_BYTE_LENGTH), r = 0; r < a.length; ++r)
-    a[r] = t[32 + r];
-  return a;
+  }
+  var pk = new NativeBuffer(ed25519.constants.PUBLIC_KEY_BYTE_LENGTH);
+  for (var i = 0; i < pk.length; ++i) {
+    pk[i] = privateKey[32 + i];
+  }
+  return pk;
 };
-W.sign = function(e) {
-  e = e || {};
-  var t = gt(e), a = gt({
-    message: e.privateKey,
+ed25519.sign = function(options) {
+  options = options || {};
+  var msg = messageToNativeBuffer(options);
+  var privateKey = messageToNativeBuffer({
+    message: options.privateKey,
     encoding: "binary"
   });
-  if (a.length === W.constants.SEED_BYTE_LENGTH) {
-    var r = W.generateKeyPair({ seed: a });
-    a = r.privateKey;
-  } else if (a.length !== W.constants.PRIVATE_KEY_BYTE_LENGTH)
+  if (privateKey.length === ed25519.constants.SEED_BYTE_LENGTH) {
+    var keyPair = ed25519.generateKeyPair({ seed: privateKey });
+    privateKey = keyPair.privateKey;
+  } else if (privateKey.length !== ed25519.constants.PRIVATE_KEY_BYTE_LENGTH) {
     throw new TypeError(
-      '"options.privateKey" must have a byte length of ' + W.constants.SEED_BYTE_LENGTH + " or " + W.constants.PRIVATE_KEY_BYTE_LENGTH
+      '"options.privateKey" must have a byte length of ' + ed25519.constants.SEED_BYTE_LENGTH + " or " + ed25519.constants.PRIVATE_KEY_BYTE_LENGTH
     );
-  var n = new Qe(
-    W.constants.SIGN_BYTE_LENGTH + t.length
+  }
+  var signedMsg = new NativeBuffer(
+    ed25519.constants.SIGN_BYTE_LENGTH + msg.length
   );
-  G0(n, t, t.length, a);
-  for (var s = new Qe(W.constants.SIGN_BYTE_LENGTH), i = 0; i < s.length; ++i)
-    s[i] = n[i];
-  return s;
+  crypto_sign(signedMsg, msg, msg.length, privateKey);
+  var sig = new NativeBuffer(ed25519.constants.SIGN_BYTE_LENGTH);
+  for (var i = 0; i < sig.length; ++i) {
+    sig[i] = signedMsg[i];
+  }
+  return sig;
 };
-W.verify = function(e) {
-  e = e || {};
-  var t = gt(e);
-  if (e.signature === void 0)
+ed25519.verify = function(options) {
+  options = options || {};
+  var msg = messageToNativeBuffer(options);
+  if (options.signature === void 0) {
     throw new TypeError(
       '"options.signature" must be a node.js Buffer, a Uint8Array, a forge ByteBuffer, or a binary string.'
     );
-  var a = gt({
-    message: e.signature,
+  }
+  var sig = messageToNativeBuffer({
+    message: options.signature,
     encoding: "binary"
   });
-  if (a.length !== W.constants.SIGN_BYTE_LENGTH)
+  if (sig.length !== ed25519.constants.SIGN_BYTE_LENGTH) {
     throw new TypeError(
-      '"options.signature" must have a byte length of ' + W.constants.SIGN_BYTE_LENGTH
+      '"options.signature" must have a byte length of ' + ed25519.constants.SIGN_BYTE_LENGTH
     );
-  var r = gt({
-    message: e.publicKey,
+  }
+  var publicKey = messageToNativeBuffer({
+    message: options.publicKey,
     encoding: "binary"
   });
-  if (r.length !== W.constants.PUBLIC_KEY_BYTE_LENGTH)
+  if (publicKey.length !== ed25519.constants.PUBLIC_KEY_BYTE_LENGTH) {
     throw new TypeError(
-      '"options.publicKey" must have a byte length of ' + W.constants.PUBLIC_KEY_BYTE_LENGTH
+      '"options.publicKey" must have a byte length of ' + ed25519.constants.PUBLIC_KEY_BYTE_LENGTH
     );
-  var n = new Qe(W.constants.SIGN_BYTE_LENGTH + t.length), s = new Qe(W.constants.SIGN_BYTE_LENGTH + t.length), i;
-  for (i = 0; i < W.constants.SIGN_BYTE_LENGTH; ++i)
-    n[i] = a[i];
-  for (i = 0; i < t.length; ++i)
-    n[i + W.constants.SIGN_BYTE_LENGTH] = t[i];
-  return q0(s, n, n.length, r) >= 0;
+  }
+  var sm = new NativeBuffer(ed25519.constants.SIGN_BYTE_LENGTH + msg.length);
+  var m = new NativeBuffer(ed25519.constants.SIGN_BYTE_LENGTH + msg.length);
+  var i;
+  for (i = 0; i < ed25519.constants.SIGN_BYTE_LENGTH; ++i) {
+    sm[i] = sig[i];
+  }
+  for (i = 0; i < msg.length; ++i) {
+    sm[i + ed25519.constants.SIGN_BYTE_LENGTH] = msg[i];
+  }
+  return crypto_sign_open(m, sm, sm.length, publicKey) >= 0;
 };
-function gt(e) {
-  var t = e.message;
-  if (t instanceof Uint8Array || t instanceof Qe)
-    return t;
-  var a = e.encoding;
-  if (t === void 0)
-    if (e.md)
-      t = e.md.digest().getBytes(), a = "binary";
-    else
+function messageToNativeBuffer(options) {
+  var message = options.message;
+  if (message instanceof Uint8Array || message instanceof NativeBuffer) {
+    return message;
+  }
+  var encoding = options.encoding;
+  if (message === void 0) {
+    if (options.md) {
+      message = options.md.digest().getBytes();
+      encoding = "binary";
+    } else {
       throw new TypeError('"options.message" or "options.md" not specified.');
-  if (typeof t == "string" && !a)
+    }
+  }
+  if (typeof message === "string" && !encoding) {
     throw new TypeError('"options.encoding" must be "binary" or "utf8".');
-  if (typeof t == "string") {
-    if (typeof Buffer < "u")
-      return Buffer.from(t, a);
-    t = new ua(t, a);
-  } else if (!(t instanceof ua))
+  }
+  if (typeof message === "string") {
+    if (typeof Buffer !== "undefined") {
+      return Buffer.from(message, encoding);
+    }
+    message = new ByteBuffer(message, encoding);
+  } else if (!(message instanceof ByteBuffer)) {
     throw new TypeError(
       '"options.message" must be a node.js Buffer, a Uint8Array, a forge ByteBuffer, or a string with "options.encoding" specifying its encoding.'
     );
-  for (var r = new Qe(t.length()), n = 0; n < r.length; ++n)
-    r[n] = t.at(n);
-  return r;
+  }
+  var buffer = new NativeBuffer(message.length());
+  for (var i = 0; i < buffer.length; ++i) {
+    buffer[i] = message.at(i);
+  }
+  return buffer;
 }
-var la = H(), Rr = H([1]), F0 = H([
+var gf0 = gf();
+var gf1 = gf([1]);
+var D = gf([
   30883,
   4953,
   19914,
@@ -10205,7 +15188,8 @@ var la = H(), Rr = H([1]), F0 = H([
   11119,
   27886,
   20995
-]), K0 = H([
+]);
+var D2 = gf([
   61785,
   9906,
   39828,
@@ -10222,7 +15206,8 @@ var la = H(), Rr = H([1]), F0 = H([
   22239,
   55772,
   9222
-]), rn = H([
+]);
+var X = gf([
   54554,
   36645,
   11616,
@@ -10239,7 +15224,8 @@ var la = H(), Rr = H([1]), F0 = H([
   52590,
   14035,
   8553
-]), an = H([
+]);
+var Y = gf([
   26200,
   26214,
   26214,
@@ -10256,7 +15242,8 @@ var la = H(), Rr = H([1]), F0 = H([
   26214,
   26214,
   26214
-]), or = new Float64Array([
+]);
+var L = new Float64Array([
   237,
   211,
   245,
@@ -10289,7 +15276,8 @@ var la = H(), Rr = H([1]), F0 = H([
   0,
   0,
   16
-]), M0 = H([
+]);
+var I = gf([
   41136,
   18958,
   6951,
@@ -10307,249 +15295,840 @@ var la = H(), Rr = H([1]), F0 = H([
   9344,
   11139
 ]);
-function ur(e, t) {
-  var a = Be.md.sha512.create(), r = new ua(e);
-  a.update(r.getBytes(t), "binary");
-  var n = a.digest().getBytes();
-  if (typeof Buffer < "u")
-    return Buffer.from(n, "binary");
-  for (var s = new Qe(W.constants.HASH_BYTE_LENGTH), i = 0; i < 64; ++i)
-    s[i] = n.charCodeAt(i);
-  return s;
+function sha512(msg, msgLen) {
+  var md = forge$4.md.sha512.create();
+  var buffer = new ByteBuffer(msg);
+  md.update(buffer.getBytes(msgLen), "binary");
+  var hash2 = md.digest().getBytes();
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(hash2, "binary");
+  }
+  var out = new NativeBuffer(ed25519.constants.HASH_BYTE_LENGTH);
+  for (var i = 0; i < 64; ++i) {
+    out[i] = hash2.charCodeAt(i);
+  }
+  return out;
 }
-function H0(e, t) {
-  var a = [H(), H(), H(), H()], r, n = ur(t, 32);
-  for (n[0] &= 248, n[31] &= 127, n[31] |= 64, wa(a, n), Ra(e, a), r = 0; r < 32; ++r)
-    t[r + 32] = e[r];
+function crypto_sign_keypair(pk, sk) {
+  var p = [gf(), gf(), gf(), gf()];
+  var i;
+  var d = sha512(sk, 32);
+  d[0] &= 248;
+  d[31] &= 127;
+  d[31] |= 64;
+  scalarbase(p, d);
+  pack(pk, p);
+  for (i = 0; i < 32; ++i) {
+    sk[i + 32] = pk[i];
+  }
   return 0;
 }
-function G0(e, t, a, r) {
-  var n, s, i = new Float64Array(64), o = [H(), H(), H(), H()], l = ur(r, 32);
-  l[0] &= 248, l[31] &= 127, l[31] |= 64;
-  var u = a + 64;
-  for (n = 0; n < a; ++n)
-    e[64 + n] = t[n];
-  for (n = 0; n < 32; ++n)
-    e[32 + n] = l[32 + n];
-  var f = ur(e.subarray(32), a + 32);
-  for (fa(f), wa(o, f), Ra(e, o), n = 32; n < 64; ++n)
-    e[n] = r[n];
-  var c = ur(e, a + 64);
-  for (fa(c), n = 32; n < 64; ++n)
-    i[n] = 0;
-  for (n = 0; n < 32; ++n)
-    i[n] = f[n];
-  for (n = 0; n < 32; ++n)
-    for (s = 0; s < 32; s++)
-      i[n + s] += c[n] * l[s];
-  return Xn(e.subarray(32), i), u;
-}
-function q0(e, t, a, r) {
-  var n, s, i = new Qe(32), o = [H(), H(), H(), H()], l = [H(), H(), H(), H()];
-  if (s = -1, a < 64 || z0(l, r) || !Q0(t, 32))
-    return -1;
-  for (n = 0; n < a; ++n)
-    e[n] = t[n];
-  for (n = 0; n < 32; ++n)
-    e[n + 32] = r[n];
-  var u = ur(e, a);
-  if (fa(u), Jn(o, l, u), wa(l, t.subarray(32)), ca(o, l), Ra(i, o), a -= 64, jn(t, 0, i, 0)) {
-    for (n = 0; n < a; ++n)
-      e[n] = 0;
-    return -1;
+function crypto_sign(sm, m, n, sk) {
+  var i, j, x = new Float64Array(64);
+  var p = [gf(), gf(), gf(), gf()];
+  var d = sha512(sk, 32);
+  d[0] &= 248;
+  d[31] &= 127;
+  d[31] |= 64;
+  var smlen = n + 64;
+  for (i = 0; i < n; ++i) {
+    sm[64 + i] = m[i];
   }
-  for (n = 0; n < a; ++n)
-    e[n] = t[n + 64];
-  return s = a, s;
-}
-function Q0(e, t) {
-  var a;
-  for (a = 31; a >= 0; --a) {
-    if (e[t + a] < or[a])
-      return !0;
-    if (e[t + a] > or[a])
-      return !1;
+  for (i = 0; i < 32; ++i) {
+    sm[32 + i] = d[32 + i];
   }
-  return !1;
-}
-function Xn(e, t) {
-  var a, r, n, s;
-  for (r = 63; r >= 32; --r) {
-    for (a = 0, n = r - 32, s = r - 12; n < s; ++n)
-      t[n] += a - 16 * t[r] * or[n - (r - 32)], a = t[n] + 128 >> 8, t[n] -= a * 256;
-    t[n] += a, t[r] = 0;
+  var r = sha512(sm.subarray(32), n + 32);
+  reduce(r);
+  scalarbase(p, r);
+  pack(sm, p);
+  for (i = 32; i < 64; ++i) {
+    sm[i] = sk[i];
   }
-  for (a = 0, n = 0; n < 32; ++n)
-    t[n] += a - (t[31] >> 4) * or[n], a = t[n] >> 8, t[n] &= 255;
-  for (n = 0; n < 32; ++n)
-    t[n] -= a * or[n];
-  for (r = 0; r < 32; ++r)
-    t[r + 1] += t[r] >> 8, e[r] = t[r] & 255;
-}
-function fa(e) {
-  for (var t = new Float64Array(64), a = 0; a < 64; ++a)
-    t[a] = e[a], e[a] = 0;
-  Xn(e, t);
-}
-function ca(e, t) {
-  var a = H(), r = H(), n = H(), s = H(), i = H(), o = H(), l = H(), u = H(), f = H();
-  Qt(a, e[1], e[0]), Qt(f, t[1], t[0]), se(a, a, f), Gt(r, e[0], e[1]), Gt(f, t[0], t[1]), se(r, r, f), se(n, e[3], t[3]), se(n, n, K0), se(s, e[2], t[2]), Gt(s, s, s), Qt(i, r, a), Qt(o, s, n), Gt(l, s, n), Gt(u, r, a), se(e[0], i, o), se(e[1], u, l), se(e[2], l, o), se(e[3], i, u);
-}
-function nn(e, t, a) {
-  for (var r = 0; r < 4; ++r)
-    ei(e[r], t[r], a);
-}
-function Ra(e, t) {
-  var a = H(), r = H(), n = H();
-  X0(n, t[2]), se(a, t[0], n), se(r, t[1], n), wr(e, r), e[31] ^= Zn(a) << 7;
-}
-function wr(e, t) {
-  var a, r, n, s = H(), i = H();
-  for (a = 0; a < 16; ++a)
-    i[a] = t[a];
-  for (Yr(i), Yr(i), Yr(i), r = 0; r < 2; ++r) {
-    for (s[0] = i[0] - 65517, a = 1; a < 15; ++a)
-      s[a] = i[a] - 65535 - (s[a - 1] >> 16 & 1), s[a - 1] &= 65535;
-    s[15] = i[15] - 32767 - (s[14] >> 16 & 1), n = s[15] >> 16 & 1, s[14] &= 65535, ei(i, s, 1 - n);
+  var h = sha512(sm, n + 64);
+  reduce(h);
+  for (i = 32; i < 64; ++i) {
+    x[i] = 0;
   }
-  for (a = 0; a < 16; a++)
-    e[2 * a] = i[a] & 255, e[2 * a + 1] = i[a] >> 8;
-}
-function z0(e, t) {
-  var a = H(), r = H(), n = H(), s = H(), i = H(), o = H(), l = H();
-  return It(e[2], Rr), Y0(e[1], t), Pt(n, e[1]), se(s, n, F0), Qt(n, n, e[2]), Gt(s, e[2], s), Pt(i, s), Pt(o, i), se(l, o, i), se(a, l, n), se(a, a, s), $0(a, a), se(a, a, n), se(a, a, s), se(a, a, s), se(e[0], a, s), Pt(r, e[0]), se(r, r, s), sn(r, n) && se(e[0], e[0], M0), Pt(r, e[0]), se(r, r, s), sn(r, n) ? -1 : (Zn(e[0]) === t[31] >> 7 && Qt(e[0], la, e[0]), se(e[3], e[0], e[1]), 0);
-}
-function Y0(e, t) {
-  var a;
-  for (a = 0; a < 16; ++a)
-    e[a] = t[2 * a] + (t[2 * a + 1] << 8);
-  e[15] &= 32767;
-}
-function $0(e, t) {
-  var a = H(), r;
-  for (r = 0; r < 16; ++r)
-    a[r] = t[r];
-  for (r = 250; r >= 0; --r)
-    Pt(a, a), r !== 1 && se(a, a, t);
-  for (r = 0; r < 16; ++r)
-    e[r] = a[r];
-}
-function sn(e, t) {
-  var a = new Qe(32), r = new Qe(32);
-  return wr(a, e), wr(r, t), jn(a, 0, r, 0);
-}
-function jn(e, t, a, r) {
-  return W0(e, t, a, r, 32);
-}
-function W0(e, t, a, r, n) {
-  var s, i = 0;
-  for (s = 0; s < n; ++s)
-    i |= e[t + s] ^ a[r + s];
-  return (1 & i - 1 >>> 8) - 1;
-}
-function Zn(e) {
-  var t = new Qe(32);
-  return wr(t, e), t[0] & 1;
-}
-function Jn(e, t, a) {
-  var r, n;
-  for (It(e[0], la), It(e[1], Rr), It(e[2], Rr), It(e[3], la), n = 255; n >= 0; --n)
-    r = a[n / 8 | 0] >> (n & 7) & 1, nn(e, t, r), ca(t, e), ca(e, e), nn(e, t, r);
-}
-function wa(e, t) {
-  var a = [H(), H(), H(), H()];
-  It(a[0], rn), It(a[1], an), It(a[2], Rr), se(a[3], rn, an), Jn(e, a, t);
-}
-function It(e, t) {
-  var a;
-  for (a = 0; a < 16; a++)
-    e[a] = t[a] | 0;
-}
-function X0(e, t) {
-  var a = H(), r;
-  for (r = 0; r < 16; ++r)
-    a[r] = t[r];
-  for (r = 253; r >= 0; --r)
-    Pt(a, a), r !== 2 && r !== 4 && se(a, a, t);
-  for (r = 0; r < 16; ++r)
-    e[r] = a[r];
-}
-function Yr(e) {
-  var t, a, r = 1;
-  for (t = 0; t < 16; ++t)
-    a = e[t] + r + 65535, r = Math.floor(a / 65536), e[t] = a - r * 65536;
-  e[0] += r - 1 + 37 * (r - 1);
-}
-function ei(e, t, a) {
-  for (var r, n = ~(a - 1), s = 0; s < 16; ++s)
-    r = n & (e[s] ^ t[s]), e[s] ^= r, t[s] ^= r;
-}
-function H(e) {
-  var t, a = new Float64Array(16);
-  if (e)
-    for (t = 0; t < e.length; ++t)
-      a[t] = e[t];
-  return a;
-}
-function Gt(e, t, a) {
-  for (var r = 0; r < 16; ++r)
-    e[r] = t[r] + a[r];
-}
-function Qt(e, t, a) {
-  for (var r = 0; r < 16; ++r)
-    e[r] = t[r] - a[r];
-}
-function Pt(e, t) {
-  se(e, t, t);
-}
-function se(e, t, a) {
-  var r, n, s = 0, i = 0, o = 0, l = 0, u = 0, f = 0, c = 0, v = 0, m = 0, y = 0, x = 0, S = 0, I = 0, b = 0, _ = 0, V = 0, k = 0, w = 0, G = 0, Y = 0, re = 0, ae = 0, ne = 0, he = 0, ze = 0, Xe = 0, ie = 0, ye = 0, F = 0, Rt = 0, Mt = 0, ge = a[0], me = a[1], Ee = a[2], be = a[3], _e = a[4], Ne = a[5], Re = a[6], we = a[7], Le = a[8], ke = a[9], De = a[10], Ue = a[11], Pe = a[12], Ve = a[13], Oe = a[14], Fe = a[15];
-  r = t[0], s += r * ge, i += r * me, o += r * Ee, l += r * be, u += r * _e, f += r * Ne, c += r * Re, v += r * we, m += r * Le, y += r * ke, x += r * De, S += r * Ue, I += r * Pe, b += r * Ve, _ += r * Oe, V += r * Fe, r = t[1], i += r * ge, o += r * me, l += r * Ee, u += r * be, f += r * _e, c += r * Ne, v += r * Re, m += r * we, y += r * Le, x += r * ke, S += r * De, I += r * Ue, b += r * Pe, _ += r * Ve, V += r * Oe, k += r * Fe, r = t[2], o += r * ge, l += r * me, u += r * Ee, f += r * be, c += r * _e, v += r * Ne, m += r * Re, y += r * we, x += r * Le, S += r * ke, I += r * De, b += r * Ue, _ += r * Pe, V += r * Ve, k += r * Oe, w += r * Fe, r = t[3], l += r * ge, u += r * me, f += r * Ee, c += r * be, v += r * _e, m += r * Ne, y += r * Re, x += r * we, S += r * Le, I += r * ke, b += r * De, _ += r * Ue, V += r * Pe, k += r * Ve, w += r * Oe, G += r * Fe, r = t[4], u += r * ge, f += r * me, c += r * Ee, v += r * be, m += r * _e, y += r * Ne, x += r * Re, S += r * we, I += r * Le, b += r * ke, _ += r * De, V += r * Ue, k += r * Pe, w += r * Ve, G += r * Oe, Y += r * Fe, r = t[5], f += r * ge, c += r * me, v += r * Ee, m += r * be, y += r * _e, x += r * Ne, S += r * Re, I += r * we, b += r * Le, _ += r * ke, V += r * De, k += r * Ue, w += r * Pe, G += r * Ve, Y += r * Oe, re += r * Fe, r = t[6], c += r * ge, v += r * me, m += r * Ee, y += r * be, x += r * _e, S += r * Ne, I += r * Re, b += r * we, _ += r * Le, V += r * ke, k += r * De, w += r * Ue, G += r * Pe, Y += r * Ve, re += r * Oe, ae += r * Fe, r = t[7], v += r * ge, m += r * me, y += r * Ee, x += r * be, S += r * _e, I += r * Ne, b += r * Re, _ += r * we, V += r * Le, k += r * ke, w += r * De, G += r * Ue, Y += r * Pe, re += r * Ve, ae += r * Oe, ne += r * Fe, r = t[8], m += r * ge, y += r * me, x += r * Ee, S += r * be, I += r * _e, b += r * Ne, _ += r * Re, V += r * we, k += r * Le, w += r * ke, G += r * De, Y += r * Ue, re += r * Pe, ae += r * Ve, ne += r * Oe, he += r * Fe, r = t[9], y += r * ge, x += r * me, S += r * Ee, I += r * be, b += r * _e, _ += r * Ne, V += r * Re, k += r * we, w += r * Le, G += r * ke, Y += r * De, re += r * Ue, ae += r * Pe, ne += r * Ve, he += r * Oe, ze += r * Fe, r = t[10], x += r * ge, S += r * me, I += r * Ee, b += r * be, _ += r * _e, V += r * Ne, k += r * Re, w += r * we, G += r * Le, Y += r * ke, re += r * De, ae += r * Ue, ne += r * Pe, he += r * Ve, ze += r * Oe, Xe += r * Fe, r = t[11], S += r * ge, I += r * me, b += r * Ee, _ += r * be, V += r * _e, k += r * Ne, w += r * Re, G += r * we, Y += r * Le, re += r * ke, ae += r * De, ne += r * Ue, he += r * Pe, ze += r * Ve, Xe += r * Oe, ie += r * Fe, r = t[12], I += r * ge, b += r * me, _ += r * Ee, V += r * be, k += r * _e, w += r * Ne, G += r * Re, Y += r * we, re += r * Le, ae += r * ke, ne += r * De, he += r * Ue, ze += r * Pe, Xe += r * Ve, ie += r * Oe, ye += r * Fe, r = t[13], b += r * ge, _ += r * me, V += r * Ee, k += r * be, w += r * _e, G += r * Ne, Y += r * Re, re += r * we, ae += r * Le, ne += r * ke, he += r * De, ze += r * Ue, Xe += r * Pe, ie += r * Ve, ye += r * Oe, F += r * Fe, r = t[14], _ += r * ge, V += r * me, k += r * Ee, w += r * be, G += r * _e, Y += r * Ne, re += r * Re, ae += r * we, ne += r * Le, he += r * ke, ze += r * De, Xe += r * Ue, ie += r * Pe, ye += r * Ve, F += r * Oe, Rt += r * Fe, r = t[15], V += r * ge, k += r * me, w += r * Ee, G += r * be, Y += r * _e, re += r * Ne, ae += r * Re, ne += r * we, he += r * Le, ze += r * ke, Xe += r * De, ie += r * Ue, ye += r * Pe, F += r * Ve, Rt += r * Oe, Mt += r * Fe, s += 38 * k, i += 38 * w, o += 38 * G, l += 38 * Y, u += 38 * re, f += 38 * ae, c += 38 * ne, v += 38 * he, m += 38 * ze, y += 38 * Xe, x += 38 * ie, S += 38 * ye, I += 38 * F, b += 38 * Rt, _ += 38 * Mt, n = 1, r = s + n + 65535, n = Math.floor(r / 65536), s = r - n * 65536, r = i + n + 65535, n = Math.floor(r / 65536), i = r - n * 65536, r = o + n + 65535, n = Math.floor(r / 65536), o = r - n * 65536, r = l + n + 65535, n = Math.floor(r / 65536), l = r - n * 65536, r = u + n + 65535, n = Math.floor(r / 65536), u = r - n * 65536, r = f + n + 65535, n = Math.floor(r / 65536), f = r - n * 65536, r = c + n + 65535, n = Math.floor(r / 65536), c = r - n * 65536, r = v + n + 65535, n = Math.floor(r / 65536), v = r - n * 65536, r = m + n + 65535, n = Math.floor(r / 65536), m = r - n * 65536, r = y + n + 65535, n = Math.floor(r / 65536), y = r - n * 65536, r = x + n + 65535, n = Math.floor(r / 65536), x = r - n * 65536, r = S + n + 65535, n = Math.floor(r / 65536), S = r - n * 65536, r = I + n + 65535, n = Math.floor(r / 65536), I = r - n * 65536, r = b + n + 65535, n = Math.floor(r / 65536), b = r - n * 65536, r = _ + n + 65535, n = Math.floor(r / 65536), _ = r - n * 65536, r = V + n + 65535, n = Math.floor(r / 65536), V = r - n * 65536, s += n - 1 + 37 * (n - 1), n = 1, r = s + n + 65535, n = Math.floor(r / 65536), s = r - n * 65536, r = i + n + 65535, n = Math.floor(r / 65536), i = r - n * 65536, r = o + n + 65535, n = Math.floor(r / 65536), o = r - n * 65536, r = l + n + 65535, n = Math.floor(r / 65536), l = r - n * 65536, r = u + n + 65535, n = Math.floor(r / 65536), u = r - n * 65536, r = f + n + 65535, n = Math.floor(r / 65536), f = r - n * 65536, r = c + n + 65535, n = Math.floor(r / 65536), c = r - n * 65536, r = v + n + 65535, n = Math.floor(r / 65536), v = r - n * 65536, r = m + n + 65535, n = Math.floor(r / 65536), m = r - n * 65536, r = y + n + 65535, n = Math.floor(r / 65536), y = r - n * 65536, r = x + n + 65535, n = Math.floor(r / 65536), x = r - n * 65536, r = S + n + 65535, n = Math.floor(r / 65536), S = r - n * 65536, r = I + n + 65535, n = Math.floor(r / 65536), I = r - n * 65536, r = b + n + 65535, n = Math.floor(r / 65536), b = r - n * 65536, r = _ + n + 65535, n = Math.floor(r / 65536), _ = r - n * 65536, r = V + n + 65535, n = Math.floor(r / 65536), V = r - n * 65536, s += n - 1 + 37 * (n - 1), e[0] = s, e[1] = i, e[2] = o, e[3] = l, e[4] = u, e[5] = f, e[6] = c, e[7] = v, e[8] = m, e[9] = y, e[10] = x, e[11] = S, e[12] = I, e[13] = b, e[14] = _, e[15] = V;
-}
-var We = z;
-We.kem = We.kem || {};
-var on = We.jsbn.BigInteger;
-We.kem.rsa = {};
-We.kem.rsa.create = function(e, t) {
-  t = t || {};
-  var a = t.prng || We.random, r = {};
-  return r.encrypt = function(n, s) {
-    var i = Math.ceil(n.n.bitLength() / 8), o;
-    do
-      o = new on(
-        We.util.bytesToHex(a.getBytesSync(i)),
-        16
-      ).mod(n.n);
-    while (o.compareTo(on.ONE) <= 0);
-    o = We.util.hexToBytes(o.toString(16));
-    var l = i - o.length;
-    l > 0 && (o = We.util.fillString("\0", l) + o);
-    var u = n.encrypt(o, "NONE"), f = e.generate(o, s);
-    return { encapsulation: u, key: f };
-  }, r.decrypt = function(n, s, i) {
-    var o = n.decrypt(s, "NONE");
-    return e.generate(o, i);
-  }, r;
-};
-We.kem.kdf1 = function(e, t) {
-  ti(this, e, 0, t || e.digestLength);
-};
-We.kem.kdf2 = function(e, t) {
-  ti(this, e, 1, t || e.digestLength);
-};
-function ti(e, t, a, r) {
-  e.generate = function(n, s) {
-    for (var i = new We.util.ByteBuffer(), o = Math.ceil(s / r) + a, l = new We.util.ByteBuffer(), u = a; u < o; ++u) {
-      l.putInt32(u), t.start(), t.update(n + l.getBytes());
-      var f = t.digest();
-      i.putBytes(f.getBytes(r));
+  for (i = 0; i < 32; ++i) {
+    x[i] = r[i];
+  }
+  for (i = 0; i < 32; ++i) {
+    for (j = 0; j < 32; j++) {
+      x[i + j] += h[i] * d[j];
     }
-    return i.truncate(i.length() - s), i.getBytes();
+  }
+  modL(sm.subarray(32), x);
+  return smlen;
+}
+function crypto_sign_open(m, sm, n, pk) {
+  var i, mlen;
+  var t = new NativeBuffer(32);
+  var p = [gf(), gf(), gf(), gf()], q = [gf(), gf(), gf(), gf()];
+  mlen = -1;
+  if (n < 64) {
+    return -1;
+  }
+  if (unpackneg(q, pk)) {
+    return -1;
+  }
+  if (!_isCanonicalSignatureScalar(sm, 32)) {
+    return -1;
+  }
+  for (i = 0; i < n; ++i) {
+    m[i] = sm[i];
+  }
+  for (i = 0; i < 32; ++i) {
+    m[i + 32] = pk[i];
+  }
+  var h = sha512(m, n);
+  reduce(h);
+  scalarmult(p, q, h);
+  scalarbase(q, sm.subarray(32));
+  add(p, q);
+  pack(t, p);
+  n -= 64;
+  if (crypto_verify_32(sm, 0, t, 0)) {
+    for (i = 0; i < n; ++i) {
+      m[i] = 0;
+    }
+    return -1;
+  }
+  for (i = 0; i < n; ++i) {
+    m[i] = sm[i + 64];
+  }
+  mlen = n;
+  return mlen;
+}
+function _isCanonicalSignatureScalar(bytes, offset) {
+  var i;
+  for (i = 31; i >= 0; --i) {
+    if (bytes[offset + i] < L[i]) {
+      return true;
+    }
+    if (bytes[offset + i] > L[i]) {
+      return false;
+    }
+  }
+  return false;
+}
+function modL(r, x) {
+  var carry, i, j, k;
+  for (i = 63; i >= 32; --i) {
+    carry = 0;
+    for (j = i - 32, k = i - 12; j < k; ++j) {
+      x[j] += carry - 16 * x[i] * L[j - (i - 32)];
+      carry = x[j] + 128 >> 8;
+      x[j] -= carry * 256;
+    }
+    x[j] += carry;
+    x[i] = 0;
+  }
+  carry = 0;
+  for (j = 0; j < 32; ++j) {
+    x[j] += carry - (x[31] >> 4) * L[j];
+    carry = x[j] >> 8;
+    x[j] &= 255;
+  }
+  for (j = 0; j < 32; ++j) {
+    x[j] -= carry * L[j];
+  }
+  for (i = 0; i < 32; ++i) {
+    x[i + 1] += x[i] >> 8;
+    r[i] = x[i] & 255;
+  }
+}
+function reduce(r) {
+  var x = new Float64Array(64);
+  for (var i = 0; i < 64; ++i) {
+    x[i] = r[i];
+    r[i] = 0;
+  }
+  modL(r, x);
+}
+function add(p, q) {
+  var a = gf(), b = gf(), c = gf(), d = gf(), e = gf(), f = gf(), g = gf(), h = gf(), t = gf();
+  Z(a, p[1], p[0]);
+  Z(t, q[1], q[0]);
+  M(a, a, t);
+  A(b, p[0], p[1]);
+  A(t, q[0], q[1]);
+  M(b, b, t);
+  M(c, p[3], q[3]);
+  M(c, c, D2);
+  M(d, p[2], q[2]);
+  A(d, d, d);
+  Z(e, b, a);
+  Z(f, d, c);
+  A(g, d, c);
+  A(h, b, a);
+  M(p[0], e, f);
+  M(p[1], h, g);
+  M(p[2], g, f);
+  M(p[3], e, h);
+}
+function cswap(p, q, b) {
+  for (var i = 0; i < 4; ++i) {
+    sel25519(p[i], q[i], b);
+  }
+}
+function pack(r, p) {
+  var tx = gf(), ty = gf(), zi = gf();
+  inv25519(zi, p[2]);
+  M(tx, p[0], zi);
+  M(ty, p[1], zi);
+  pack25519(r, ty);
+  r[31] ^= par25519(tx) << 7;
+}
+function pack25519(o, n) {
+  var i, j, b;
+  var m = gf(), t = gf();
+  for (i = 0; i < 16; ++i) {
+    t[i] = n[i];
+  }
+  car25519(t);
+  car25519(t);
+  car25519(t);
+  for (j = 0; j < 2; ++j) {
+    m[0] = t[0] - 65517;
+    for (i = 1; i < 15; ++i) {
+      m[i] = t[i] - 65535 - (m[i - 1] >> 16 & 1);
+      m[i - 1] &= 65535;
+    }
+    m[15] = t[15] - 32767 - (m[14] >> 16 & 1);
+    b = m[15] >> 16 & 1;
+    m[14] &= 65535;
+    sel25519(t, m, 1 - b);
+  }
+  for (i = 0; i < 16; i++) {
+    o[2 * i] = t[i] & 255;
+    o[2 * i + 1] = t[i] >> 8;
+  }
+}
+function unpackneg(r, p) {
+  var t = gf(), chk = gf(), num = gf(), den = gf(), den2 = gf(), den4 = gf(), den6 = gf();
+  set25519(r[2], gf1);
+  unpack25519(r[1], p);
+  S(num, r[1]);
+  M(den, num, D);
+  Z(num, num, r[2]);
+  A(den, r[2], den);
+  S(den2, den);
+  S(den4, den2);
+  M(den6, den4, den2);
+  M(t, den6, num);
+  M(t, t, den);
+  pow2523(t, t);
+  M(t, t, num);
+  M(t, t, den);
+  M(t, t, den);
+  M(r[0], t, den);
+  S(chk, r[0]);
+  M(chk, chk, den);
+  if (neq25519(chk, num)) {
+    M(r[0], r[0], I);
+  }
+  S(chk, r[0]);
+  M(chk, chk, den);
+  if (neq25519(chk, num)) {
+    return -1;
+  }
+  if (par25519(r[0]) === p[31] >> 7) {
+    Z(r[0], gf0, r[0]);
+  }
+  M(r[3], r[0], r[1]);
+  return 0;
+}
+function unpack25519(o, n) {
+  var i;
+  for (i = 0; i < 16; ++i) {
+    o[i] = n[2 * i] + (n[2 * i + 1] << 8);
+  }
+  o[15] &= 32767;
+}
+function pow2523(o, i) {
+  var c = gf();
+  var a;
+  for (a = 0; a < 16; ++a) {
+    c[a] = i[a];
+  }
+  for (a = 250; a >= 0; --a) {
+    S(c, c);
+    if (a !== 1) {
+      M(c, c, i);
+    }
+  }
+  for (a = 0; a < 16; ++a) {
+    o[a] = c[a];
+  }
+}
+function neq25519(a, b) {
+  var c = new NativeBuffer(32);
+  var d = new NativeBuffer(32);
+  pack25519(c, a);
+  pack25519(d, b);
+  return crypto_verify_32(c, 0, d, 0);
+}
+function crypto_verify_32(x, xi, y, yi) {
+  return vn(x, xi, y, yi, 32);
+}
+function vn(x, xi, y, yi, n) {
+  var i, d = 0;
+  for (i = 0; i < n; ++i) {
+    d |= x[xi + i] ^ y[yi + i];
+  }
+  return (1 & d - 1 >>> 8) - 1;
+}
+function par25519(a) {
+  var d = new NativeBuffer(32);
+  pack25519(d, a);
+  return d[0] & 1;
+}
+function scalarmult(p, q, s2) {
+  var b, i;
+  set25519(p[0], gf0);
+  set25519(p[1], gf1);
+  set25519(p[2], gf1);
+  set25519(p[3], gf0);
+  for (i = 255; i >= 0; --i) {
+    b = s2[i / 8 | 0] >> (i & 7) & 1;
+    cswap(p, q, b);
+    add(q, p);
+    add(p, p);
+    cswap(p, q, b);
+  }
+}
+function scalarbase(p, s2) {
+  var q = [gf(), gf(), gf(), gf()];
+  set25519(q[0], X);
+  set25519(q[1], Y);
+  set25519(q[2], gf1);
+  M(q[3], X, Y);
+  scalarmult(p, q, s2);
+}
+function set25519(r, a) {
+  var i;
+  for (i = 0; i < 16; i++) {
+    r[i] = a[i] | 0;
+  }
+}
+function inv25519(o, i) {
+  var c = gf();
+  var a;
+  for (a = 0; a < 16; ++a) {
+    c[a] = i[a];
+  }
+  for (a = 253; a >= 0; --a) {
+    S(c, c);
+    if (a !== 2 && a !== 4) {
+      M(c, c, i);
+    }
+  }
+  for (a = 0; a < 16; ++a) {
+    o[a] = c[a];
+  }
+}
+function car25519(o) {
+  var i, v, c = 1;
+  for (i = 0; i < 16; ++i) {
+    v = o[i] + c + 65535;
+    c = Math.floor(v / 65536);
+    o[i] = v - c * 65536;
+  }
+  o[0] += c - 1 + 37 * (c - 1);
+}
+function sel25519(p, q, b) {
+  var t, c = ~(b - 1);
+  for (var i = 0; i < 16; ++i) {
+    t = c & (p[i] ^ q[i]);
+    p[i] ^= t;
+    q[i] ^= t;
+  }
+}
+function gf(init2) {
+  var i, r = new Float64Array(16);
+  if (init2) {
+    for (i = 0; i < init2.length; ++i) {
+      r[i] = init2[i];
+    }
+  }
+  return r;
+}
+function A(o, a, b) {
+  for (var i = 0; i < 16; ++i) {
+    o[i] = a[i] + b[i];
+  }
+}
+function Z(o, a, b) {
+  for (var i = 0; i < 16; ++i) {
+    o[i] = a[i] - b[i];
+  }
+}
+function S(o, a) {
+  M(o, a, a);
+}
+function M(o, a, b) {
+  var v, c, t0 = 0, t1 = 0, t2 = 0, t3 = 0, t4 = 0, t5 = 0, t6 = 0, t7 = 0, t8 = 0, t9 = 0, t10 = 0, t11 = 0, t12 = 0, t13 = 0, t14 = 0, t15 = 0, t16 = 0, t17 = 0, t18 = 0, t19 = 0, t20 = 0, t21 = 0, t22 = 0, t23 = 0, t24 = 0, t25 = 0, t26 = 0, t27 = 0, t28 = 0, t29 = 0, t30 = 0, b0 = b[0], b1 = b[1], b2 = b[2], b3 = b[3], b4 = b[4], b5 = b[5], b6 = b[6], b7 = b[7], b8 = b[8], b9 = b[9], b10 = b[10], b11 = b[11], b12 = b[12], b13 = b[13], b14 = b[14], b15 = b[15];
+  v = a[0];
+  t0 += v * b0;
+  t1 += v * b1;
+  t2 += v * b2;
+  t3 += v * b3;
+  t4 += v * b4;
+  t5 += v * b5;
+  t6 += v * b6;
+  t7 += v * b7;
+  t8 += v * b8;
+  t9 += v * b9;
+  t10 += v * b10;
+  t11 += v * b11;
+  t12 += v * b12;
+  t13 += v * b13;
+  t14 += v * b14;
+  t15 += v * b15;
+  v = a[1];
+  t1 += v * b0;
+  t2 += v * b1;
+  t3 += v * b2;
+  t4 += v * b3;
+  t5 += v * b4;
+  t6 += v * b5;
+  t7 += v * b6;
+  t8 += v * b7;
+  t9 += v * b8;
+  t10 += v * b9;
+  t11 += v * b10;
+  t12 += v * b11;
+  t13 += v * b12;
+  t14 += v * b13;
+  t15 += v * b14;
+  t16 += v * b15;
+  v = a[2];
+  t2 += v * b0;
+  t3 += v * b1;
+  t4 += v * b2;
+  t5 += v * b3;
+  t6 += v * b4;
+  t7 += v * b5;
+  t8 += v * b6;
+  t9 += v * b7;
+  t10 += v * b8;
+  t11 += v * b9;
+  t12 += v * b10;
+  t13 += v * b11;
+  t14 += v * b12;
+  t15 += v * b13;
+  t16 += v * b14;
+  t17 += v * b15;
+  v = a[3];
+  t3 += v * b0;
+  t4 += v * b1;
+  t5 += v * b2;
+  t6 += v * b3;
+  t7 += v * b4;
+  t8 += v * b5;
+  t9 += v * b6;
+  t10 += v * b7;
+  t11 += v * b8;
+  t12 += v * b9;
+  t13 += v * b10;
+  t14 += v * b11;
+  t15 += v * b12;
+  t16 += v * b13;
+  t17 += v * b14;
+  t18 += v * b15;
+  v = a[4];
+  t4 += v * b0;
+  t5 += v * b1;
+  t6 += v * b2;
+  t7 += v * b3;
+  t8 += v * b4;
+  t9 += v * b5;
+  t10 += v * b6;
+  t11 += v * b7;
+  t12 += v * b8;
+  t13 += v * b9;
+  t14 += v * b10;
+  t15 += v * b11;
+  t16 += v * b12;
+  t17 += v * b13;
+  t18 += v * b14;
+  t19 += v * b15;
+  v = a[5];
+  t5 += v * b0;
+  t6 += v * b1;
+  t7 += v * b2;
+  t8 += v * b3;
+  t9 += v * b4;
+  t10 += v * b5;
+  t11 += v * b6;
+  t12 += v * b7;
+  t13 += v * b8;
+  t14 += v * b9;
+  t15 += v * b10;
+  t16 += v * b11;
+  t17 += v * b12;
+  t18 += v * b13;
+  t19 += v * b14;
+  t20 += v * b15;
+  v = a[6];
+  t6 += v * b0;
+  t7 += v * b1;
+  t8 += v * b2;
+  t9 += v * b3;
+  t10 += v * b4;
+  t11 += v * b5;
+  t12 += v * b6;
+  t13 += v * b7;
+  t14 += v * b8;
+  t15 += v * b9;
+  t16 += v * b10;
+  t17 += v * b11;
+  t18 += v * b12;
+  t19 += v * b13;
+  t20 += v * b14;
+  t21 += v * b15;
+  v = a[7];
+  t7 += v * b0;
+  t8 += v * b1;
+  t9 += v * b2;
+  t10 += v * b3;
+  t11 += v * b4;
+  t12 += v * b5;
+  t13 += v * b6;
+  t14 += v * b7;
+  t15 += v * b8;
+  t16 += v * b9;
+  t17 += v * b10;
+  t18 += v * b11;
+  t19 += v * b12;
+  t20 += v * b13;
+  t21 += v * b14;
+  t22 += v * b15;
+  v = a[8];
+  t8 += v * b0;
+  t9 += v * b1;
+  t10 += v * b2;
+  t11 += v * b3;
+  t12 += v * b4;
+  t13 += v * b5;
+  t14 += v * b6;
+  t15 += v * b7;
+  t16 += v * b8;
+  t17 += v * b9;
+  t18 += v * b10;
+  t19 += v * b11;
+  t20 += v * b12;
+  t21 += v * b13;
+  t22 += v * b14;
+  t23 += v * b15;
+  v = a[9];
+  t9 += v * b0;
+  t10 += v * b1;
+  t11 += v * b2;
+  t12 += v * b3;
+  t13 += v * b4;
+  t14 += v * b5;
+  t15 += v * b6;
+  t16 += v * b7;
+  t17 += v * b8;
+  t18 += v * b9;
+  t19 += v * b10;
+  t20 += v * b11;
+  t21 += v * b12;
+  t22 += v * b13;
+  t23 += v * b14;
+  t24 += v * b15;
+  v = a[10];
+  t10 += v * b0;
+  t11 += v * b1;
+  t12 += v * b2;
+  t13 += v * b3;
+  t14 += v * b4;
+  t15 += v * b5;
+  t16 += v * b6;
+  t17 += v * b7;
+  t18 += v * b8;
+  t19 += v * b9;
+  t20 += v * b10;
+  t21 += v * b11;
+  t22 += v * b12;
+  t23 += v * b13;
+  t24 += v * b14;
+  t25 += v * b15;
+  v = a[11];
+  t11 += v * b0;
+  t12 += v * b1;
+  t13 += v * b2;
+  t14 += v * b3;
+  t15 += v * b4;
+  t16 += v * b5;
+  t17 += v * b6;
+  t18 += v * b7;
+  t19 += v * b8;
+  t20 += v * b9;
+  t21 += v * b10;
+  t22 += v * b11;
+  t23 += v * b12;
+  t24 += v * b13;
+  t25 += v * b14;
+  t26 += v * b15;
+  v = a[12];
+  t12 += v * b0;
+  t13 += v * b1;
+  t14 += v * b2;
+  t15 += v * b3;
+  t16 += v * b4;
+  t17 += v * b5;
+  t18 += v * b6;
+  t19 += v * b7;
+  t20 += v * b8;
+  t21 += v * b9;
+  t22 += v * b10;
+  t23 += v * b11;
+  t24 += v * b12;
+  t25 += v * b13;
+  t26 += v * b14;
+  t27 += v * b15;
+  v = a[13];
+  t13 += v * b0;
+  t14 += v * b1;
+  t15 += v * b2;
+  t16 += v * b3;
+  t17 += v * b4;
+  t18 += v * b5;
+  t19 += v * b6;
+  t20 += v * b7;
+  t21 += v * b8;
+  t22 += v * b9;
+  t23 += v * b10;
+  t24 += v * b11;
+  t25 += v * b12;
+  t26 += v * b13;
+  t27 += v * b14;
+  t28 += v * b15;
+  v = a[14];
+  t14 += v * b0;
+  t15 += v * b1;
+  t16 += v * b2;
+  t17 += v * b3;
+  t18 += v * b4;
+  t19 += v * b5;
+  t20 += v * b6;
+  t21 += v * b7;
+  t22 += v * b8;
+  t23 += v * b9;
+  t24 += v * b10;
+  t25 += v * b11;
+  t26 += v * b12;
+  t27 += v * b13;
+  t28 += v * b14;
+  t29 += v * b15;
+  v = a[15];
+  t15 += v * b0;
+  t16 += v * b1;
+  t17 += v * b2;
+  t18 += v * b3;
+  t19 += v * b4;
+  t20 += v * b5;
+  t21 += v * b6;
+  t22 += v * b7;
+  t23 += v * b8;
+  t24 += v * b9;
+  t25 += v * b10;
+  t26 += v * b11;
+  t27 += v * b12;
+  t28 += v * b13;
+  t29 += v * b14;
+  t30 += v * b15;
+  t0 += 38 * t16;
+  t1 += 38 * t17;
+  t2 += 38 * t18;
+  t3 += 38 * t19;
+  t4 += 38 * t20;
+  t5 += 38 * t21;
+  t6 += 38 * t22;
+  t7 += 38 * t23;
+  t8 += 38 * t24;
+  t9 += 38 * t25;
+  t10 += 38 * t26;
+  t11 += 38 * t27;
+  t12 += 38 * t28;
+  t13 += 38 * t29;
+  t14 += 38 * t30;
+  c = 1;
+  v = t0 + c + 65535;
+  c = Math.floor(v / 65536);
+  t0 = v - c * 65536;
+  v = t1 + c + 65535;
+  c = Math.floor(v / 65536);
+  t1 = v - c * 65536;
+  v = t2 + c + 65535;
+  c = Math.floor(v / 65536);
+  t2 = v - c * 65536;
+  v = t3 + c + 65535;
+  c = Math.floor(v / 65536);
+  t3 = v - c * 65536;
+  v = t4 + c + 65535;
+  c = Math.floor(v / 65536);
+  t4 = v - c * 65536;
+  v = t5 + c + 65535;
+  c = Math.floor(v / 65536);
+  t5 = v - c * 65536;
+  v = t6 + c + 65535;
+  c = Math.floor(v / 65536);
+  t6 = v - c * 65536;
+  v = t7 + c + 65535;
+  c = Math.floor(v / 65536);
+  t7 = v - c * 65536;
+  v = t8 + c + 65535;
+  c = Math.floor(v / 65536);
+  t8 = v - c * 65536;
+  v = t9 + c + 65535;
+  c = Math.floor(v / 65536);
+  t9 = v - c * 65536;
+  v = t10 + c + 65535;
+  c = Math.floor(v / 65536);
+  t10 = v - c * 65536;
+  v = t11 + c + 65535;
+  c = Math.floor(v / 65536);
+  t11 = v - c * 65536;
+  v = t12 + c + 65535;
+  c = Math.floor(v / 65536);
+  t12 = v - c * 65536;
+  v = t13 + c + 65535;
+  c = Math.floor(v / 65536);
+  t13 = v - c * 65536;
+  v = t14 + c + 65535;
+  c = Math.floor(v / 65536);
+  t14 = v - c * 65536;
+  v = t15 + c + 65535;
+  c = Math.floor(v / 65536);
+  t15 = v - c * 65536;
+  t0 += c - 1 + 37 * (c - 1);
+  c = 1;
+  v = t0 + c + 65535;
+  c = Math.floor(v / 65536);
+  t0 = v - c * 65536;
+  v = t1 + c + 65535;
+  c = Math.floor(v / 65536);
+  t1 = v - c * 65536;
+  v = t2 + c + 65535;
+  c = Math.floor(v / 65536);
+  t2 = v - c * 65536;
+  v = t3 + c + 65535;
+  c = Math.floor(v / 65536);
+  t3 = v - c * 65536;
+  v = t4 + c + 65535;
+  c = Math.floor(v / 65536);
+  t4 = v - c * 65536;
+  v = t5 + c + 65535;
+  c = Math.floor(v / 65536);
+  t5 = v - c * 65536;
+  v = t6 + c + 65535;
+  c = Math.floor(v / 65536);
+  t6 = v - c * 65536;
+  v = t7 + c + 65535;
+  c = Math.floor(v / 65536);
+  t7 = v - c * 65536;
+  v = t8 + c + 65535;
+  c = Math.floor(v / 65536);
+  t8 = v - c * 65536;
+  v = t9 + c + 65535;
+  c = Math.floor(v / 65536);
+  t9 = v - c * 65536;
+  v = t10 + c + 65535;
+  c = Math.floor(v / 65536);
+  t10 = v - c * 65536;
+  v = t11 + c + 65535;
+  c = Math.floor(v / 65536);
+  t11 = v - c * 65536;
+  v = t12 + c + 65535;
+  c = Math.floor(v / 65536);
+  t12 = v - c * 65536;
+  v = t13 + c + 65535;
+  c = Math.floor(v / 65536);
+  t13 = v - c * 65536;
+  v = t14 + c + 65535;
+  c = Math.floor(v / 65536);
+  t14 = v - c * 65536;
+  v = t15 + c + 65535;
+  c = Math.floor(v / 65536);
+  t15 = v - c * 65536;
+  t0 += c - 1 + 37 * (c - 1);
+  o[0] = t0;
+  o[1] = t1;
+  o[2] = t2;
+  o[3] = t3;
+  o[4] = t4;
+  o[5] = t5;
+  o[6] = t6;
+  o[7] = t7;
+  o[8] = t8;
+  o[9] = t9;
+  o[10] = t10;
+  o[11] = t11;
+  o[12] = t12;
+  o[13] = t13;
+  o[14] = t14;
+  o[15] = t15;
+}
+var forge$3 = forge$C;
+forge$3.kem = forge$3.kem || {};
+var BigInteger = forge$3.jsbn.BigInteger;
+forge$3.kem.rsa = {};
+forge$3.kem.rsa.create = function(kdf, options) {
+  options = options || {};
+  var prng2 = options.prng || forge$3.random;
+  var kem = {};
+  kem.encrypt = function(publicKey, keyLength) {
+    var byteLength = Math.ceil(publicKey.n.bitLength() / 8);
+    var r;
+    do {
+      r = new BigInteger(
+        forge$3.util.bytesToHex(prng2.getBytesSync(byteLength)),
+        16
+      ).mod(publicKey.n);
+    } while (r.compareTo(BigInteger.ONE) <= 0);
+    r = forge$3.util.hexToBytes(r.toString(16));
+    var zeros = byteLength - r.length;
+    if (zeros > 0) {
+      r = forge$3.util.fillString(String.fromCharCode(0), zeros) + r;
+    }
+    var encapsulation = publicKey.encrypt(r, "NONE");
+    var key = kdf.generate(r, keyLength);
+    return { encapsulation, key };
+  };
+  kem.decrypt = function(privateKey, encapsulation, keyLength) {
+    var r = privateKey.decrypt(encapsulation, "NONE");
+    return kdf.generate(r, keyLength);
+  };
+  return kem;
+};
+forge$3.kem.kdf1 = function(md, digestLength) {
+  _createKDF(this, md, 0, digestLength || md.digestLength);
+};
+forge$3.kem.kdf2 = function(md, digestLength) {
+  _createKDF(this, md, 1, digestLength || md.digestLength);
+};
+function _createKDF(kdf, md, counterStart, digestLength) {
+  kdf.generate = function(x, length) {
+    var key = new forge$3.util.ByteBuffer();
+    var k = Math.ceil(length / digestLength) + counterStart;
+    var c = new forge$3.util.ByteBuffer();
+    for (var i = counterStart; i < k; ++i) {
+      c.putInt32(i);
+      md.start();
+      md.update(x + c.getBytes());
+      var hash2 = md.digest();
+      key.putBytes(hash2.getBytes(digestLength));
+    }
+    key.truncate(key.length() - length);
+    return key.getBytes();
   };
 }
-var j = z;
-j.log = j.log || {};
-j.log.levels = [
+var forge$2 = forge$C;
+forge$2.log = forge$2.log || {};
+forge$2.log.levels = [
   "none",
   "error",
   "warning",
@@ -10558,165 +16137,208 @@ j.log.levels = [
   "verbose",
   "max"
 ];
-var Lr = {}, ha = [], lr = null;
-j.log.LEVEL_LOCKED = 2;
-j.log.NO_LEVEL_CHECK = 4;
-j.log.INTERPOLATE = 8;
-for (var At = 0; At < j.log.levels.length; ++At) {
-  var un = j.log.levels[At];
-  Lr[un] = {
-    index: At,
-    name: un.toUpperCase()
+var sLevelInfo = {};
+var sLoggers = [];
+var sConsoleLogger = null;
+forge$2.log.LEVEL_LOCKED = 1 << 1;
+forge$2.log.NO_LEVEL_CHECK = 1 << 2;
+forge$2.log.INTERPOLATE = 1 << 3;
+for (var i = 0; i < forge$2.log.levels.length; ++i) {
+  var level = forge$2.log.levels[i];
+  sLevelInfo[level] = {
+    index: i,
+    name: level.toUpperCase()
   };
 }
-j.log.logMessage = function(e) {
-  for (var t = Lr[e.level].index, a = 0; a < ha.length; ++a) {
-    var r = ha[a];
-    if (r.flags & j.log.NO_LEVEL_CHECK)
-      r.f(e);
-    else {
-      var n = Lr[r.level].index;
-      t <= n && r.f(r, e);
+forge$2.log.logMessage = function(message) {
+  var messageLevelIndex = sLevelInfo[message.level].index;
+  for (var i = 0; i < sLoggers.length; ++i) {
+    var logger2 = sLoggers[i];
+    if (logger2.flags & forge$2.log.NO_LEVEL_CHECK) {
+      logger2.f(message);
+    } else {
+      var loggerLevelIndex = sLevelInfo[logger2.level].index;
+      if (messageLevelIndex <= loggerLevelIndex) {
+        logger2.f(logger2, message);
+      }
     }
   }
 };
-j.log.prepareStandard = function(e) {
-  "standard" in e || (e.standard = Lr[e.level].name + //' ' + +message.timestamp +
-  " [" + e.category + "] " + e.message);
-};
-j.log.prepareFull = function(e) {
-  if (!("full" in e)) {
-    var t = [e.message];
-    t = t.concat([]), e.full = j.util.format.apply(this, t);
+forge$2.log.prepareStandard = function(message) {
+  if (!("standard" in message)) {
+    message.standard = sLevelInfo[message.level].name + //' ' + +message.timestamp +
+    " [" + message.category + "] " + message.message;
   }
 };
-j.log.prepareStandardFull = function(e) {
-  "standardFull" in e || (j.log.prepareStandard(e), e.standardFull = e.standard);
+forge$2.log.prepareFull = function(message) {
+  if (!("full" in message)) {
+    var args = [message.message];
+    args = args.concat([]);
+    message.full = forge$2.util.format.apply(this, args);
+  }
 };
-for (var ln = ["error", "warning", "info", "debug", "verbose"], At = 0; At < ln.length; ++At)
-  (function(t) {
-    j.log[t] = function(a, r) {
-      var n = Array.prototype.slice.call(arguments).slice(2), s = {
-        timestamp: /* @__PURE__ */ new Date(),
-        level: t,
-        category: a,
-        message: r,
-        arguments: n
-        /*standard*/
-        /*full*/
-        /*fullMessage*/
+forge$2.log.prepareStandardFull = function(message) {
+  if (!("standardFull" in message)) {
+    forge$2.log.prepareStandard(message);
+    message.standardFull = message.standard;
+  }
+};
+{
+  var levels = ["error", "warning", "info", "debug", "verbose"];
+  for (var i = 0; i < levels.length; ++i) {
+    (function(level) {
+      forge$2.log[level] = function(category, message) {
+        var args = Array.prototype.slice.call(arguments).slice(2);
+        var msg = {
+          timestamp: /* @__PURE__ */ new Date(),
+          level,
+          category,
+          message,
+          "arguments": args
+          /*standard*/
+          /*full*/
+          /*fullMessage*/
+        };
+        forge$2.log.logMessage(msg);
       };
-      j.log.logMessage(s);
-    };
-  })(ln[At]);
-j.log.makeLogger = function(e) {
-  var t = {
+    })(levels[i]);
+  }
+}
+forge$2.log.makeLogger = function(logFunction) {
+  var logger2 = {
     flags: 0,
-    f: e
+    f: logFunction
   };
-  return j.log.setLevel(t, "none"), t;
+  forge$2.log.setLevel(logger2, "none");
+  return logger2;
 };
-j.log.setLevel = function(e, t) {
-  var a = !1;
-  if (e && !(e.flags & j.log.LEVEL_LOCKED))
-    for (var r = 0; r < j.log.levels.length; ++r) {
-      var n = j.log.levels[r];
-      if (t == n) {
-        e.level = t, a = !0;
+forge$2.log.setLevel = function(logger2, level) {
+  var rval = false;
+  if (logger2 && !(logger2.flags & forge$2.log.LEVEL_LOCKED)) {
+    for (var i = 0; i < forge$2.log.levels.length; ++i) {
+      var aValidLevel = forge$2.log.levels[i];
+      if (level == aValidLevel) {
+        logger2.level = level;
+        rval = true;
         break;
       }
     }
-  return a;
+  }
+  return rval;
 };
-j.log.lock = function(e, t) {
-  typeof t > "u" || t ? e.flags |= j.log.LEVEL_LOCKED : e.flags &= ~j.log.LEVEL_LOCKED;
+forge$2.log.lock = function(logger2, lock) {
+  if (typeof lock === "undefined" || lock) {
+    logger2.flags |= forge$2.log.LEVEL_LOCKED;
+  } else {
+    logger2.flags &= ~forge$2.log.LEVEL_LOCKED;
+  }
 };
-j.log.addLogger = function(e) {
-  ha.push(e);
+forge$2.log.addLogger = function(logger2) {
+  sLoggers.push(logger2);
 };
-if (typeof console < "u" && "log" in console) {
-  var ar;
+if (typeof console !== "undefined" && "log" in console) {
+  var logger$1;
   if (console.error && console.warn && console.info && console.debug) {
-    var j0 = {
+    var levelHandlers = {
       error: console.error,
       warning: console.warn,
       info: console.info,
       debug: console.debug,
       verbose: console.debug
-    }, La = function(e, t) {
-      j.log.prepareStandard(t);
-      var a = j0[t.level], r = [t.standard];
-      r = r.concat(t.arguments.slice()), a.apply(console, r);
     };
-    ar = j.log.makeLogger(La);
+    var f = function(logger2, message) {
+      forge$2.log.prepareStandard(message);
+      var handler = levelHandlers[message.level];
+      var args = [message.standard];
+      args = args.concat(message["arguments"].slice());
+      handler.apply(console, args);
+    };
+    logger$1 = forge$2.log.makeLogger(f);
   } else {
-    var La = function(t, a) {
-      j.log.prepareStandardFull(a), console.log(a.standardFull);
+    var f = function(logger2, message) {
+      forge$2.log.prepareStandardFull(message);
+      console.log(message.standardFull);
     };
-    ar = j.log.makeLogger(La);
+    logger$1 = forge$2.log.makeLogger(f);
   }
-  j.log.setLevel(ar, "debug"), j.log.addLogger(ar), lr = ar;
-} else
+  forge$2.log.setLevel(logger$1, "debug");
+  forge$2.log.addLogger(logger$1);
+  sConsoleLogger = logger$1;
+} else {
   console = {
     log: function() {
     }
   };
-if (lr !== null && typeof window < "u" && window.location) {
-  var yr = new URL(window.location.href).searchParams;
-  if (yr.has("console.level") && j.log.setLevel(
-    lr,
-    yr.get("console.level").slice(-1)[0]
-  ), yr.has("console.lock")) {
-    var Z0 = yr.get("console.lock").slice(-1)[0];
-    Z0 == "true" && j.log.lock(lr);
+}
+if (sConsoleLogger !== null && typeof window !== "undefined" && window.location) {
+  var query = new URL(window.location.href).searchParams;
+  if (query.has("console.level")) {
+    forge$2.log.setLevel(
+      sConsoleLogger,
+      query.get("console.level").slice(-1)[0]
+    );
+  }
+  if (query.has("console.lock")) {
+    var lock = query.get("console.lock").slice(-1)[0];
+    if (lock == "true") {
+      forge$2.log.lock(sConsoleLogger);
+    }
   }
 }
-j.log.consoleLogger = lr;
-var D = z, C = D.asn1, Ge = D.pkcs7 = D.pkcs7 || {};
-Ge.messageFromPem = function(e) {
-  var t = D.pem.decode(e)[0];
-  if (t.type !== "PKCS7") {
-    var a = new Error('Could not convert PKCS#7 message from PEM; PEM header type is not "PKCS#7".');
-    throw a.headerType = t.type, a;
+forge$2.log.consoleLogger = sConsoleLogger;
+var forge$1 = forge$C;
+var asn1 = forge$1.asn1;
+var p7 = forge$1.pkcs7 = forge$1.pkcs7 || {};
+p7.messageFromPem = function(pem2) {
+  var msg = forge$1.pem.decode(pem2)[0];
+  if (msg.type !== "PKCS7") {
+    var error = new Error('Could not convert PKCS#7 message from PEM; PEM header type is not "PKCS#7".');
+    error.headerType = msg.type;
+    throw error;
   }
-  if (t.procType && t.procType.type === "ENCRYPTED")
+  if (msg.procType && msg.procType.type === "ENCRYPTED") {
     throw new Error("Could not convert PKCS#7 message from PEM; PEM is encrypted.");
-  var r = C.fromDer(t.body);
-  return Ge.messageFromAsn1(r);
-};
-Ge.messageToPem = function(e, t) {
-  var a = {
-    type: "PKCS7",
-    body: C.toDer(e.toAsn1()).getBytes()
-  };
-  return D.pem.encode(a, { maxline: t });
-};
-Ge.messageFromAsn1 = function(e) {
-  var t = {}, a = [];
-  if (!C.validate(e, Ge.asn1.contentInfoValidator, t, a)) {
-    var r = new Error("Cannot read PKCS#7 message. ASN.1 object is not an PKCS#7 ContentInfo.");
-    throw r.errors = a, r;
   }
-  var n = C.derToOid(t.contentType), s;
-  switch (n) {
-    case D.pki.oids.envelopedData:
-      s = Ge.createEnvelopedData();
+  var obj = asn1.fromDer(msg.body);
+  return p7.messageFromAsn1(obj);
+};
+p7.messageToPem = function(msg, maxline) {
+  var pemObj = {
+    type: "PKCS7",
+    body: asn1.toDer(msg.toAsn1()).getBytes()
+  };
+  return forge$1.pem.encode(pemObj, { maxline });
+};
+p7.messageFromAsn1 = function(obj) {
+  var capture = {};
+  var errors = [];
+  if (!asn1.validate(obj, p7.asn1.contentInfoValidator, capture, errors)) {
+    var error = new Error("Cannot read PKCS#7 message. ASN.1 object is not an PKCS#7 ContentInfo.");
+    error.errors = errors;
+    throw error;
+  }
+  var contentType = asn1.derToOid(capture.contentType);
+  var msg;
+  switch (contentType) {
+    case forge$1.pki.oids.envelopedData:
+      msg = p7.createEnvelopedData();
       break;
-    case D.pki.oids.encryptedData:
-      s = Ge.createEncryptedData();
+    case forge$1.pki.oids.encryptedData:
+      msg = p7.createEncryptedData();
       break;
-    case D.pki.oids.signedData:
-      s = Ge.createSignedData();
+    case forge$1.pki.oids.signedData:
+      msg = p7.createSignedData();
       break;
     default:
-      throw new Error("Cannot read PKCS#7 message. ContentType with OID " + n + " is not (yet) supported.");
+      throw new Error("Cannot read PKCS#7 message. ContentType with OID " + contentType + " is not (yet) supported.");
   }
-  return s.fromAsn1(t.content.value[0]), s;
+  msg.fromAsn1(capture.content.value[0]);
+  return msg;
 };
-Ge.createSignedData = function() {
-  var e = null;
-  return e = {
-    type: D.pki.oids.signedData,
+p7.createSignedData = function() {
+  var msg = null;
+  msg = {
+    type: forge$1.pki.oids.signedData,
     version: 1,
     certificates: [],
     crls: [],
@@ -10726,60 +16348,81 @@ Ge.createSignedData = function() {
     digestAlgorithmIdentifiers: [],
     contentInfo: null,
     signerInfos: [],
-    fromAsn1: function(r) {
-      if (ka(e, r, Ge.asn1.signedDataValidator), e.certificates = [], e.crls = [], e.digestAlgorithmIdentifiers = [], e.contentInfo = null, e.signerInfos = [], e.rawCapture.certificates)
-        for (var n = e.rawCapture.certificates.value, s = 0; s < n.length; ++s)
-          e.certificates.push(D.pki.certificateFromAsn1(n[s]));
+    fromAsn1: function(obj) {
+      _fromAsn1(msg, obj, p7.asn1.signedDataValidator);
+      msg.certificates = [];
+      msg.crls = [];
+      msg.digestAlgorithmIdentifiers = [];
+      msg.contentInfo = null;
+      msg.signerInfos = [];
+      if (msg.rawCapture.certificates) {
+        var certs = msg.rawCapture.certificates.value;
+        for (var i = 0; i < certs.length; ++i) {
+          msg.certificates.push(forge$1.pki.certificateFromAsn1(certs[i]));
+        }
+      }
     },
     toAsn1: function() {
-      e.contentInfo || e.sign();
-      for (var r = [], n = 0; n < e.certificates.length; ++n)
-        r.push(D.pki.certificateToAsn1(e.certificates[n]));
-      var s = [], i = C.create(C.Class.CONTEXT_SPECIFIC, 0, !0, [
-        C.create(C.Class.UNIVERSAL, C.Type.SEQUENCE, !0, [
+      if (!msg.contentInfo) {
+        msg.sign();
+      }
+      var certs = [];
+      for (var i = 0; i < msg.certificates.length; ++i) {
+        certs.push(forge$1.pki.certificateToAsn1(msg.certificates[i]));
+      }
+      var crls = [];
+      var signedData = asn1.create(asn1.Class.CONTEXT_SPECIFIC, 0, true, [
+        asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
           // Version
-          C.create(
-            C.Class.UNIVERSAL,
-            C.Type.INTEGER,
-            !1,
-            C.integerToDer(e.version).getBytes()
+          asn1.create(
+            asn1.Class.UNIVERSAL,
+            asn1.Type.INTEGER,
+            false,
+            asn1.integerToDer(msg.version).getBytes()
           ),
           // DigestAlgorithmIdentifiers
-          C.create(
-            C.Class.UNIVERSAL,
-            C.Type.SET,
-            !0,
-            e.digestAlgorithmIdentifiers
+          asn1.create(
+            asn1.Class.UNIVERSAL,
+            asn1.Type.SET,
+            true,
+            msg.digestAlgorithmIdentifiers
           ),
           // ContentInfo
-          e.contentInfo
+          msg.contentInfo
         ])
       ]);
-      return r.length > 0 && i.value[0].value.push(
-        C.create(C.Class.CONTEXT_SPECIFIC, 0, !0, r)
-      ), s.length > 0 && i.value[0].value.push(
-        C.create(C.Class.CONTEXT_SPECIFIC, 1, !0, s)
-      ), i.value[0].value.push(
-        C.create(
-          C.Class.UNIVERSAL,
-          C.Type.SET,
-          !0,
-          e.signerInfos
+      if (certs.length > 0) {
+        signedData.value[0].value.push(
+          asn1.create(asn1.Class.CONTEXT_SPECIFIC, 0, true, certs)
+        );
+      }
+      if (crls.length > 0) {
+        signedData.value[0].value.push(
+          asn1.create(asn1.Class.CONTEXT_SPECIFIC, 1, true, crls)
+        );
+      }
+      signedData.value[0].value.push(
+        asn1.create(
+          asn1.Class.UNIVERSAL,
+          asn1.Type.SET,
+          true,
+          msg.signerInfos
         )
-      ), C.create(
-        C.Class.UNIVERSAL,
-        C.Type.SEQUENCE,
-        !0,
+      );
+      return asn1.create(
+        asn1.Class.UNIVERSAL,
+        asn1.Type.SEQUENCE,
+        true,
         [
           // ContentType
-          C.create(
-            C.Class.UNIVERSAL,
-            C.Type.OID,
-            !1,
-            C.oidToDer(e.type).getBytes()
+          asn1.create(
+            asn1.Class.UNIVERSAL,
+            asn1.Type.OID,
+            false,
+            asn1.oidToDer(msg.type).getBytes()
           ),
           // [0] SignedData
-          i
+          signedData
         ]
       );
     },
@@ -10823,58 +16466,73 @@ Ge.createSignedData = function() {
      *          [authenticatedAttributes] an optional array of attributes
      *            to also sign along with the content.
      */
-    addSigner: function(r) {
-      var n = r.issuer, s = r.serialNumber;
-      if (r.certificate) {
-        var i = r.certificate;
-        typeof i == "string" && (i = D.pki.certificateFromPem(i)), n = i.issuer.attributes, s = i.serialNumber;
+    addSigner: function(signer) {
+      var issuer = signer.issuer;
+      var serialNumber = signer.serialNumber;
+      if (signer.certificate) {
+        var cert = signer.certificate;
+        if (typeof cert === "string") {
+          cert = forge$1.pki.certificateFromPem(cert);
+        }
+        issuer = cert.issuer.attributes;
+        serialNumber = cert.serialNumber;
       }
-      var o = r.key;
-      if (!o)
+      var key = signer.key;
+      if (!key) {
         throw new Error(
           "Could not add PKCS#7 signer; no private key specified."
         );
-      typeof o == "string" && (o = D.pki.privateKeyFromPem(o));
-      var l = r.digestAlgorithm || D.pki.oids.sha1;
-      switch (l) {
-        case D.pki.oids.sha1:
-        case D.pki.oids.sha256:
-        case D.pki.oids.sha384:
-        case D.pki.oids.sha512:
-        case D.pki.oids.md5:
+      }
+      if (typeof key === "string") {
+        key = forge$1.pki.privateKeyFromPem(key);
+      }
+      var digestAlgorithm = signer.digestAlgorithm || forge$1.pki.oids.sha1;
+      switch (digestAlgorithm) {
+        case forge$1.pki.oids.sha1:
+        case forge$1.pki.oids.sha256:
+        case forge$1.pki.oids.sha384:
+        case forge$1.pki.oids.sha512:
+        case forge$1.pki.oids.md5:
           break;
         default:
           throw new Error(
-            "Could not add PKCS#7 signer; unknown message digest algorithm: " + l
+            "Could not add PKCS#7 signer; unknown message digest algorithm: " + digestAlgorithm
           );
       }
-      var u = r.authenticatedAttributes || [];
-      if (u.length > 0) {
-        for (var f = !1, c = !1, v = 0; v < u.length; ++v) {
-          var m = u[v];
-          if (!f && m.type === D.pki.oids.contentType) {
-            if (f = !0, c)
+      var authenticatedAttributes = signer.authenticatedAttributes || [];
+      if (authenticatedAttributes.length > 0) {
+        var contentType = false;
+        var messageDigest = false;
+        for (var i = 0; i < authenticatedAttributes.length; ++i) {
+          var attr = authenticatedAttributes[i];
+          if (!contentType && attr.type === forge$1.pki.oids.contentType) {
+            contentType = true;
+            if (messageDigest) {
               break;
+            }
             continue;
           }
-          if (!c && m.type === D.pki.oids.messageDigest) {
-            if (c = !0, f)
+          if (!messageDigest && attr.type === forge$1.pki.oids.messageDigest) {
+            messageDigest = true;
+            if (contentType) {
               break;
+            }
             continue;
           }
         }
-        if (!f || !c)
+        if (!contentType || !messageDigest) {
           throw new Error("Invalid signer.authenticatedAttributes. If signer.authenticatedAttributes is specified, then it must contain at least two attributes, PKCS #9 content-type and PKCS #9 message-digest.");
+        }
       }
-      e.signers.push({
-        key: o,
+      msg.signers.push({
+        key,
         version: 1,
-        issuer: n,
-        serialNumber: s,
-        digestAlgorithm: l,
-        signatureAlgorithm: D.pki.oids.rsaEncryption,
+        issuer,
+        serialNumber,
+        digestAlgorithm,
+        signatureAlgorithm: forge$1.pki.oids.rsaEncryption,
         signature: null,
-        authenticatedAttributes: u,
+        authenticatedAttributes,
         unauthenticatedAttributes: []
       });
     },
@@ -10883,38 +16541,52 @@ Ge.createSignedData = function() {
      * @param options Options to apply when signing:
      *    [detached] boolean. If signing should be done in detached mode. Defaults to false.
      */
-    sign: function(r) {
-      if (r = r || {}, (typeof e.content != "object" || e.contentInfo === null) && (e.contentInfo = C.create(
-        C.Class.UNIVERSAL,
-        C.Type.SEQUENCE,
-        !0,
-        [
-          // ContentType
-          C.create(
-            C.Class.UNIVERSAL,
-            C.Type.OID,
-            !1,
-            C.oidToDer(D.pki.oids.data).getBytes()
-          )
-        ]
-      ), "content" in e)) {
-        var n;
-        e.content instanceof D.util.ByteBuffer ? n = e.content.bytes() : typeof e.content == "string" && (n = D.util.encodeUtf8(e.content)), r.detached ? e.detachedContent = C.create(C.Class.UNIVERSAL, C.Type.OCTETSTRING, !1, n) : e.contentInfo.value.push(
-          // [0] EXPLICIT content
-          C.create(C.Class.CONTEXT_SPECIFIC, 0, !0, [
-            C.create(
-              C.Class.UNIVERSAL,
-              C.Type.OCTETSTRING,
-              !1,
-              n
+    sign: function(options) {
+      options = options || {};
+      if (typeof msg.content !== "object" || msg.contentInfo === null) {
+        msg.contentInfo = asn1.create(
+          asn1.Class.UNIVERSAL,
+          asn1.Type.SEQUENCE,
+          true,
+          [
+            // ContentType
+            asn1.create(
+              asn1.Class.UNIVERSAL,
+              asn1.Type.OID,
+              false,
+              asn1.oidToDer(forge$1.pki.oids.data).getBytes()
             )
-          ])
+          ]
         );
+        if ("content" in msg) {
+          var content;
+          if (msg.content instanceof forge$1.util.ByteBuffer) {
+            content = msg.content.bytes();
+          } else if (typeof msg.content === "string") {
+            content = forge$1.util.encodeUtf8(msg.content);
+          }
+          if (options.detached) {
+            msg.detachedContent = asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OCTETSTRING, false, content);
+          } else {
+            msg.contentInfo.value.push(
+              // [0] EXPLICIT content
+              asn1.create(asn1.Class.CONTEXT_SPECIFIC, 0, true, [
+                asn1.create(
+                  asn1.Class.UNIVERSAL,
+                  asn1.Type.OCTETSTRING,
+                  false,
+                  content
+                )
+              ])
+            );
+          }
+        }
       }
-      if (e.signers.length !== 0) {
-        var s = t();
-        a(s);
+      if (msg.signers.length === 0) {
+        return;
       }
+      var mds = addDigestAlgorithmIds();
+      addSignerInfos(mds);
     },
     verify: function() {
       throw new Error("PKCS#7 signature verification not yet implemented.");
@@ -10924,157 +16596,198 @@ Ge.createSignedData = function() {
      *
      * @param cert the certificate to add.
      */
-    addCertificate: function(r) {
-      typeof r == "string" && (r = D.pki.certificateFromPem(r)), e.certificates.push(r);
+    addCertificate: function(cert) {
+      if (typeof cert === "string") {
+        cert = forge$1.pki.certificateFromPem(cert);
+      }
+      msg.certificates.push(cert);
     },
     /**
      * Add a certificate revokation list.
      *
      * @param crl the certificate revokation list to add.
      */
-    addCertificateRevokationList: function(r) {
+    addCertificateRevokationList: function(crl) {
       throw new Error("PKCS#7 CRL support not yet implemented.");
     }
-  }, e;
-  function t() {
-    for (var r = {}, n = 0; n < e.signers.length; ++n) {
-      var s = e.signers[n], i = s.digestAlgorithm;
-      i in r || (r[i] = D.md[D.pki.oids[i]].create()), s.authenticatedAttributes.length === 0 ? s.md = r[i] : s.md = D.md[D.pki.oids[i]].create();
+  };
+  return msg;
+  function addDigestAlgorithmIds() {
+    var mds = {};
+    for (var i = 0; i < msg.signers.length; ++i) {
+      var signer = msg.signers[i];
+      var oid = signer.digestAlgorithm;
+      if (!(oid in mds)) {
+        mds[oid] = forge$1.md[forge$1.pki.oids[oid]].create();
+      }
+      if (signer.authenticatedAttributes.length === 0) {
+        signer.md = mds[oid];
+      } else {
+        signer.md = forge$1.md[forge$1.pki.oids[oid]].create();
+      }
     }
-    e.digestAlgorithmIdentifiers = [];
-    for (var i in r)
-      e.digestAlgorithmIdentifiers.push(
+    msg.digestAlgorithmIdentifiers = [];
+    for (var oid in mds) {
+      msg.digestAlgorithmIdentifiers.push(
         // AlgorithmIdentifier
-        C.create(C.Class.UNIVERSAL, C.Type.SEQUENCE, !0, [
+        asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
           // algorithm
-          C.create(
-            C.Class.UNIVERSAL,
-            C.Type.OID,
-            !1,
-            C.oidToDer(i).getBytes()
+          asn1.create(
+            asn1.Class.UNIVERSAL,
+            asn1.Type.OID,
+            false,
+            asn1.oidToDer(oid).getBytes()
           ),
           // parameters (null)
-          C.create(C.Class.UNIVERSAL, C.Type.NULL, !1, "")
+          asn1.create(asn1.Class.UNIVERSAL, asn1.Type.NULL, false, "")
         ])
       );
-    return r;
+    }
+    return mds;
   }
-  function a(r) {
-    var n;
-    if (e.detachedContent ? n = e.detachedContent : (n = e.contentInfo.value[1], n = n.value[0]), !n)
+  function addSignerInfos(mds) {
+    var content;
+    if (msg.detachedContent) {
+      content = msg.detachedContent;
+    } else {
+      content = msg.contentInfo.value[1];
+      content = content.value[0];
+    }
+    if (!content) {
       throw new Error(
         "Could not sign PKCS#7 message; there is no content to sign."
       );
-    var s = C.derToOid(e.contentInfo.value[0].value), i = C.toDer(n);
-    i.getByte(), C.getBerValueLength(i), i = i.getBytes();
-    for (var o in r)
-      r[o].start().update(i);
-    for (var l = /* @__PURE__ */ new Date(), u = 0; u < e.signers.length; ++u) {
-      var f = e.signers[u];
-      if (f.authenticatedAttributes.length === 0) {
-        if (s !== D.pki.oids.data)
+    }
+    var contentType = asn1.derToOid(msg.contentInfo.value[0].value);
+    var bytes = asn1.toDer(content);
+    bytes.getByte();
+    asn1.getBerValueLength(bytes);
+    bytes = bytes.getBytes();
+    for (var oid in mds) {
+      mds[oid].start().update(bytes);
+    }
+    var signingTime = /* @__PURE__ */ new Date();
+    for (var i = 0; i < msg.signers.length; ++i) {
+      var signer = msg.signers[i];
+      if (signer.authenticatedAttributes.length === 0) {
+        if (contentType !== forge$1.pki.oids.data) {
           throw new Error(
             "Invalid signer; authenticatedAttributes must be present when the ContentInfo content type is not PKCS#7 Data."
           );
+        }
       } else {
-        f.authenticatedAttributesAsn1 = C.create(
-          C.Class.CONTEXT_SPECIFIC,
+        signer.authenticatedAttributesAsn1 = asn1.create(
+          asn1.Class.CONTEXT_SPECIFIC,
           0,
-          !0,
+          true,
           []
         );
-        for (var c = C.create(
-          C.Class.UNIVERSAL,
-          C.Type.SET,
-          !0,
+        var attrsAsn1 = asn1.create(
+          asn1.Class.UNIVERSAL,
+          asn1.Type.SET,
+          true,
           []
-        ), v = 0; v < f.authenticatedAttributes.length; ++v) {
-          var m = f.authenticatedAttributes[v];
-          m.type === D.pki.oids.messageDigest ? m.value = r[f.digestAlgorithm].digest() : m.type === D.pki.oids.signingTime && (m.value || (m.value = l)), c.value.push(da(m)), f.authenticatedAttributesAsn1.value.push(da(m));
+        );
+        for (var ai = 0; ai < signer.authenticatedAttributes.length; ++ai) {
+          var attr = signer.authenticatedAttributes[ai];
+          if (attr.type === forge$1.pki.oids.messageDigest) {
+            attr.value = mds[signer.digestAlgorithm].digest();
+          } else if (attr.type === forge$1.pki.oids.signingTime) {
+            if (!attr.value) {
+              attr.value = signingTime;
+            }
+          }
+          attrsAsn1.value.push(_attributeToAsn1(attr));
+          signer.authenticatedAttributesAsn1.value.push(_attributeToAsn1(attr));
         }
-        i = C.toDer(c).getBytes(), f.md.start().update(i);
+        bytes = asn1.toDer(attrsAsn1).getBytes();
+        signer.md.start().update(bytes);
       }
-      f.signature = f.key.sign(f.md, "RSASSA-PKCS1-V1_5");
+      signer.signature = signer.key.sign(signer.md, "RSASSA-PKCS1-V1_5");
     }
-    e.signerInfos = nu(e.signers);
+    msg.signerInfos = _signersToAsn1(msg.signers);
   }
 };
-Ge.createEncryptedData = function() {
-  var e = null;
-  return e = {
-    type: D.pki.oids.encryptedData,
+p7.createEncryptedData = function() {
+  var msg = null;
+  msg = {
+    type: forge$1.pki.oids.encryptedData,
     version: 0,
     encryptedContent: {
-      algorithm: D.pki.oids["aes256-CBC"]
+      algorithm: forge$1.pki.oids["aes256-CBC"]
     },
     /**
      * Reads an EncryptedData content block (in ASN.1 format)
      *
      * @param obj The ASN.1 representation of the EncryptedData content block
      */
-    fromAsn1: function(t) {
-      ka(e, t, Ge.asn1.encryptedDataValidator);
+    fromAsn1: function(obj) {
+      _fromAsn1(msg, obj, p7.asn1.encryptedDataValidator);
     },
     /**
      * Decrypt encrypted content
      *
      * @param key The (symmetric) key as a byte buffer
      */
-    decrypt: function(t) {
-      t !== void 0 && (e.encryptedContent.key = t), ri(e);
+    decrypt: function(key) {
+      if (key !== void 0) {
+        msg.encryptedContent.key = key;
+      }
+      _decryptContent(msg);
     }
-  }, e;
+  };
+  return msg;
 };
-Ge.createEnvelopedData = function() {
-  var e = null;
-  return e = {
-    type: D.pki.oids.envelopedData,
+p7.createEnvelopedData = function() {
+  var msg = null;
+  msg = {
+    type: forge$1.pki.oids.envelopedData,
     version: 0,
     recipients: [],
     encryptedContent: {
-      algorithm: D.pki.oids["aes256-CBC"]
+      algorithm: forge$1.pki.oids["aes256-CBC"]
     },
     /**
      * Reads an EnvelopedData content block (in ASN.1 format)
      *
      * @param obj the ASN.1 representation of the EnvelopedData content block.
      */
-    fromAsn1: function(t) {
-      var a = ka(e, t, Ge.asn1.envelopedDataValidator);
-      e.recipients = tu(a.recipientInfos.value);
+    fromAsn1: function(obj) {
+      var capture = _fromAsn1(msg, obj, p7.asn1.envelopedDataValidator);
+      msg.recipients = _recipientsFromAsn1(capture.recipientInfos.value);
     },
     toAsn1: function() {
-      return C.create(C.Class.UNIVERSAL, C.Type.SEQUENCE, !0, [
+      return asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
         // ContentType
-        C.create(
-          C.Class.UNIVERSAL,
-          C.Type.OID,
-          !1,
-          C.oidToDer(e.type).getBytes()
+        asn1.create(
+          asn1.Class.UNIVERSAL,
+          asn1.Type.OID,
+          false,
+          asn1.oidToDer(msg.type).getBytes()
         ),
         // [0] EnvelopedData
-        C.create(C.Class.CONTEXT_SPECIFIC, 0, !0, [
-          C.create(C.Class.UNIVERSAL, C.Type.SEQUENCE, !0, [
+        asn1.create(asn1.Class.CONTEXT_SPECIFIC, 0, true, [
+          asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
             // Version
-            C.create(
-              C.Class.UNIVERSAL,
-              C.Type.INTEGER,
-              !1,
-              C.integerToDer(e.version).getBytes()
+            asn1.create(
+              asn1.Class.UNIVERSAL,
+              asn1.Type.INTEGER,
+              false,
+              asn1.integerToDer(msg.version).getBytes()
             ),
             // RecipientInfos
-            C.create(
-              C.Class.UNIVERSAL,
-              C.Type.SET,
-              !0,
-              ru(e.recipients)
+            asn1.create(
+              asn1.Class.UNIVERSAL,
+              asn1.Type.SET,
+              true,
+              _recipientsToAsn1(msg.recipients)
             ),
             // EncryptedContentInfo
-            C.create(
-              C.Class.UNIVERSAL,
-              C.Type.SEQUENCE,
-              !0,
-              iu(e.encryptedContent)
+            asn1.create(
+              asn1.Class.UNIVERSAL,
+              asn1.Type.SEQUENCE,
+              true,
+              _encryptedContentToAsn1(msg.encryptedContent)
             )
           ])
         ])
@@ -11087,17 +16800,26 @@ Ge.createEnvelopedData = function() {
      *
      * @return the recipient object.
      */
-    findRecipient: function(t) {
-      for (var a = t.issuer.attributes, r = 0; r < e.recipients.length; ++r) {
-        var n = e.recipients[r], s = n.issuer;
-        if (n.serialNumber === t.serialNumber && s.length === a.length) {
-          for (var i = !0, o = 0; o < a.length; ++o)
-            if (s[o].type !== a[o].type || s[o].value !== a[o].value) {
-              i = !1;
-              break;
-            }
-          if (i)
-            return n;
+    findRecipient: function(cert) {
+      var sAttr = cert.issuer.attributes;
+      for (var i = 0; i < msg.recipients.length; ++i) {
+        var r = msg.recipients[i];
+        var rAttr = r.issuer;
+        if (r.serialNumber !== cert.serialNumber) {
+          continue;
+        }
+        if (rAttr.length !== sAttr.length) {
+          continue;
+        }
+        var match = true;
+        for (var j = 0; j < sAttr.length; ++j) {
+          if (rAttr[j].type !== sAttr[j].type || rAttr[j].value !== sAttr[j].value) {
+            match = false;
+            break;
+          }
+        }
+        if (match) {
+          return r;
         }
       }
       return null;
@@ -11108,35 +16830,36 @@ Ge.createEnvelopedData = function() {
      * @param recipient The recipient object related to the private key
      * @param privKey The (RSA) private key object
      */
-    decrypt: function(t, a) {
-      if (e.encryptedContent.key === void 0 && t !== void 0 && a !== void 0)
-        switch (t.encryptedContent.algorithm) {
-          case D.pki.oids.rsaEncryption:
-          case D.pki.oids.desCBC:
-            var r = a.decrypt(t.encryptedContent.content);
-            e.encryptedContent.key = D.util.createBuffer(r);
+    decrypt: function(recipient, privKey) {
+      if (msg.encryptedContent.key === void 0 && recipient !== void 0 && privKey !== void 0) {
+        switch (recipient.encryptedContent.algorithm) {
+          case forge$1.pki.oids.rsaEncryption:
+          case forge$1.pki.oids.desCBC:
+            var key = privKey.decrypt(recipient.encryptedContent.content);
+            msg.encryptedContent.key = forge$1.util.createBuffer(key);
             break;
           default:
-            throw new Error("Unsupported asymmetric cipher, OID " + t.encryptedContent.algorithm);
+            throw new Error("Unsupported asymmetric cipher, OID " + recipient.encryptedContent.algorithm);
         }
-      ri(e);
+      }
+      _decryptContent(msg);
     },
     /**
      * Add (another) entity to list of recipients.
      *
      * @param cert The certificate of the entity to add.
      */
-    addRecipient: function(t) {
-      e.recipients.push({
+    addRecipient: function(cert) {
+      msg.recipients.push({
         version: 0,
-        issuer: t.issuer.attributes,
-        serialNumber: t.serialNumber,
+        issuer: cert.issuer.attributes,
+        serialNumber: cert.serialNumber,
         encryptedContent: {
           // We simply assume rsaEncryption here, since forge.pki only
           // supports RSA so far.  If the PKI module supports other
           // ciphers one day, we need to modify this one as well.
-          algorithm: D.pki.oids.rsaEncryption,
-          key: t.publicKey
+          algorithm: forge$1.pki.oids.rsaEncryption,
+          key: cert.publicKey
         }
       });
     },
@@ -11153,460 +16876,568 @@ Ge.createEnvelopedData = function() {
      * @param [key] The key to be used for symmetric encryption.
      * @param [cipher] The OID of the symmetric cipher to use.
      */
-    encrypt: function(t, a) {
-      if (e.encryptedContent.content === void 0) {
-        a = a || e.encryptedContent.algorithm, t = t || e.encryptedContent.key;
-        var r, n, s;
-        switch (a) {
-          case D.pki.oids["aes128-CBC"]:
-            r = 16, n = 16, s = D.aes.createEncryptionCipher;
+    encrypt: function(key, cipher) {
+      if (msg.encryptedContent.content === void 0) {
+        cipher = cipher || msg.encryptedContent.algorithm;
+        key = key || msg.encryptedContent.key;
+        var keyLen, ivLen, ciphFn;
+        switch (cipher) {
+          case forge$1.pki.oids["aes128-CBC"]:
+            keyLen = 16;
+            ivLen = 16;
+            ciphFn = forge$1.aes.createEncryptionCipher;
             break;
-          case D.pki.oids["aes192-CBC"]:
-            r = 24, n = 16, s = D.aes.createEncryptionCipher;
+          case forge$1.pki.oids["aes192-CBC"]:
+            keyLen = 24;
+            ivLen = 16;
+            ciphFn = forge$1.aes.createEncryptionCipher;
             break;
-          case D.pki.oids["aes256-CBC"]:
-            r = 32, n = 16, s = D.aes.createEncryptionCipher;
+          case forge$1.pki.oids["aes256-CBC"]:
+            keyLen = 32;
+            ivLen = 16;
+            ciphFn = forge$1.aes.createEncryptionCipher;
             break;
-          case D.pki.oids["des-EDE3-CBC"]:
-            r = 24, n = 8, s = D.des.createEncryptionCipher;
+          case forge$1.pki.oids["des-EDE3-CBC"]:
+            keyLen = 24;
+            ivLen = 8;
+            ciphFn = forge$1.des.createEncryptionCipher;
             break;
           default:
-            throw new Error("Unsupported symmetric cipher, OID " + a);
+            throw new Error("Unsupported symmetric cipher, OID " + cipher);
         }
-        if (t === void 0)
-          t = D.util.createBuffer(D.random.getBytes(r));
-        else if (t.length() != r)
-          throw new Error("Symmetric key has wrong length; got " + t.length() + " bytes, expected " + r + ".");
-        e.encryptedContent.algorithm = a, e.encryptedContent.key = t, e.encryptedContent.parameter = D.util.createBuffer(
-          D.random.getBytes(n)
+        if (key === void 0) {
+          key = forge$1.util.createBuffer(forge$1.random.getBytes(keyLen));
+        } else if (key.length() != keyLen) {
+          throw new Error("Symmetric key has wrong length; got " + key.length() + " bytes, expected " + keyLen + ".");
+        }
+        msg.encryptedContent.algorithm = cipher;
+        msg.encryptedContent.key = key;
+        msg.encryptedContent.parameter = forge$1.util.createBuffer(
+          forge$1.random.getBytes(ivLen)
         );
-        var i = s(t);
-        if (i.start(e.encryptedContent.parameter.copy()), i.update(e.content), !i.finish())
+        var ciph = ciphFn(key);
+        ciph.start(msg.encryptedContent.parameter.copy());
+        ciph.update(msg.content);
+        if (!ciph.finish()) {
           throw new Error("Symmetric encryption failed.");
-        e.encryptedContent.content = i.output;
+        }
+        msg.encryptedContent.content = ciph.output;
       }
-      for (var o = 0; o < e.recipients.length; ++o) {
-        var l = e.recipients[o];
-        if (l.encryptedContent.content === void 0)
-          switch (l.encryptedContent.algorithm) {
-            case D.pki.oids.rsaEncryption:
-              l.encryptedContent.content = l.encryptedContent.key.encrypt(
-                e.encryptedContent.key.data
-              );
-              break;
-            default:
-              throw new Error("Unsupported asymmetric cipher, OID " + l.encryptedContent.algorithm);
-          }
+      for (var i = 0; i < msg.recipients.length; ++i) {
+        var recipient = msg.recipients[i];
+        if (recipient.encryptedContent.content !== void 0) {
+          continue;
+        }
+        switch (recipient.encryptedContent.algorithm) {
+          case forge$1.pki.oids.rsaEncryption:
+            recipient.encryptedContent.content = recipient.encryptedContent.key.encrypt(
+              msg.encryptedContent.key.data
+            );
+            break;
+          default:
+            throw new Error("Unsupported asymmetric cipher, OID " + recipient.encryptedContent.algorithm);
+        }
       }
     }
-  }, e;
+  };
+  return msg;
 };
-function J0(e) {
-  var t = {}, a = [];
-  if (!C.validate(e, Ge.asn1.recipientInfoValidator, t, a)) {
-    var r = new Error("Cannot read PKCS#7 RecipientInfo. ASN.1 object is not an PKCS#7 RecipientInfo.");
-    throw r.errors = a, r;
+function _recipientFromAsn1(obj) {
+  var capture = {};
+  var errors = [];
+  if (!asn1.validate(obj, p7.asn1.recipientInfoValidator, capture, errors)) {
+    var error = new Error("Cannot read PKCS#7 RecipientInfo. ASN.1 object is not an PKCS#7 RecipientInfo.");
+    error.errors = errors;
+    throw error;
   }
   return {
-    version: t.version.charCodeAt(0),
-    issuer: D.pki.RDNAttributesAsArray(t.issuer),
-    serialNumber: D.util.createBuffer(t.serial).toHex(),
+    version: capture.version.charCodeAt(0),
+    issuer: forge$1.pki.RDNAttributesAsArray(capture.issuer),
+    serialNumber: forge$1.util.createBuffer(capture.serial).toHex(),
     encryptedContent: {
-      algorithm: C.derToOid(t.encAlgorithm),
-      parameter: t.encParameter ? t.encParameter.value : void 0,
-      content: t.encKey
+      algorithm: asn1.derToOid(capture.encAlgorithm),
+      parameter: capture.encParameter ? capture.encParameter.value : void 0,
+      content: capture.encKey
     }
   };
 }
-function eu(e) {
-  return C.create(C.Class.UNIVERSAL, C.Type.SEQUENCE, !0, [
+function _recipientToAsn1(obj) {
+  return asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
     // Version
-    C.create(
-      C.Class.UNIVERSAL,
-      C.Type.INTEGER,
-      !1,
-      C.integerToDer(e.version).getBytes()
+    asn1.create(
+      asn1.Class.UNIVERSAL,
+      asn1.Type.INTEGER,
+      false,
+      asn1.integerToDer(obj.version).getBytes()
     ),
     // IssuerAndSerialNumber
-    C.create(C.Class.UNIVERSAL, C.Type.SEQUENCE, !0, [
+    asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
       // Name
-      D.pki.distinguishedNameToAsn1({ attributes: e.issuer }),
+      forge$1.pki.distinguishedNameToAsn1({ attributes: obj.issuer }),
       // Serial
-      C.create(
-        C.Class.UNIVERSAL,
-        C.Type.INTEGER,
-        !1,
-        D.util.hexToBytes(e.serialNumber)
+      asn1.create(
+        asn1.Class.UNIVERSAL,
+        asn1.Type.INTEGER,
+        false,
+        forge$1.util.hexToBytes(obj.serialNumber)
       )
     ]),
     // KeyEncryptionAlgorithmIdentifier
-    C.create(C.Class.UNIVERSAL, C.Type.SEQUENCE, !0, [
+    asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
       // Algorithm
-      C.create(
-        C.Class.UNIVERSAL,
-        C.Type.OID,
-        !1,
-        C.oidToDer(e.encryptedContent.algorithm).getBytes()
+      asn1.create(
+        asn1.Class.UNIVERSAL,
+        asn1.Type.OID,
+        false,
+        asn1.oidToDer(obj.encryptedContent.algorithm).getBytes()
       ),
       // Parameter, force NULL, only RSA supported for now.
-      C.create(C.Class.UNIVERSAL, C.Type.NULL, !1, "")
+      asn1.create(asn1.Class.UNIVERSAL, asn1.Type.NULL, false, "")
     ]),
     // EncryptedKey
-    C.create(
-      C.Class.UNIVERSAL,
-      C.Type.OCTETSTRING,
-      !1,
-      e.encryptedContent.content
+    asn1.create(
+      asn1.Class.UNIVERSAL,
+      asn1.Type.OCTETSTRING,
+      false,
+      obj.encryptedContent.content
     )
   ]);
 }
-function tu(e) {
-  for (var t = [], a = 0; a < e.length; ++a)
-    t.push(J0(e[a]));
-  return t;
+function _recipientsFromAsn1(infos) {
+  var ret = [];
+  for (var i = 0; i < infos.length; ++i) {
+    ret.push(_recipientFromAsn1(infos[i]));
+  }
+  return ret;
 }
-function ru(e) {
-  for (var t = [], a = 0; a < e.length; ++a)
-    t.push(eu(e[a]));
-  return t;
+function _recipientsToAsn1(recipients) {
+  var ret = [];
+  for (var i = 0; i < recipients.length; ++i) {
+    ret.push(_recipientToAsn1(recipients[i]));
+  }
+  return ret;
 }
-function au(e) {
-  var t = C.create(C.Class.UNIVERSAL, C.Type.SEQUENCE, !0, [
+function _signerToAsn1(obj) {
+  var rval = asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
     // version
-    C.create(
-      C.Class.UNIVERSAL,
-      C.Type.INTEGER,
-      !1,
-      C.integerToDer(e.version).getBytes()
+    asn1.create(
+      asn1.Class.UNIVERSAL,
+      asn1.Type.INTEGER,
+      false,
+      asn1.integerToDer(obj.version).getBytes()
     ),
     // issuerAndSerialNumber
-    C.create(C.Class.UNIVERSAL, C.Type.SEQUENCE, !0, [
+    asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
       // name
-      D.pki.distinguishedNameToAsn1({ attributes: e.issuer }),
+      forge$1.pki.distinguishedNameToAsn1({ attributes: obj.issuer }),
       // serial
-      C.create(
-        C.Class.UNIVERSAL,
-        C.Type.INTEGER,
-        !1,
-        D.util.hexToBytes(e.serialNumber)
+      asn1.create(
+        asn1.Class.UNIVERSAL,
+        asn1.Type.INTEGER,
+        false,
+        forge$1.util.hexToBytes(obj.serialNumber)
       )
     ]),
     // digestAlgorithm
-    C.create(C.Class.UNIVERSAL, C.Type.SEQUENCE, !0, [
+    asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
       // algorithm
-      C.create(
-        C.Class.UNIVERSAL,
-        C.Type.OID,
-        !1,
-        C.oidToDer(e.digestAlgorithm).getBytes()
+      asn1.create(
+        asn1.Class.UNIVERSAL,
+        asn1.Type.OID,
+        false,
+        asn1.oidToDer(obj.digestAlgorithm).getBytes()
       ),
       // parameters (null)
-      C.create(C.Class.UNIVERSAL, C.Type.NULL, !1, "")
+      asn1.create(asn1.Class.UNIVERSAL, asn1.Type.NULL, false, "")
     ])
   ]);
-  if (e.authenticatedAttributesAsn1 && t.value.push(e.authenticatedAttributesAsn1), t.value.push(C.create(C.Class.UNIVERSAL, C.Type.SEQUENCE, !0, [
+  if (obj.authenticatedAttributesAsn1) {
+    rval.value.push(obj.authenticatedAttributesAsn1);
+  }
+  rval.value.push(asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
     // algorithm
-    C.create(
-      C.Class.UNIVERSAL,
-      C.Type.OID,
-      !1,
-      C.oidToDer(e.signatureAlgorithm).getBytes()
+    asn1.create(
+      asn1.Class.UNIVERSAL,
+      asn1.Type.OID,
+      false,
+      asn1.oidToDer(obj.signatureAlgorithm).getBytes()
     ),
     // parameters (null)
-    C.create(C.Class.UNIVERSAL, C.Type.NULL, !1, "")
-  ])), t.value.push(C.create(
-    C.Class.UNIVERSAL,
-    C.Type.OCTETSTRING,
-    !1,
-    e.signature
-  )), e.unauthenticatedAttributes.length > 0) {
-    for (var a = C.create(C.Class.CONTEXT_SPECIFIC, 1, !0, []), r = 0; r < e.unauthenticatedAttributes.length; ++r) {
-      var n = e.unauthenticatedAttributes[r];
-      a.values.push(da(n));
+    asn1.create(asn1.Class.UNIVERSAL, asn1.Type.NULL, false, "")
+  ]));
+  rval.value.push(asn1.create(
+    asn1.Class.UNIVERSAL,
+    asn1.Type.OCTETSTRING,
+    false,
+    obj.signature
+  ));
+  if (obj.unauthenticatedAttributes.length > 0) {
+    var attrsAsn1 = asn1.create(asn1.Class.CONTEXT_SPECIFIC, 1, true, []);
+    for (var i = 0; i < obj.unauthenticatedAttributes.length; ++i) {
+      var attr = obj.unauthenticatedAttributes[i];
+      attrsAsn1.values.push(_attributeToAsn1(attr));
     }
-    t.value.push(a);
+    rval.value.push(attrsAsn1);
   }
-  return t;
+  return rval;
 }
-function nu(e) {
-  for (var t = [], a = 0; a < e.length; ++a)
-    t.push(au(e[a]));
-  return t;
+function _signersToAsn1(signers) {
+  var ret = [];
+  for (var i = 0; i < signers.length; ++i) {
+    ret.push(_signerToAsn1(signers[i]));
+  }
+  return ret;
 }
-function da(e) {
-  var t;
-  if (e.type === D.pki.oids.contentType)
-    t = C.create(
-      C.Class.UNIVERSAL,
-      C.Type.OID,
-      !1,
-      C.oidToDer(e.value).getBytes()
+function _attributeToAsn1(attr) {
+  var value;
+  if (attr.type === forge$1.pki.oids.contentType) {
+    value = asn1.create(
+      asn1.Class.UNIVERSAL,
+      asn1.Type.OID,
+      false,
+      asn1.oidToDer(attr.value).getBytes()
     );
-  else if (e.type === D.pki.oids.messageDigest)
-    t = C.create(
-      C.Class.UNIVERSAL,
-      C.Type.OCTETSTRING,
-      !1,
-      e.value.bytes()
+  } else if (attr.type === forge$1.pki.oids.messageDigest) {
+    value = asn1.create(
+      asn1.Class.UNIVERSAL,
+      asn1.Type.OCTETSTRING,
+      false,
+      attr.value.bytes()
     );
-  else if (e.type === D.pki.oids.signingTime) {
-    var a = /* @__PURE__ */ new Date("1950-01-01T00:00:00Z"), r = /* @__PURE__ */ new Date("2050-01-01T00:00:00Z"), n = e.value;
-    if (typeof n == "string") {
-      var s = Date.parse(n);
-      isNaN(s) ? n.length === 13 ? n = C.utcTimeToDate(n) : n = C.generalizedTimeToDate(n) : n = new Date(s);
+  } else if (attr.type === forge$1.pki.oids.signingTime) {
+    var jan_1_19502 = /* @__PURE__ */ new Date("1950-01-01T00:00:00Z");
+    var jan_1_20502 = /* @__PURE__ */ new Date("2050-01-01T00:00:00Z");
+    var date = attr.value;
+    if (typeof date === "string") {
+      var timestamp = Date.parse(date);
+      if (!isNaN(timestamp)) {
+        date = new Date(timestamp);
+      } else if (date.length === 13) {
+        date = asn1.utcTimeToDate(date);
+      } else {
+        date = asn1.generalizedTimeToDate(date);
+      }
     }
-    n >= a && n < r ? t = C.create(
-      C.Class.UNIVERSAL,
-      C.Type.UTCTIME,
-      !1,
-      C.dateToUtcTime(n)
-    ) : t = C.create(
-      C.Class.UNIVERSAL,
-      C.Type.GENERALIZEDTIME,
-      !1,
-      C.dateToGeneralizedTime(n)
-    );
+    if (date >= jan_1_19502 && date < jan_1_20502) {
+      value = asn1.create(
+        asn1.Class.UNIVERSAL,
+        asn1.Type.UTCTIME,
+        false,
+        asn1.dateToUtcTime(date)
+      );
+    } else {
+      value = asn1.create(
+        asn1.Class.UNIVERSAL,
+        asn1.Type.GENERALIZEDTIME,
+        false,
+        asn1.dateToGeneralizedTime(date)
+      );
+    }
   }
-  return C.create(C.Class.UNIVERSAL, C.Type.SEQUENCE, !0, [
+  return asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
     // AttributeType
-    C.create(
-      C.Class.UNIVERSAL,
-      C.Type.OID,
-      !1,
-      C.oidToDer(e.type).getBytes()
+    asn1.create(
+      asn1.Class.UNIVERSAL,
+      asn1.Type.OID,
+      false,
+      asn1.oidToDer(attr.type).getBytes()
     ),
-    C.create(C.Class.UNIVERSAL, C.Type.SET, !0, [
+    asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SET, true, [
       // AttributeValue
-      t
+      value
     ])
   ]);
 }
-function iu(e) {
+function _encryptedContentToAsn1(ec) {
   return [
     // ContentType, always Data for the moment
-    C.create(
-      C.Class.UNIVERSAL,
-      C.Type.OID,
-      !1,
-      C.oidToDer(D.pki.oids.data).getBytes()
+    asn1.create(
+      asn1.Class.UNIVERSAL,
+      asn1.Type.OID,
+      false,
+      asn1.oidToDer(forge$1.pki.oids.data).getBytes()
     ),
     // ContentEncryptionAlgorithmIdentifier
-    C.create(C.Class.UNIVERSAL, C.Type.SEQUENCE, !0, [
+    asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
       // Algorithm
-      C.create(
-        C.Class.UNIVERSAL,
-        C.Type.OID,
-        !1,
-        C.oidToDer(e.algorithm).getBytes()
+      asn1.create(
+        asn1.Class.UNIVERSAL,
+        asn1.Type.OID,
+        false,
+        asn1.oidToDer(ec.algorithm).getBytes()
       ),
       // Parameters (IV)
-      e.parameter ? C.create(
-        C.Class.UNIVERSAL,
-        C.Type.OCTETSTRING,
-        !1,
-        e.parameter.getBytes()
-      ) : void 0
+      !ec.parameter ? void 0 : asn1.create(
+        asn1.Class.UNIVERSAL,
+        asn1.Type.OCTETSTRING,
+        false,
+        ec.parameter.getBytes()
+      )
     ]),
     // [0] EncryptedContent
-    C.create(C.Class.CONTEXT_SPECIFIC, 0, !0, [
-      C.create(
-        C.Class.UNIVERSAL,
-        C.Type.OCTETSTRING,
-        !1,
-        e.content.getBytes()
+    asn1.create(asn1.Class.CONTEXT_SPECIFIC, 0, true, [
+      asn1.create(
+        asn1.Class.UNIVERSAL,
+        asn1.Type.OCTETSTRING,
+        false,
+        ec.content.getBytes()
       )
     ])
   ];
 }
-function ka(e, t, a) {
-  var r = {}, n = [];
-  if (!C.validate(t, a, r, n)) {
-    var s = new Error("Cannot read PKCS#7 message. ASN.1 object is not a supported PKCS#7 message.");
-    throw s.errors = s, s;
+function _fromAsn1(msg, obj, validator) {
+  var capture = {};
+  var errors = [];
+  if (!asn1.validate(obj, validator, capture, errors)) {
+    var error = new Error("Cannot read PKCS#7 message. ASN.1 object is not a supported PKCS#7 message.");
+    error.errors = error;
+    throw error;
   }
-  var i = C.derToOid(r.contentType);
-  if (i !== D.pki.oids.data)
+  var contentType = asn1.derToOid(capture.contentType);
+  if (contentType !== forge$1.pki.oids.data) {
     throw new Error("Unsupported PKCS#7 message. Only wrapped ContentType Data supported.");
-  if (r.encryptedContent) {
-    var o = "";
-    if (D.util.isArray(r.encryptedContent))
-      for (var l = 0; l < r.encryptedContent.length; ++l) {
-        if (r.encryptedContent[l].type !== C.Type.OCTETSTRING)
+  }
+  if (capture.encryptedContent) {
+    var content = "";
+    if (forge$1.util.isArray(capture.encryptedContent)) {
+      for (var i = 0; i < capture.encryptedContent.length; ++i) {
+        if (capture.encryptedContent[i].type !== asn1.Type.OCTETSTRING) {
           throw new Error("Malformed PKCS#7 message, expecting encrypted content constructed of only OCTET STRING objects.");
-        o += r.encryptedContent[l].value;
+        }
+        content += capture.encryptedContent[i].value;
       }
-    else
-      o = r.encryptedContent;
-    e.encryptedContent = {
-      algorithm: C.derToOid(r.encAlgorithm),
-      parameter: D.util.createBuffer(r.encParameter.value),
-      content: D.util.createBuffer(o)
+    } else {
+      content = capture.encryptedContent;
+    }
+    msg.encryptedContent = {
+      algorithm: asn1.derToOid(capture.encAlgorithm),
+      parameter: forge$1.util.createBuffer(capture.encParameter.value),
+      content: forge$1.util.createBuffer(content)
     };
   }
-  if (r.content) {
-    var o = "";
-    if (D.util.isArray(r.content))
-      for (var l = 0; l < r.content.length; ++l) {
-        if (r.content[l].type !== C.Type.OCTETSTRING)
+  if (capture.content) {
+    var content = "";
+    if (forge$1.util.isArray(capture.content)) {
+      for (var i = 0; i < capture.content.length; ++i) {
+        if (capture.content[i].type !== asn1.Type.OCTETSTRING) {
           throw new Error("Malformed PKCS#7 message, expecting content constructed of only OCTET STRING objects.");
-        o += r.content[l].value;
+        }
+        content += capture.content[i].value;
       }
-    else
-      o = r.content;
-    e.content = D.util.createBuffer(o);
+    } else {
+      content = capture.content;
+    }
+    msg.content = forge$1.util.createBuffer(content);
   }
-  return e.version = r.version.charCodeAt(0), e.rawCapture = r, r;
+  msg.version = capture.version.charCodeAt(0);
+  msg.rawCapture = capture;
+  return capture;
 }
-function ri(e) {
-  if (e.encryptedContent.key === void 0)
+function _decryptContent(msg) {
+  if (msg.encryptedContent.key === void 0) {
     throw new Error("Symmetric key not available.");
-  if (e.content === void 0) {
-    var t;
-    switch (e.encryptedContent.algorithm) {
-      case D.pki.oids["aes128-CBC"]:
-      case D.pki.oids["aes192-CBC"]:
-      case D.pki.oids["aes256-CBC"]:
-        t = D.aes.createDecryptionCipher(e.encryptedContent.key);
+  }
+  if (msg.content === void 0) {
+    var ciph;
+    switch (msg.encryptedContent.algorithm) {
+      case forge$1.pki.oids["aes128-CBC"]:
+      case forge$1.pki.oids["aes192-CBC"]:
+      case forge$1.pki.oids["aes256-CBC"]:
+        ciph = forge$1.aes.createDecryptionCipher(msg.encryptedContent.key);
         break;
-      case D.pki.oids.desCBC:
-      case D.pki.oids["des-EDE3-CBC"]:
-        t = D.des.createDecryptionCipher(e.encryptedContent.key);
+      case forge$1.pki.oids["desCBC"]:
+      case forge$1.pki.oids["des-EDE3-CBC"]:
+        ciph = forge$1.des.createDecryptionCipher(msg.encryptedContent.key);
         break;
       default:
-        throw new Error("Unsupported symmetric cipher, OID " + e.encryptedContent.algorithm);
+        throw new Error("Unsupported symmetric cipher, OID " + msg.encryptedContent.algorithm);
     }
-    if (t.start(e.encryptedContent.parameter), t.update(e.encryptedContent.content), !t.finish())
+    ciph.start(msg.encryptedContent.parameter);
+    ciph.update(msg.encryptedContent.content);
+    if (!ciph.finish()) {
       throw new Error("Symmetric decryption failed.");
-    e.content = t.output;
-  }
-}
-var Ce = z, Hr = Ce.ssh = Ce.ssh || {};
-Hr.privateKeyToPutty = function(e, t, a) {
-  a = a || "", t = t || "";
-  var r = "ssh-rsa", n = t === "" ? "none" : "aes256-cbc", s = "PuTTY-User-Key-File-2: " + r + `\r
-`;
-  s += "Encryption: " + n + `\r
-`, s += "Comment: " + a + `\r
-`;
-  var i = Ce.util.createBuffer();
-  zt(i, r), st(i, e.e), st(i, e.n);
-  var o = Ce.util.encode64(i.bytes(), 64), l = Math.floor(o.length / 66) + 1;
-  s += "Public-Lines: " + l + `\r
-`, s += o;
-  var u = Ce.util.createBuffer();
-  st(u, e.d), st(u, e.p), st(u, e.q), st(u, e.qInv);
-  var f;
-  if (!t)
-    f = Ce.util.encode64(u.bytes(), 64);
-  else {
-    var c = u.length() + 16 - 1;
-    c -= c % 16;
-    var v = gr(u.bytes());
-    v.truncate(v.length() - c + u.length()), u.putBuffer(v);
-    var m = Ce.util.createBuffer();
-    m.putBuffer(gr("\0\0\0\0", t)), m.putBuffer(gr("\0\0\0", t));
-    var y = Ce.aes.createEncryptionCipher(m.truncate(8), "CBC");
-    y.start(Ce.util.createBuffer().fillWithByte(0, 16)), y.update(u.copy()), y.finish();
-    var x = y.output;
-    x.truncate(16), f = Ce.util.encode64(x.bytes(), 64);
-  }
-  l = Math.floor(f.length / 66) + 1, s += `\r
-Private-Lines: ` + l + `\r
-`, s += f;
-  var S = gr("putty-private-key-file-mac-key", t), I = Ce.util.createBuffer();
-  zt(I, r), zt(I, n), zt(I, a), I.putInt32(i.length()), I.putBuffer(i), I.putInt32(u.length()), I.putBuffer(u);
-  var b = Ce.hmac.create();
-  return b.start("sha1", S), b.update(I.bytes()), s += `\r
-Private-MAC: ` + b.digest().toHex() + `\r
-`, s;
-};
-Hr.publicKeyToOpenSSH = function(e, t) {
-  var a = "ssh-rsa";
-  t = t || "";
-  var r = Ce.util.createBuffer();
-  return zt(r, a), st(r, e.e), st(r, e.n), a + " " + Ce.util.encode64(r.bytes()) + " " + t;
-};
-Hr.privateKeyToOpenSSH = function(e, t) {
-  return t ? Ce.pki.encryptRsaPrivateKey(
-    e,
-    t,
-    { legacy: !0, algorithm: "aes128" }
-  ) : Ce.pki.privateKeyToPem(e);
-};
-Hr.getPublicKeyFingerprint = function(e, t) {
-  t = t || {};
-  var a = t.md || Ce.md.md5.create(), r = "ssh-rsa", n = Ce.util.createBuffer();
-  zt(n, r), st(n, e.e), st(n, e.n), a.start(), a.update(n.getBytes());
-  var s = a.digest();
-  if (t.encoding === "hex") {
-    var i = s.toHex();
-    return t.delimiter ? i.match(/.{2}/g).join(t.delimiter) : i;
-  } else {
-    if (t.encoding === "binary")
-      return s.getBytes();
-    if (t.encoding)
-      throw new Error('Unknown encoding "' + t.encoding + '".');
-  }
-  return s;
-};
-function st(e, t) {
-  var a = t.toString(16);
-  a[0] >= "8" && (a = "00" + a);
-  var r = Ce.util.hexToBytes(a);
-  e.putInt32(r.length), e.putBytes(r);
-}
-function zt(e, t) {
-  e.putInt32(t.length), e.putString(t);
-}
-function gr() {
-  for (var e = Ce.md.sha1.create(), t = arguments.length, a = 0; a < t; ++a)
-    e.update(arguments[a]);
-  return e.digest();
-}
-var kt = z;
-const Yt = di.join(mt.getPath("userData"), "device.key");
-function su(e) {
-  if (Sr.isEncryptionAvailable()) {
-    const t = Sr.encryptString(e);
-    Et.writeFileSync(Yt, t, { mode: 384 });
-  } else
-    Et.writeFileSync(Yt, e, { mode: 384 });
-}
-function ou() {
-  if (!Et.existsSync(Yt))
-    return null;
-  if (Sr.isEncryptionAvailable())
-    try {
-      const e = Et.readFileSync(Yt);
-      return Sr.decryptString(e);
-    } catch {
-      return Et.readFileSync(Yt, "utf-8");
     }
-  return Et.readFileSync(Yt, "utf-8");
+    msg.content = ciph.output;
+  }
 }
-function uu() {
-  const e = ou();
-  if (e)
+var forge = forge$C;
+var ssh = forge.ssh = forge.ssh || {};
+ssh.privateKeyToPutty = function(privateKey, passphrase, comment) {
+  comment = comment || "";
+  passphrase = passphrase || "";
+  var algorithm = "ssh-rsa";
+  var encryptionAlgorithm = passphrase === "" ? "none" : "aes256-cbc";
+  var ppk = "PuTTY-User-Key-File-2: " + algorithm + "\r\n";
+  ppk += "Encryption: " + encryptionAlgorithm + "\r\n";
+  ppk += "Comment: " + comment + "\r\n";
+  var pubbuffer = forge.util.createBuffer();
+  _addStringToBuffer(pubbuffer, algorithm);
+  _addBigIntegerToBuffer(pubbuffer, privateKey.e);
+  _addBigIntegerToBuffer(pubbuffer, privateKey.n);
+  var pub = forge.util.encode64(pubbuffer.bytes(), 64);
+  var length = Math.floor(pub.length / 66) + 1;
+  ppk += "Public-Lines: " + length + "\r\n";
+  ppk += pub;
+  var privbuffer = forge.util.createBuffer();
+  _addBigIntegerToBuffer(privbuffer, privateKey.d);
+  _addBigIntegerToBuffer(privbuffer, privateKey.p);
+  _addBigIntegerToBuffer(privbuffer, privateKey.q);
+  _addBigIntegerToBuffer(privbuffer, privateKey.qInv);
+  var priv;
+  if (!passphrase) {
+    priv = forge.util.encode64(privbuffer.bytes(), 64);
+  } else {
+    var encLen = privbuffer.length() + 16 - 1;
+    encLen -= encLen % 16;
+    var padding = _sha1(privbuffer.bytes());
+    padding.truncate(padding.length() - encLen + privbuffer.length());
+    privbuffer.putBuffer(padding);
+    var aeskey = forge.util.createBuffer();
+    aeskey.putBuffer(_sha1("\0\0\0\0", passphrase));
+    aeskey.putBuffer(_sha1("\0\0\0", passphrase));
+    var cipher = forge.aes.createEncryptionCipher(aeskey.truncate(8), "CBC");
+    cipher.start(forge.util.createBuffer().fillWithByte(0, 16));
+    cipher.update(privbuffer.copy());
+    cipher.finish();
+    var encrypted = cipher.output;
+    encrypted.truncate(16);
+    priv = forge.util.encode64(encrypted.bytes(), 64);
+  }
+  length = Math.floor(priv.length / 66) + 1;
+  ppk += "\r\nPrivate-Lines: " + length + "\r\n";
+  ppk += priv;
+  var mackey = _sha1("putty-private-key-file-mac-key", passphrase);
+  var macbuffer = forge.util.createBuffer();
+  _addStringToBuffer(macbuffer, algorithm);
+  _addStringToBuffer(macbuffer, encryptionAlgorithm);
+  _addStringToBuffer(macbuffer, comment);
+  macbuffer.putInt32(pubbuffer.length());
+  macbuffer.putBuffer(pubbuffer);
+  macbuffer.putInt32(privbuffer.length());
+  macbuffer.putBuffer(privbuffer);
+  var hmac2 = forge.hmac.create();
+  hmac2.start("sha1", mackey);
+  hmac2.update(macbuffer.bytes());
+  ppk += "\r\nPrivate-MAC: " + hmac2.digest().toHex() + "\r\n";
+  return ppk;
+};
+ssh.publicKeyToOpenSSH = function(key, comment) {
+  var type = "ssh-rsa";
+  comment = comment || "";
+  var buffer = forge.util.createBuffer();
+  _addStringToBuffer(buffer, type);
+  _addBigIntegerToBuffer(buffer, key.e);
+  _addBigIntegerToBuffer(buffer, key.n);
+  return type + " " + forge.util.encode64(buffer.bytes()) + " " + comment;
+};
+ssh.privateKeyToOpenSSH = function(privateKey, passphrase) {
+  if (!passphrase) {
+    return forge.pki.privateKeyToPem(privateKey);
+  }
+  return forge.pki.encryptRsaPrivateKey(
+    privateKey,
+    passphrase,
+    { legacy: true, algorithm: "aes128" }
+  );
+};
+ssh.getPublicKeyFingerprint = function(key, options) {
+  options = options || {};
+  var md = options.md || forge.md.md5.create();
+  var type = "ssh-rsa";
+  var buffer = forge.util.createBuffer();
+  _addStringToBuffer(buffer, type);
+  _addBigIntegerToBuffer(buffer, key.e);
+  _addBigIntegerToBuffer(buffer, key.n);
+  md.start();
+  md.update(buffer.getBytes());
+  var digest = md.digest();
+  if (options.encoding === "hex") {
+    var hex = digest.toHex();
+    if (options.delimiter) {
+      return hex.match(/.{2}/g).join(options.delimiter);
+    }
+    return hex;
+  } else if (options.encoding === "binary") {
+    return digest.getBytes();
+  } else if (options.encoding) {
+    throw new Error('Unknown encoding "' + options.encoding + '".');
+  }
+  return digest;
+};
+function _addBigIntegerToBuffer(buffer, val) {
+  var hexVal = val.toString(16);
+  if (hexVal[0] >= "8") {
+    hexVal = "00" + hexVal;
+  }
+  var bytes = forge.util.hexToBytes(hexVal);
+  buffer.putInt32(bytes.length);
+  buffer.putBytes(bytes);
+}
+function _addStringToBuffer(buffer, val) {
+  buffer.putInt32(val.length);
+  buffer.putString(val);
+}
+function _sha1() {
+  var sha = forge.md.sha1.create();
+  var num = arguments.length;
+  for (var i = 0; i < num; ++i) {
+    sha.update(arguments[i]);
+  }
+  return sha.digest();
+}
+var lib = forge$C;
+const KEY_FILE = path.join(app.getPath("userData"), "device.key");
+function savePrivateKey(pem2) {
+  if (safeStorage.isEncryptionAvailable()) {
+    const encrypted = safeStorage.encryptString(pem2);
+    fs.writeFileSync(KEY_FILE, encrypted, { mode: 384 });
+  } else {
+    fs.writeFileSync(KEY_FILE, pem2, { mode: 384 });
+  }
+}
+function loadPrivateKey() {
+  if (!fs.existsSync(KEY_FILE)) {
+    return null;
+  }
+  if (safeStorage.isEncryptionAvailable()) {
     try {
-      const n = kt.pki.privateKeyFromPem(e), s = kt.pki.setRsaPublicKey(n.n, n.e);
+      const encrypted = fs.readFileSync(KEY_FILE);
+      return safeStorage.decryptString(encrypted);
+    } catch (e) {
+      return fs.readFileSync(KEY_FILE, "utf-8");
+    }
+  }
+  return fs.readFileSync(KEY_FILE, "utf-8");
+}
+function generateOrLoadKeyPair() {
+  const existingPem = loadPrivateKey();
+  if (existingPem) {
+    try {
+      const key = lib.pki.privateKeyFromPem(existingPem);
+      const publicKey = lib.pki.setRsaPublicKey(key.n, key.e);
       return {
-        publicKey: kt.pki.publicKeyToPem(s),
-        hasPrivateKey: !0
+        publicKey: lib.pki.publicKeyToPem(publicKey),
+        hasPrivateKey: true
       };
-    } catch {
+    } catch (e) {
       console.warn("Chave existente corrompida, gerando nova");
     }
-  const t = kt.pki.rsa.generateKeyPair({ bits: 2048 }), a = kt.pki.privateKeyToPem(t.privateKey), r = kt.pki.publicKeyToPem(t.publicKey);
-  return su(a), {
-    publicKey: r,
-    hasPrivateKey: !0
+  }
+  const keys = lib.pki.rsa.generateKeyPair({ bits: 2048 });
+  const privatePem = lib.pki.privateKeyToPem(keys.privateKey);
+  const publicPem = lib.pki.publicKeyToPem(keys.publicKey);
+  savePrivateKey(privatePem);
+  return {
+    publicKey: publicPem,
+    hasPrivateKey: true
   };
 }
-function lu(e) {
-  const t = kt.md.sha256.create();
-  return t.update(e), t.digest().toHex();
+function generateFingerprint(publicKey) {
+  const md = lib.md.sha256.create();
+  md.update(publicKey);
+  return md.digest().toHex();
 }
-const fu = [
+const SENSITIVE_KEYS = [
   "password",
   "pfx",
   "pfx_path",
@@ -11617,129 +17448,159 @@ const fu = [
   "cookie",
   "session_code"
 ];
-function ai(e) {
-  if (e == null) return {};
-  if (typeof e != "object") return { value: e };
-  const t = {};
-  for (const [a, r] of Object.entries(e))
-    fu.some((n) => a.toLowerCase().includes(n)) ? t[a] = "[REDACTED]" : typeof r == "object" && r !== null ? t[a] = ai(r) : t[a] = r;
-  return t;
+function sanitize(meta) {
+  if (meta === null || meta === void 0) return {};
+  if (typeof meta !== "object") return { value: meta };
+  const result = {};
+  for (const [key, value] of Object.entries(meta)) {
+    if (SENSITIVE_KEYS.some((sk) => key.toLowerCase().includes(sk))) {
+      result[key] = "[REDACTED]";
+    } else if (typeof value === "object" && value !== null) {
+      result[key] = sanitize(value);
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
 }
-const ve = {
-  info(e, t, a) {
-    mr("info", e, t, a);
+const logger = {
+  info(module, message, meta) {
+    log("info", module, message, meta);
   },
-  warn(e, t, a) {
-    mr("warn", e, t, a);
+  warn(module, message, meta) {
+    log("warn", module, message, meta);
   },
-  error(e, t, a) {
-    mr("error", e, t, a);
+  error(module, message, meta) {
+    log("error", module, message, meta);
   },
-  debug(e, t, a) {
-    process.env.NODE_ENV !== "production" && mr("debug", e, t, a);
+  debug(module, message, meta) {
+    if (process.env.NODE_ENV !== "production") {
+      log("debug", module, message, meta);
+    }
   }
 };
-function mr(e, t, a, r) {
-  const n = (/* @__PURE__ */ new Date()).toISOString(), s = r ? ai(r) : {}, i = JSON.stringify({
-    timestamp: n,
-    level: e,
-    module: t,
-    message: a,
-    ...s
+function log(level, module, message, meta) {
+  const timestamp = (/* @__PURE__ */ new Date()).toISOString();
+  const sanitized = meta ? sanitize(meta) : {};
+  const logLine = JSON.stringify({
+    timestamp,
+    level,
+    module,
+    message,
+    ...sanitized
   });
-  switch (e) {
+  switch (level) {
     case "error":
-      console.error(i);
+      console.error(logLine);
       break;
     case "warn":
-      console.warn(i);
+      console.warn(logLine);
       break;
     case "debug":
-      console.debug(i);
+      console.debug(logLine);
       break;
     default:
-      console.log(i);
+      console.log(logLine);
   }
 }
-let Da = null;
-function cu() {
-  return Da;
+let activeSessionInfo = null;
+function getActiveSession() {
+  return activeSessionInfo;
 }
-function hu(e) {
-  at.on("window:minimize", () => {
-    var t;
-    console.log("[IPC] window:minimize received"), (t = e()) == null || t.minimize();
-  }), at.on("window:maximize", () => {
+function registerSystemHandlers(getWindow) {
+  ipcMain.on("window:minimize", () => {
+    var _a;
+    console.log("[IPC] window:minimize received");
+    (_a = getWindow()) == null ? void 0 : _a.minimize();
+  });
+  ipcMain.on("window:maximize", () => {
     console.log("[IPC] window:maximize received");
-    const t = e();
-    t && (t.isMaximized() ? t.unmaximize() : t.maximize());
-  }), at.on("window:close", () => {
-    var t;
-    console.log("[IPC] window:close received"), (t = e()) == null || t.close();
-  }), at.handle("system:get-os-info", async () => {
-    const t = hn(), a = ci(), r = `${process.platform} ${process.arch}`, n = du(), s = lu(
-      `${t}|${a.username}|${r}|${n}`
+    const win2 = getWindow();
+    if (!win2) return;
+    if (win2.isMaximized()) {
+      win2.unmaximize();
+    } else {
+      win2.maximize();
+    }
+  });
+  ipcMain.on("window:close", () => {
+    var _a;
+    console.log("[IPC] window:close received");
+    (_a = getWindow()) == null ? void 0 : _a.close();
+  });
+  ipcMain.handle("system:get-os-info", async () => {
+    const hostname$1 = hostname();
+    const user = userInfo();
+    const platform = `${process.platform} ${process.arch}`;
+    const ip = getLocalIPAddress();
+    const fingerprint = generateFingerprint(
+      `${hostname$1}|${user.username}|${platform}|${ip}`
     );
     return {
-      hostname: t,
+      hostname: hostname$1,
       // Ex: "PC-JOAO-01"
-      username: a.username,
+      username: user.username,
       // Ex: "joao.silva"
-      ip_address: n,
+      ip_address: ip,
       // Ex: "192.168.1.100"
-      platform: r,
+      platform,
       // Ex: "linux x64"
-      os_release: pu(),
+      os_release: getOSRelease(),
       // Ex: "Ubuntu 22.04"
-      fingerprint: s
+      fingerprint
     };
   });
 }
-function du() {
-  const e = hi();
-  for (const t of Object.keys(e)) {
-    const a = e[t];
-    if (a) {
-      for (const r of a)
-        if (r.family !== "IPv6" && !r.internal)
-          return r.address;
+function getLocalIPAddress() {
+  const interfaces = networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    const nets = interfaces[name];
+    if (!nets) continue;
+    for (const net of nets) {
+      if (net.family === "IPv6") continue;
+      if (net.internal) continue;
+      return net.address;
     }
   }
-  return hn();
+  return hostname();
 }
-function pu() {
+function getOSRelease() {
   try {
-    const e = mt.getVersion();
+    const release = app.getVersion();
     if (process.platform === "linux") {
-      if (Et.existsSync("/etc/os-release")) {
-        const a = Et.readFileSync("/etc/os-release", "utf-8").match(/PRETTY_NAME="?([^"\n]+)"?/);
-        if (a) return a[1];
+      if (fs.existsSync("/etc/os-release")) {
+        const content = fs.readFileSync("/etc/os-release", "utf-8");
+        const match = content.match(/PRETTY_NAME="?([^"\n]+)"?/);
+        if (match) return match[1];
       }
-    } else {
-      if (process.platform === "darwin")
-        return `macOS ${process.getSystemVersion()}`;
-      if (process.platform === "win32")
-        return `Windows ${process.getSystemVersion()}`;
+    } else if (process.platform === "darwin") {
+      return `macOS ${process.getSystemVersion()}`;
+    } else if (process.platform === "win32") {
+      return `Windows ${process.getSystemVersion()}`;
     }
-    return e;
+    return release;
   } catch {
     return process.platform;
   }
 }
-at.on("session:activated", (e, t) => {
-  Da = t, ve.info("main", "Sessão registrada para cleanup", { sessionId: t.sessionId });
+ipcMain.on("session:activated", (_event, data) => {
+  activeSessionInfo = data;
+  logger.info("main", "Sessão registrada para cleanup", { sessionId: data.sessionId });
 });
-at.on("session:deactivated", () => {
-  Da = null, ve.info("main", "Sessão removida do tracking");
+ipcMain.on("session:deactivated", () => {
+  activeSessionInfo = null;
+  logger.info("main", "Sessão removida do tracking");
 });
-const $r = vi(pi), Wr = "powershell.exe", $t = {
+const execAsync = promisify(exec);
+const POWERSHELL = "powershell.exe";
+const PowerShellService = {
   /**
    * Cleans up orphan certificates on startup (RN: Cleanup at Initialization).
    * Removes temporary certs older than 1 hour that may have been left by
    * forced shutdowns.
    */
   async cleanupOrphanCerts() {
-    const e = `
+    const script = `
       Get-ChildItem Cert:\\CurrentUser\\My |
         Where-Object { $_.NotAfter -lt (Get-Date).AddHours(-1) -and $_.HasPrivateKey } |
         ForEach-Object {
@@ -11752,26 +17613,28 @@ const $r = vi(pi), Wr = "powershell.exe", $t = {
         }
     `;
     try {
-      const { stdout: t } = await $r(
-        `${Wr} -NoProfile -Command "${e.replace(/\n/g, ";")}"`,
+      const { stdout } = await execAsync(
+        `${POWERSHELL} -NoProfile -Command "${script.replace(/\n/g, ";")}"`,
         { timeout: 3e4 }
       );
-      console.log("[PowerShell] Cleanup:", t);
-    } catch (t) {
-      console.warn("[PowerShell] Cleanup failed:", t);
+      console.log("[PowerShell] Cleanup:", stdout);
+    } catch (e) {
+      console.warn("[PowerShell] Cleanup failed:", e);
     }
   },
   /**
    * Installs a PFX certificate into the Windows Certificate Store in memory only.
    * No file is written to disk. Uses EphemeralKeySet to keep cert in RAM.
    */
-  async installPfxInMemory(e, t, a) {
-    const r = t.replace(/'/g, "''"), n = a.replace(/'/g, "''"), s = `
+  async installPfxInMemory(pfxBase64, password, thumbprint) {
+    const escapedPassword = password.replace(/'/g, "''");
+    const escapedThumbprint = thumbprint.replace(/'/g, "''");
+    const script = `
       try {
-        $pfxBytes = [Convert]::FromBase64String('${e}')
+        $pfxBytes = [Convert]::FromBase64String('${pfxBase64}')
         $pfx = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2(
           $pfxBytes,
-          '${r}',
+          '${escapedPassword}',
           [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet
         )
         $store = New-Object System.Security.Cryptography.X509Certificates.X509Store('My', 'CurrentUser')
@@ -11780,7 +17643,7 @@ const $r = vi(pi), Wr = "powershell.exe", $t = {
         $store.Close()
 
         # Verificar se instalou
-        $installed = Get-ChildItem Cert:\\CurrentUser\\My | Where-Object { $_.Thumbprint -eq '${n}' }
+        $installed = Get-ChildItem Cert:\\CurrentUser\\My | Where-Object { $_.Thumbprint -eq '${escapedThumbprint}' }
         if ($installed) {
           Write-Output "SUCCESS"
         } else {
@@ -11795,22 +17658,24 @@ const $r = vi(pi), Wr = "powershell.exe", $t = {
       }
     `;
     try {
-      const { stdout: i } = await $r(
-        `${Wr} -NoProfile -Command "${s.replace(/\n/g, ";")}"`,
+      const { stdout } = await execAsync(
+        `${POWERSHELL} -NoProfile -Command "${script.replace(/\n/g, ";")}"`,
         { timeout: 3e4 }
       );
-      return i.trim().includes("SUCCESS");
-    } catch (i) {
-      return console.error("[PowerShell] Install failed:", i), !1;
+      return stdout.trim().includes("SUCCESS");
+    } catch (e) {
+      console.error("[PowerShell] Install failed:", e);
+      return false;
     }
   },
   /**
    * Removes a certificate from the Windows Store by thumbprint.
    */
-  async removeCertByThumbprint(e) {
-    const a = `
+  async removeCertByThumbprint(thumbprint) {
+    const escapedThumbprint = thumbprint.replace(/'/g, "''");
+    const script = `
       try {
-        $cert = Get-ChildItem Cert:\\CurrentUser\\My | Where-Object { $_.Thumbprint -eq '${e.replace(/'/g, "''")}' }
+        $cert = Get-ChildItem Cert:\\CurrentUser\\My | Where-Object { $_.Thumbprint -eq '${escapedThumbprint}' }
         if ($cert) {
           Remove-Item -Path $cert.PSPath -Force
           Write-Output "REMOVED"
@@ -11822,54 +17687,90 @@ const $r = vi(pi), Wr = "powershell.exe", $t = {
       }
     `;
     try {
-      const { stdout: r } = await $r(
-        `${Wr} -NoProfile -Command "${a.replace(/\n/g, ";")}"`,
+      const { stdout } = await execAsync(
+        `${POWERSHELL} -NoProfile -Command "${script.replace(/\n/g, ";")}"`,
         { timeout: 15e3 }
       );
-      return r.trim() === "REMOVED";
-    } catch (r) {
-      return console.error("[PowerShell] Remove failed:", r), !1;
+      return stdout.trim() === "REMOVED";
+    } catch (e) {
+      console.error("[PowerShell] Remove failed:", e);
+      return false;
     }
   }
 };
-function vu() {
-  at.handle("cert:cleanup-orphans", async () => $t.cleanupOrphanCerts()), at.handle("cert:generate-keys", async () => uu()), at.handle("cert:install-pfx", async (e, t) => $t.installPfxInMemory(
-    t.pfxBase64,
-    t.password,
-    t.thumbprint
-  )), at.handle("cert:decrypt-and-install", async (e, t) => {
+function registerCertHandlers() {
+  ipcMain.handle("cert:cleanup-orphans", async () => {
+    return PowerShellService.cleanupOrphanCerts();
+  });
+  ipcMain.handle("cert:generate-keys", async () => {
+    return generateOrLoadKeyPair();
+  });
+  ipcMain.handle("cert:install-pfx", async (_event, args) => {
+    return PowerShellService.installPfxInMemory(
+      args.pfxBase64,
+      args.password,
+      args.thumbprint
+    );
+  });
+  ipcMain.handle("cert:decrypt-and-install", async (_event, args) => {
     try {
-      ve.info("cert", "Instalando PFX em memória", { thumbprint: t.thumbprint });
-      const a = await $t.installPfxInMemory(
-        t.pfxBase64,
-        t.password,
-        t.thumbprint
+      logger.info("cert", "Instalando PFX em memória", { thumbprint: args.thumbprint });
+      const success = await PowerShellService.installPfxInMemory(
+        args.pfxBase64,
+        args.password,
+        args.thumbprint
       );
-      return a ? ve.info("cert", "PFX instalado com sucesso", { thumbprint: t.thumbprint }) : ve.error("cert", "Falha ao instalar PFX", { thumbprint: t.thumbprint }), a;
-    } catch (a) {
-      return ve.error("cert", "Erro ao instalar PFX", { error: String(a) }), !1;
+      if (success) {
+        logger.info("cert", "PFX instalado com sucesso", { thumbprint: args.thumbprint });
+        return { success: true, error: null };
+      } else {
+        logger.error("cert", "Falha ao instalar PFX", { thumbprint: args.thumbprint });
+        return { success: false, error: "PowerShell retornou FAILED" };
+      }
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      logger.error("cert", "Erro ao instalar PFX", { error: errorMsg });
+      return { success: false, error: errorMsg };
     }
-  }), at.handle("cert:remove-by-thumbprint", async (e, t) => $t.removeCertByThumbprint(t.thumbprint));
+  });
+  ipcMain.handle("cert:remove-by-thumbprint", async (_event, args) => {
+    return PowerShellService.removeCertByThumbprint(args.thumbprint);
+  });
 }
-let ft = null;
-function yu(e) {
-  const t = Ua.createEmpty();
-  return ft = new ui(t.isEmpty() ? Ua.createFromDataURL(Cu()) : t), ft.setToolTip("CertGuard Desktop"), gu(e), ft.on("click", () => {
-    const a = e();
-    a && (a.isVisible() && !a.isMinimized() ? a.hide() : (a.show(), a.focus()));
-  }), ft.on("double-click", () => {
-    const a = e();
-    a && (a.show(), a.focus());
-  }), ft;
+let tray = null;
+function createTray(getWindow) {
+  const icon = nativeImage.createEmpty();
+  tray = new Tray(icon.isEmpty() ? nativeImage.createFromDataURL(getDefaultTrayIcon()) : icon);
+  tray.setToolTip("CertGuard Desktop");
+  updateContextMenu(getWindow);
+  tray.on("click", () => {
+    const win2 = getWindow();
+    if (!win2) return;
+    if (win2.isVisible() && !win2.isMinimized()) {
+      win2.hide();
+    } else {
+      win2.show();
+      win2.focus();
+    }
+  });
+  tray.on("double-click", () => {
+    const win2 = getWindow();
+    if (!win2) return;
+    win2.show();
+    win2.focus();
+  });
+  return tray;
 }
-function gu(e) {
-  if (!ft) return;
-  const t = li.buildFromTemplate([
+function updateContextMenu(getWindow) {
+  if (!tray) return;
+  const contextMenu = Menu.buildFromTemplate([
     {
       label: "Abrir CertGuard",
       click: () => {
-        const a = e();
-        a && (a.show(), a.focus());
+        const win2 = getWindow();
+        if (!win2) return;
+        win2.show();
+        win2.focus();
       }
     },
     {
@@ -11878,8 +17779,9 @@ function gu(e) {
     {
       label: "Sobre",
       click: () => {
-        const a = e();
-        a && a.webContents.send("show-about");
+        const win2 = getWindow();
+        if (!win2) return;
+        win2.webContents.send("show-about");
       }
     },
     {
@@ -11888,111 +17790,148 @@ function gu(e) {
     {
       label: "Sair",
       click: () => {
-        mt.quit();
+        app.quit();
       }
     }
   ]);
-  ft.setContextMenu(t);
+  tray.setContextMenu(contextMenu);
 }
-function mu() {
-  ft && (ft.destroy(), ft = null);
+function destroyTray() {
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
 }
-function Cu() {
+function getDefaultTrayIcon() {
   return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAOklEQVQ4y2NgGAWjYBSMglEwCkbBKBgFo2AUjIJRMApGwSgYBaNgFIyCUTAKRsEoGAWjYBSMglEwCkbBKBgFo2AUjIJRMApGwSgYBaNgFIyCUTAKRsEoGAWjYBQQDQAVDQH8Wz5sDwAAAABJRU5ErkJggg==";
 }
-const ni = Bt.dirname(fi(import.meta.url));
-process.env.APP_ROOT = Bt.join(ni, "..");
-const pa = process.env.VITE_DEV_SERVER_URL, bu = Bt.join(process.env.APP_ROOT, "dist-electron"), ii = Bt.join(process.env.APP_ROOT, "dist");
-process.env.VITE_PUBLIC = pa ? Bt.join(process.env.APP_ROOT, "public") : ii;
-let pe, si = !1;
-function oi() {
-  pe = new fn({
+const __dirname$1 = path$1.dirname(fileURLToPath(import.meta.url));
+process.env.APP_ROOT = path$1.join(__dirname$1, "..");
+const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
+const MAIN_DIST = path$1.join(process.env.APP_ROOT, "dist-electron");
+const RENDERER_DIST = path$1.join(process.env.APP_ROOT, "dist");
+process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path$1.join(process.env.APP_ROOT, "public") : RENDERER_DIST;
+let win;
+let isQuitting = false;
+function createWindow() {
+  win = new BrowserWindow({
     width: 820,
     height: 600,
     minWidth: 600,
     minHeight: 400,
-    icon: Bt.join(process.env.VITE_PUBLIC, "electron-vite.svg"),
+    icon: path$1.join(process.env.VITE_PUBLIC, "electron-vite.svg"),
     titleBarStyle: "hidden",
-    frame: !1,
-    show: !1,
+    frame: false,
+    show: false,
     // Não mostra até estar pronto
     webPreferences: {
-      preload: Bt.join(ni, "preload.cjs"),
-      contextIsolation: !0,
-      nodeIntegration: !1,
-      sandbox: !1
+      preload: path$1.join(__dirname$1, "preload.cjs"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
     }
-  }), pe.once("ready-to-show", () => {
-    pe == null || pe.show(), ve.info("main", "Janela principal exibida");
-  }), pe.webContents.on("did-finish-load", () => {
-    pe == null || pe.webContents.send("main-process-message", (/* @__PURE__ */ new Date()).toLocaleString());
-  }), pe.webContents.setWindowOpenHandler(({ url: e }) => (ve.warn("main", "Tentativa de abrir URL externa bloqueada", { url: e }), { action: "deny" })), pa ? pe.loadURL(pa) : pe.loadFile(Bt.join(ii, "index.html")), pe.on("close", (e) => {
-    si || (e.preventDefault(), pe == null || pe.hide(), ve.debug("main", "Janela ocultada para o tray"));
+  });
+  win.once("ready-to-show", () => {
+    win == null ? void 0 : win.show();
+    logger.info("main", "Janela principal exibida");
+  });
+  win.webContents.on("did-finish-load", () => {
+    win == null ? void 0 : win.webContents.send("main-process-message", (/* @__PURE__ */ new Date()).toLocaleString());
+  });
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    logger.warn("main", "Tentativa de abrir URL externa bloqueada", { url });
+    return { action: "deny" };
+  });
+  if (VITE_DEV_SERVER_URL) {
+    win.loadURL(VITE_DEV_SERVER_URL);
+  } else {
+    win.loadFile(path$1.join(RENDERER_DIST, "index.html"));
+  }
+  win.on("close", (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      win == null ? void 0 : win.hide();
+      logger.debug("main", "Janela ocultada para o tray");
+    }
   });
 }
-mt.on("window-all-closed", () => {
-  process.platform !== "darwin" && ve.info("main", "Todas as janelas fechadas - app continua no tray");
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
+    logger.info("main", "Todas as janelas fechadas - app continua no tray");
+  }
 });
-mt.on("activate", () => {
-  fn.getAllWindows().length === 0 && oi();
+app.on("activate", () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createWindow();
+  }
 });
-mt.on("before-quit", async (e) => {
-  si = !0, mu(), cn.unregisterAll();
-  const t = cu();
-  if (t) {
-    e.preventDefault();
+app.on("before-quit", async (event) => {
+  isQuitting = true;
+  destroyTray();
+  globalShortcut.unregisterAll();
+  const session = getActiveSession();
+  if (session) {
+    event.preventDefault();
     try {
-      const a = `${t.apiUrl}/api/desktop/sessoes/${t.sessionId}`;
-      await fetch(a, {
+      const url = `${session.apiUrl}/api/desktop/sessoes/${session.sessionId}`;
+      await fetch(url, {
         method: "DELETE",
         headers: {
-          Authorization: `Bearer ${t.token}`,
-          Accept: "application/json"
+          "Authorization": `Bearer ${session.token}`,
+          "Accept": "application/json"
         }
-      }), ve.info("main", "Sessão encerrada no backend antes de fechar", { sessionId: t.sessionId });
-    } catch (a) {
-      ve.warn("main", "Erro ao encerrar sessão no backend", { error: String(a) });
+      });
+      logger.info("main", "Sessão encerrada no backend antes de fechar", { sessionId: session.sessionId });
+    } catch (e) {
+      logger.warn("main", "Erro ao encerrar sessão no backend", { error: String(e) });
     }
   }
   if (process.platform === "win32") {
-    e.preventDefault();
+    event.preventDefault();
     try {
-      await $t.cleanupOrphanCerts(), ve.info("main", "Certificados temporários removidos antes de fechar");
-    } catch (a) {
-      ve.warn("main", "Erro ao limpar certificados", { error: String(a) });
+      await PowerShellService.cleanupOrphanCerts();
+      logger.info("main", "Certificados temporários removidos antes de fechar");
+    } catch (e) {
+      logger.warn("main", "Erro ao limpar certificados", { error: String(e) });
     }
   }
-  mt.exit(0);
+  app.exit(0);
 });
-process.on("uncaughtException", (e) => {
-  var t;
-  ve.error("main", "Erro não capturado", {
-    message: e.message,
-    stack: (t = e.stack) == null ? void 0 : t.split(`
-`).slice(0, 5).join(`
-`)
+process.on("uncaughtException", (error) => {
+  var _a;
+  logger.error("main", "Erro não capturado", {
+    message: error.message,
+    stack: (_a = error.stack) == null ? void 0 : _a.split("\n").slice(0, 5).join("\n")
   });
 });
-process.on("unhandledRejection", (e) => {
-  ve.error("main", "Promise rejeitada não tratada", {
-    reason: String(e)
+process.on("unhandledRejection", (reason) => {
+  logger.error("main", "Promise rejeitada não tratada", {
+    reason: String(reason)
   });
 });
-mt.whenReady().then(() => {
-  ve.info("main", "App iniciando", { version: mt.getVersion() }), oi(), hu(() => pe), vu(), cn.register("CommandOrControl+Shift+I", () => {
-    pe == null || pe.webContents.toggleDevTools();
+app.whenReady().then(() => {
+  logger.info("main", "App iniciando", { version: app.getVersion() });
+  createWindow();
+  registerSystemHandlers(() => win);
+  registerCertHandlers();
+  globalShortcut.register("CommandOrControl+Shift+I", () => {
+    win == null ? void 0 : win.webContents.toggleDevTools();
   });
   try {
-    yu(() => pe), ve.info("main", "System tray criado");
+    createTray(() => win);
+    logger.info("main", "System tray criado");
   } catch (e) {
-    ve.warn("main", "Falha ao criar tray", { error: String(e) });
+    logger.warn("main", "Falha ao criar tray", { error: String(e) });
   }
-  process.platform === "win32" && $t.cleanupOrphanCerts().catch((e) => {
-    ve.warn("main", "Cleanup de órfãos falhou", { error: String(e) });
-  }), ve.info("main", "App pronto");
+  if (process.platform === "win32") {
+    PowerShellService.cleanupOrphanCerts().catch((e) => {
+      logger.warn("main", "Cleanup de órfãos falhou", { error: String(e) });
+    });
+  }
+  logger.info("main", "App pronto");
 });
 export {
-  bu as MAIN_DIST,
-  ii as RENDERER_DIST,
-  pa as VITE_DEV_SERVER_URL
+  MAIN_DIST,
+  RENDERER_DIST,
+  VITE_DEV_SERVER_URL
 };

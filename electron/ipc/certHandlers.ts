@@ -44,14 +44,15 @@ export function registerCertHandlers(): void {
 
       if (success) {
         logger.info('cert', 'PFX instalado com sucesso', { thumbprint: args.thumbprint });
+        return { success: true, error: null };
       } else {
         logger.error('cert', 'Falha ao instalar PFX', { thumbprint: args.thumbprint });
+        return { success: false, error: 'PowerShell retornou FAILED' };
       }
-
-      return success;
     } catch (e) {
-      logger.error('cert', 'Erro ao instalar PFX', { error: String(e) });
-      return false;
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      logger.error('cert', 'Erro ao instalar PFX', { error: errorMsg });
+      return { success: false, error: errorMsg };
     }
   });
 
