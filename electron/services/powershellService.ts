@@ -50,7 +50,7 @@ export const PowerShellService = {
       fs.writeFileSync(pfxPath, pfxBuffer);
 
       const pfxPathEscaped = pfxPath.replace(/\\/g, '\\\\');
-      const script = `try { $pfxBytes = [System.IO.File]::ReadAllBytes('${pfxPathEscaped}'); $pfx = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($pfxBytes, '${escapedPassword}', [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet); $store = New-Object System.Security.Cryptography.X509Certificates.X509Store('My', 'CurrentUser'); $store.Open('ReadWrite'); $store.Add($pfx); $store.Close(); $pfxBytes = $null; $pfx = $null; Write-Output 'SUCCESS' } catch { Write-Output "ERROR: $($_.Exception.Message)" }`;
+      const script = `try { $pfxBytes = [System.IO.File]::ReadAllBytes('${pfxPathEscaped}'); $pfx = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($pfxBytes, '${escapedPassword}', [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::PersistKeySet); $store = New-Object System.Security.Cryptography.X509Certificates.X509Store('My', 'CurrentUser'); $store.Open('ReadWrite'); $store.Add($pfx); $store.Close(); $pfxBytes = $null; $pfx = $null; Write-Output 'SUCCESS' } catch { Write-Output "ERROR: $($_.Exception.Message)" }`;
 
       const { stdout } = await execAsync(
         `${POWERSHELL} -NoProfile -Command "${script}"`,
