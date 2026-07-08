@@ -11807,7 +11807,7 @@ const Wr = mi(gi), Xr = "powershell.exe", Bt = {
     try {
       const i = Buffer.from(e, "base64");
       Ke.writeFileSync(n, i);
-      const l = `try { $pfxBytes = [System.IO.File]::ReadAllBytes('${n.replace(/\\/g, "\\\\")}'); $pfx = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($pfxBytes, '${s}', [System.Security.Cryptography.X509StorageFlags]::PersistKeySet); $store = New-Object System.Security.Cryptography.X509Certificates.X509Store('My', 'CurrentUser'); $store.Open('ReadWrite'); $store.Add($pfx); $store.Close(); Write-Output "SUCCESS:$($pfx.Thumbprint)" } catch { Write-Output "ERROR: $($_.Exception.Message)" }`, { stdout: u, stderr: f } = await Wr(
+      const l = `try { $pfxBytes = [System.IO.File]::ReadAllBytes('${n.replace(/\\/g, "\\\\")}'); $pfx = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($pfxBytes, '${s}', [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::PersistKeySet); $store = New-Object System.Security.Cryptography.X509Certificates.X509Store('My', 'CurrentUser'); $store.Open('ReadWrite'); $store.Add($pfx); $store.Close(); Write-Output "SUCCESS:$($pfx.Thumbprint)" } catch { Write-Output "ERROR: $($_.Exception.Message)" }`, { stdout: u, stderr: f } = await Wr(
         `${Xr} -NoProfile -Command "${l}"`,
         { timeout: 3e4 }
       );
