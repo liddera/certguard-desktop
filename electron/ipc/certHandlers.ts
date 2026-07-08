@@ -60,10 +60,18 @@ export function registerCertHandlers(): void {
     }
   });
 
-  // Remover certificado por thumbprint
+  // Remover certificado por thumbprint (retorna detalhes)
   ipcMain.handle('cert:remove-by-thumbprint', async (_event, args: {
     thumbprint: string;
   }) => {
-    return PowerShellService.removeCertByThumbprint(args.thumbprint);
+    const result = await PowerShellService.removeCertByThumbprint(args.thumbprint);
+    if (!result.success) {
+      logger.warn('cert', 'Falha ao remover certificado', {
+        thumbprint: args.thumbprint,
+        output: result.output,
+        error: result.error,
+      });
+    }
+    return result;
   });
 }

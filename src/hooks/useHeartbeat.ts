@@ -52,10 +52,16 @@ export function useHeartbeat() {
         } else if (response.status === 'revoked' || response.status === 'expired') {
           clearSession();
           if (certThumbprint) {
-            window.ipcRenderer.invoke('cert:remove-by-thumbprint', {
+            const result = await window.ipcRenderer.invoke('cert:remove-by-thumbprint', {
               thumbprint: certThumbprint,
-            });
+            }) as { success: boolean; output: string; error: string | null };
+            if (!result.success) {
+              console.error('[Heartbeat] Falha ao remover certificado', result);
+            }
           }
+          // Limpa backup localStorage
+          localStorage.removeItem('certguard-active-thumbprint');
+          localStorage.removeItem('certguard-active-session');
           return;
         }
       } catch (e) {
@@ -66,7 +72,7 @@ export function useHeartbeat() {
     heartbeatRef.current = window.setInterval(sendHeartbeat, HEARTBEAT_INTERVAL);
 
     // 2. Countdown a cada 1s
-    const tick = () => {
+    const tick = async () => {
       const now = Date.now();
       const remainingMs = expiresAtMsRef.current - now;
       const remainingSec = Math.max(0, Math.floor(remainingMs / 1000));
@@ -82,10 +88,16 @@ export function useHeartbeat() {
       if (remainingSec <= 0) {
         clearSession();
         if (certThumbprint) {
-          window.ipcRenderer.invoke('cert:remove-by-thumbprint', {
+          const result = await window.ipcRenderer.invoke('cert:remove-by-thumbprint', {
             thumbprint: certThumbprint,
-          });
+          }) as { success: boolean; output: string; error: string | null };
+          if (!result.success) {
+            console.error('[Heartbeat] Falha ao remover certificado (expiry)', result);
+          }
         }
+        // Limpa backup localStorage
+        localStorage.removeItem('certguard-active-thumbprint');
+        localStorage.removeItem('certguard-active-session');
       }
     };
 

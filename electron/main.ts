@@ -1,8 +1,7 @@
 import { app, BrowserWindow, globalShortcut } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
-import { registerSystemHandlers } from './ipc/systemHandlers'
-import { getActiveSession } from './ipc/systemHandlers'
+import { registerSystemHandlers, getActiveSession } from './ipc/systemHandlers'
 import { registerCertHandlers } from './ipc/certHandlers'
 import { PowerShellService } from './services/powershellService'
 import { createTray, destroyTray } from './services/trayService'
@@ -29,6 +28,9 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 
 
 let win: BrowserWindow | null
 let isQuitting = false
+let cleanupInProgress = false
+
+const CLEANUP_TIMEOUT_MS = 10000
 
 function createWindow() {
   win = new BrowserWindow({
@@ -95,40 +97,91 @@ app.on('activate', () => {
 
 // Cleanup antes de fechar o app
 app.on('before-quit', async (event) => {
+  // Proteção contra duplo-trigger (tray quit + before-quit)
+  if (cleanupInProgress) {
+    logger.debug('main', 'Cleanup já em andamento, ignorando')
+    return
+  }
+
+  cleanupInProgress = true
   isQuitting = true
   destroyTray()
   globalShortcut.unregisterAll()
 
-  // Encerrar sessão ativa no backend + remover certificado do store
   const session = getActiveSession()
+  logger.info('main', 'before-quit iniciado', {
+    hasSession: !!session,
+    certThumbprint: session?.certThumbprint ?? null,
+    platform: process.platform,
+  })
+
   if (session) {
     event.preventDefault()
+
+    // Timeout de segurança para garantir que app.exit() é chamado
+    const forceExitTimer = setTimeout(() => {
+      logger.warn('main', 'Timeout do cleanup - forçando saída')
+      app.exit(0)
+    }, CLEANUP_TIMEOUT_MS)
+
     try {
+      // 1. Encerrar sessão no backend
       const url = `${session.apiUrl}/api/desktop/sessoes/${session.sessionId}`
-      await fetch(url, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${session.token}`,
-          'Accept': 'application/json',
-        },
-      })
-      logger.info('main', 'Sessão encerrada no backend antes de fechar', { sessionId: session.sessionId })
-    } catch (e) {
-      logger.warn('main', 'Erro ao encerrar sessão no backend', { error: String(e) })
-    }
-
-    // Remover certificado do Windows Store
-    if (session.certThumbprint && process.platform === 'win32') {
       try {
-        await PowerShellService.removeCertByThumbprint(session.certThumbprint)
-        logger.info('main', 'Certificado removido do store', { thumbprint: session.certThumbprint })
+        await fetch(url, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${session.token}`,
+            'Accept': 'application/json',
+          },
+        })
+        logger.info('main', 'Sessão encerrada no backend', { sessionId: session.sessionId })
       } catch (e) {
-        logger.warn('main', 'Erro ao remover certificado do store', { error: String(e) })
+        logger.warn('main', 'Erro ao encerrar sessão no backend', { error: String(e) })
       }
-    }
-  }
 
-  app.exit(0)
+      // 2. Remover certificado do Windows Store
+      if (process.platform === 'win32') {
+        if (session.certThumbprint) {
+          const result = await PowerShellService.removeCertByThumbprint(session.certThumbprint)
+          if (result.success) {
+            logger.info('main', 'Certificado removido do store', {
+              thumbprint: session.certThumbprint,
+              output: result.output,
+            })
+          } else {
+            logger.warn('main', 'Falha ao remover certificado específico', {
+              thumbprint: session.certThumbprint,
+              output: result.output,
+              error: result.error,
+            })
+            // Fallback: cleanup de órfãos
+            const orphanResult = await PowerShellService.cleanupOrphanCerts()
+            logger.info('main', 'Fallback cleanup de órfãos', {
+              removed: orphanResult.removed.length,
+              errors: orphanResult.errors.length,
+            })
+          }
+        } else {
+          // Sem thumbprint específico - cleanup genérico
+          logger.warn('main', 'Sem certThumbprint - usando cleanup genérico')
+          const orphanResult = await PowerShellService.cleanupOrphanCerts()
+          logger.info('main', 'Cleanup genérico', {
+            removed: orphanResult.removed.length,
+            errors: orphanResult.errors.length,
+          })
+        }
+      }
+    } catch (e) {
+      logger.error('main', 'Erro no cleanup', { error: String(e) })
+    } finally {
+      clearTimeout(forceExitTimer)
+      logger.info('main', 'Cleanup concluído, saindo')
+      app.exit(0)
+    }
+  } else {
+    logger.info('main', 'Sem sessão ativa, fechando diretamente')
+  }
 })
 
 // Captura erros não tratados no main process
@@ -165,7 +218,7 @@ app.whenReady().then(() => {
     logger.warn('main', 'Falha ao criar tray', { error: String(e) })
   }
 
-  // Cleanup órfãos no startup
+  // Cleanup órfãos no startup (recuperação de crashes)
   if (process.platform === 'win32') {
     PowerShellService.cleanupOrphanCerts().catch((e) => {
       logger.warn('main', 'Cleanup de órfãos falhou', { error: String(e) })

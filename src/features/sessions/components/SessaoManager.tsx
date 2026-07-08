@@ -34,15 +34,22 @@ export function SessaoManager() {
     try {
       // 1. Remove certificado do Windows Store (via IPC)
       if (certThumbprint) {
-        await window.ipcRenderer.invoke('cert:remove-by-thumbprint', {
+        const result = await window.ipcRenderer.invoke('cert:remove-by-thumbprint', {
           thumbprint: certThumbprint,
-        });
+        }) as { success: boolean; output: string; error: string | null };
+        if (!result.success) {
+          console.error('[SessaoManager] Falha ao remover certificado', result);
+        }
       }
 
       // 2. Revoga sessão no backend
       await SessionService.deactivate(activeSession.session_id);
 
-      // 3. Limpa estado local
+      // 3. Limpa backup localStorage (Correção 6)
+      localStorage.removeItem('certguard-active-thumbprint');
+      localStorage.removeItem('certguard-active-session');
+
+      // 4. Limpa estado local
       clearSession();
     } catch (e) {
       console.error('[SessaoManager] Erro ao desativar:', e);

@@ -57,7 +57,20 @@ export function CertCard({ cert, showCnpj = true }: CertCardProps) {
         return;
       }
 
+      // 4. Backup no localStorage (Correção 6) - para recuperação em crash
+      if (installResult.realThumbprint) {
+        localStorage.setItem('certguard-active-thumbprint', installResult.realThumbprint);
+      }
+      localStorage.setItem('certguard-active-session', JSON.stringify({
+        sessionId: session.session_id,
+        certificateId: session.certificado_id,
+        installedAt: new Date().toISOString(),
+      }));
+
+      // 5. Atualizar store
       setActiveSession(session, installResult.realThumbprint);
+
+      // 6. Notificar main process (Correção 2 - DEPOIS da instalação bem-sucedida)
       SessionService.notifyMainProcess(session, installResult.realThumbprint);
       setShowJustificativa(false);
     } catch (e) {

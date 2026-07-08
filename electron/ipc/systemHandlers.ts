@@ -1,17 +1,68 @@
 import { ipcMain, BrowserWindow, app } from 'electron';
 import { hostname as osHostname, networkInterfaces, userInfo } from 'os';
 import * as fs from 'fs';
+import * as path from 'path';
 import { generateFingerprint } from '../services/keygenService';
 import { logger } from '../services/logger';
 
-// Estado da sessão ativa (guardado no main process para cleanup ao fechar)
-let activeSessionInfo: { sessionId: number; token: string; apiUrl: string; certThumbprint: string | null } | null = null;
+export interface ActiveSessionInfo {
+  sessionId: number;
+  token: string;
+  apiUrl: string;
+  certThumbprint: string | null;
+  installedAt: string;
+}
 
-export function getActiveSession() {
+// Estado da sessão ativa (guardado no main process para cleanup ao fechar)
+let activeSessionInfo: ActiveSessionInfo | null = null;
+
+// Caminho do arquivo de persistência (sobrevive a crashes)
+function getSessionFilePath(): string {
+  return path.join(app.getPath('userData'), 'active-session.json');
+}
+
+// Persistir em disco para sobreviver a crashes
+function persistSession(info: ActiveSessionInfo | null): void {
+  try {
+    const filePath = getSessionFilePath();
+    if (info === null) {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      logger.debug('main', 'Sessão removida do disco');
+    } else {
+      fs.writeFileSync(filePath, JSON.stringify(info, null, 2), 'utf-8');
+      logger.debug('main', 'Sessão persistida em disco', { filePath });
+    }
+  } catch (e) {
+    logger.warn('main', 'Falha ao persistir sessão', { error: String(e) });
+  }
+}
+
+// Carregar sessão do disco (chamado no startup)
+function loadPersistedSession(): ActiveSessionInfo | null {
+  try {
+    const filePath = getSessionFilePath();
+    if (!fs.existsSync(filePath)) return null;
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const data = JSON.parse(content) as ActiveSessionInfo;
+    logger.info('main', 'Sessão recuperada do disco', {
+      sessionId: data.sessionId,
+      certThumbprint: data.certThumbprint,
+    });
+    return data;
+  } catch (e) {
+    logger.warn('main', 'Falha ao carregar sessão do disco', { error: String(e) });
+    return null;
+  }
+}
+
+export function getActiveSession(): ActiveSessionInfo | null {
   return activeSessionInfo;
 }
 
 export function registerSystemHandlers(getWindow: () => BrowserWindow | null): void {
+  // Carregar sessão persistida no startup
+  activeSessionInfo = loadPersistedSession();
+
   ipcMain.on('window:minimize', () => {
     console.log('[IPC] window:minimize received');
     getWindow()?.minimize();
@@ -110,11 +161,23 @@ function getOSRelease(): string {
 // ── Session tracking (para cleanup ao fechar app) ──────────────
 
 ipcMain.on('session:activated', (_event, data: { sessionId: number; token: string; apiUrl: string; certThumbprint: string | null }) => {
-  activeSessionInfo = data;
-  logger.info('main', 'Sessão registrada para cleanup', { sessionId: data.sessionId, certThumbprint: data.certThumbprint });
+  const info: ActiveSessionInfo = {
+    sessionId: data.sessionId,
+    token: data.token,
+    apiUrl: data.apiUrl,
+    certThumbprint: data.certThumbprint,
+    installedAt: new Date().toISOString(),
+  };
+  activeSessionInfo = info;
+  persistSession(info);
+  logger.info('main', 'Sessão registrada para cleanup', {
+    sessionId: data.sessionId,
+    certThumbprint: data.certThumbprint,
+  });
 });
 
 ipcMain.on('session:deactivated', () => {
   activeSessionInfo = null;
+  persistSession(null);
   logger.info('main', 'Sessão removida do tracking');
 });
