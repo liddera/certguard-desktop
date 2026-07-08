@@ -1,5 +1,8 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import * as fs from 'fs';
+import * as path from 'path';
+import { app } from 'electron';
 
 const execAsync = promisify(exec);
 const POWERSHELL = 'powershell.exe';
@@ -40,54 +43,74 @@ export const PowerShellService = {
 
   /**
    * Installs a PFX certificate into the Windows Certificate Store in memory only.
-   * No file is written to disk. Uses EphemeralKeySet to keep cert in RAM.
+   * Uses temp file to avoid command line length limits.
+   * Returns { success, error } for detailed error reporting.
    */
   async installPfxInMemory(
     pfxBase64: string,
     password: string,
     thumbprint: string
-  ): Promise<boolean> {
-    const escapedPassword = password.replace(/'/g, "''");
+  ): Promise<{ success: boolean; error: string | null }> {
+    const tmpDir = app.getPath('temp');
+    const pfxPath = path.join(tmpDir, `certguard-${thumbprint}.pfx`);
     const escapedThumbprint = thumbprint.replace(/'/g, "''");
-
-    const script = `
-      try {
-        $pfxBytes = [Convert]::FromBase64String('${pfxBase64}')
-        $pfx = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2(
-          $pfxBytes,
-          '${escapedPassword}',
-          [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet
-        )
-        $store = New-Object System.Security.Cryptography.X509Certificates.X509Store('My', 'CurrentUser')
-        $store.Open('ReadWrite')
-        $store.Add($pfx)
-        $store.Close()
-
-        # Verificar se instalou
-        $installed = Get-ChildItem Cert:\\CurrentUser\\My | Where-Object { $_.Thumbprint -eq '${escapedThumbprint}' }
-        if ($installed) {
-          Write-Output "SUCCESS"
-        } else {
-          Write-Output "FAILED"
-        }
-
-        # Limpar variáveis
-        $pfxBytes = $null
-        $pfx = $null
-      } catch {
-        Write-Output "ERROR: $($_.Exception.Message)"
-      }
-    `;
+    const escapedPassword = password.replace(/'/g, "''");
 
     try {
+      // Write PFX to temp file (avoids command line length limit)
+      const pfxBuffer = Buffer.from(pfxBase64, 'base64');
+      fs.writeFileSync(pfxPath, pfxBuffer);
+
+      const script = `
+        try {
+          $pfxBytes = [System.IO.File]::ReadAllBytes('${pfxPath.replace(/\\/g, '\\\\')}')
+          $pfx = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2(
+            $pfxBytes,
+            '${escapedPassword}',
+            [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet
+          )
+          $store = New-Object System.Security.Cryptography.X509Certificates.X509Store('My', 'CurrentUser')
+          $store.Open('ReadWrite')
+          $store.Add($pfx)
+          $store.Close()
+
+          # Verificar se instalou
+          $installed = Get-ChildItem Cert:\\CurrentUser\\My | Where-Object { $_.Thumbprint -eq '${escapedThumbprint}' }
+          if ($installed) {
+            Write-Output "SUCCESS"
+          } else {
+            Write-Output "FAILED: Certificado não encontrado no store após instalação"
+          }
+
+          # Limpar variáveis
+          $pfxBytes = $null
+          $pfx = $null
+        } catch {
+          Write-Output "ERROR: $($_.Exception.Message)"
+        }
+      `;
+
       const { stdout } = await execAsync(
         `${POWERSHELL} -NoProfile -Command "${script.replace(/\n/g, ';')}"`,
         { timeout: 30000 }
       );
-      return stdout.trim().includes('SUCCESS');
+
+      const output = stdout.trim();
+      if (output.includes('SUCCESS')) {
+        return { success: true, error: null };
+      } else {
+        return { success: false, error: output };
+      }
     } catch (e) {
-      console.error('[PowerShell] Install failed:', e);
-      return false;
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      return { success: false, error: errorMsg };
+    } finally {
+      // Cleanup temp file
+      try {
+        if (fs.existsSync(pfxPath)) fs.unlinkSync(pfxPath);
+      } catch {
+        // Ignore cleanup errors
+      }
     }
   },
 
