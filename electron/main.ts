@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, globalShortcut } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { registerSystemHandlers } from './ipc/systemHandlers'
@@ -97,6 +97,7 @@ app.on('activate', () => {
 app.on('before-quit', async (event) => {
   isQuitting = true
   destroyTray()
+  globalShortcut.unregisterAll()
 
   // Encerrar sessão ativa no backend
   const session = getActiveSession()
@@ -151,6 +152,11 @@ app.whenReady().then(() => {
   createWindow()
   registerSystemHandlers(() => win)
   registerCertHandlers()
+
+  // DevTools shortcut (Ctrl+Shift+I)
+  globalShortcut.register('CommandOrControl+Shift+I', () => {
+    win?.webContents.toggleDevTools()
+  })
 
   // System Tray (RN: Bandeja do Sistema)
   try {
