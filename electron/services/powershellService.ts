@@ -18,21 +18,10 @@ export const PowerShellService = {
    * forced shutdowns.
    */
   async cleanupOrphanCerts(): Promise<void> {
-    const script = `
-      Get-ChildItem Cert:\\CurrentUser\\My |
-        Where-Object { $_.NotAfter -lt (Get-Date).AddHours(-1) -and $_.HasPrivateKey } |
-        ForEach-Object {
-          try {
-            Remove-Item -Path $_.PSPath -Force -ErrorAction Stop
-            Write-Output "Removed: $($_.Thumbprint)"
-          } catch {
-            Write-Warning "Failed to remove: $($_.Thumbprint)"
-          }
-        }
-    `;
+    const script = `Get-ChildItem Cert:\\CurrentUser\\My | Where-Object { $_.NotAfter -lt (Get-Date).AddHours(-1) -and $_.HasPrivateKey } | ForEach-Object { try { Remove-Item -Path $_.PSPath -Force -ErrorAction Stop; Write-Output "Removed: $($_.Thumbprint)" } catch { Write-Warning "Failed to remove: $($_.Thumbprint)" } }`;
     try {
       const { stdout } = await execAsync(
-        `${POWERSHELL} -NoProfile -Command "${script.replace(/\n/g, ';')}"`,
+        `${POWERSHELL} -NoProfile -Command "${script}"`,
         { timeout: 30000 }
       );
       console.log('[PowerShell] Cleanup:', stdout);
@@ -61,37 +50,11 @@ export const PowerShellService = {
       const pfxBuffer = Buffer.from(pfxBase64, 'base64');
       fs.writeFileSync(pfxPath, pfxBuffer);
 
-      const script = `
-        try {
-          $pfxBytes = [System.IO.File]::ReadAllBytes('${pfxPath.replace(/\\/g, '\\\\')}')
-          $pfx = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2(
-            $pfxBytes,
-            '${escapedPassword}',
-            [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet
-          )
-          $store = New-Object System.Security.Cryptography.X509Certificates.X509Store('My', 'CurrentUser')
-          $store.Open('ReadWrite')
-          $store.Add($pfx)
-          $store.Close()
-
-          # Verificar se instalou
-          $installed = Get-ChildItem Cert:\\CurrentUser\\My | Where-Object { $_.Thumbprint -eq '${escapedThumbprint}' }
-          if ($installed) {
-            Write-Output "SUCCESS"
-          } else {
-            Write-Output "FAILED: Certificado não encontrado no store após instalação"
-          }
-
-          # Limpar variáveis
-          $pfxBytes = $null
-          $pfx = $null
-        } catch {
-          Write-Output "ERROR: $($_.Exception.Message)"
-        }
-      `;
+      const pfxPathEscaped = pfxPath.replace(/\\/g, '\\\\');
+      const script = `try { $pfxBytes = [System.IO.File]::ReadAllBytes('${pfxPathEscaped}'); $pfx = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($pfxBytes, '${escapedPassword}', [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet); $store = New-Object System.Security.Cryptography.X509Certificates.X509Store('My', 'CurrentUser'); $store.Open('ReadWrite'); $store.Add($pfx); $store.Close(); $installed = Get-ChildItem Cert:\\CurrentUser\\My | Where-Object { $_.Thumbprint -eq '${escapedThumbprint}' }; if ($installed) { Write-Output 'SUCCESS' } else { Write-Output 'FAILED: Certificado não encontrado no store após instalação' }; $pfxBytes = $null; $pfx = $null } catch { Write-Output "ERROR: $($_.Exception.Message)" }`;
 
       const { stdout } = await execAsync(
-        `${POWERSHELL} -NoProfile -Command "${script.replace(/\n/g, ';')}"`,
+        `${POWERSHELL} -NoProfile -Command "${script}"`,
         { timeout: 30000 }
       );
 
@@ -120,23 +83,11 @@ export const PowerShellService = {
   async removeCertByThumbprint(thumbprint: string): Promise<boolean> {
     const escapedThumbprint = thumbprint.replace(/'/g, "''");
 
-    const script = `
-      try {
-        $cert = Get-ChildItem Cert:\\CurrentUser\\My | Where-Object { $_.Thumbprint -eq '${escapedThumbprint}' }
-        if ($cert) {
-          Remove-Item -Path $cert.PSPath -Force
-          Write-Output "REMOVED"
-        } else {
-          Write-Output "NOT_FOUND"
-        }
-      } catch {
-        Write-Output "ERROR: $($_.Exception.Message)"
-      }
-    `;
+    const script = `try { $cert = Get-ChildItem Cert:\\CurrentUser\\My | Where-Object { $_.Thumbprint -eq '${escapedThumbprint}' }; if ($cert) { Remove-Item -Path $cert.PSPath -Force; Write-Output 'REMOVED' } else { Write-Output 'NOT_FOUND' } } catch { Write-Output "ERROR: $($_.Exception.Message)" }`;
 
     try {
       const { stdout } = await execAsync(
-        `${POWERSHELL} -NoProfile -Command "${script.replace(/\n/g, ';')}"`,
+        `${POWERSHELL} -NoProfile -Command "${script}"`,
         { timeout: 15000 }
       );
       return stdout.trim() === 'REMOVED';

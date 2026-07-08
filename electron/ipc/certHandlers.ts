@@ -34,6 +34,15 @@ export function registerCertHandlers(): void {
     thumbprint: string;
   }) => {
     try {
+      // DEBUG: Log what arrives at main process
+      console.log('[cert:decrypt-and-install] Received args:', {
+        pfxBase64Type: typeof args.pfxBase64,
+        pfxBase64Length: args.pfxBase64?.length,
+        pfxBase64Preview: args.pfxBase64?.substring(0, 50),
+        passwordType: typeof args.password,
+        thumbprint: args.thumbprint,
+      });
+
       logger.info('cert', 'Instalando PFX em memória', { thumbprint: args.thumbprint });
 
       const result = await PowerShellService.installPfxInMemory(
