@@ -26,6 +26,7 @@ export function CertList() {
 
   const activeSession = useSessionStore((s) => s.activeSession);
   const countdown = useSessionStore((s) => s.countdown);
+  const certThumbprint = useSessionStore((s) => s.certThumbprint);
   const clearSession = useSessionStore((s) => s.clearSession);
   const logout = useAuthStore((s) => s.logout);
 
@@ -63,9 +64,11 @@ export function CertList() {
 
     setDeactivating(true);
     try {
-      await window.ipcRenderer.invoke('cert:remove-by-thumbprint', {
-        thumbprint: activeSession.certificado_id.toString(),
-      });
+      if (certThumbprint) {
+        await window.ipcRenderer.invoke('cert:remove-by-thumbprint', {
+          thumbprint: certThumbprint,
+        });
+      }
       await SessionService.deactivate(activeSession.session_id);
       clearSession();
     } catch (e) {

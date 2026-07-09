@@ -30,7 +30,7 @@ let win: BrowserWindow | null
 let isQuitting = false
 let cleanupInProgress = false
 
-const CLEANUP_TIMEOUT_MS = 10000
+const CLEANUP_TIMEOUT_MS = 30000
 
 function createWindow() {
   win = new BrowserWindow({
