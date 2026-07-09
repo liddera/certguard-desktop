@@ -16,24 +16,24 @@ function escapePSString(str: string): string {
   return str.replace(/'/g, "''");
 }
 
-function buildPSCommand(script: string): string {
-  const escaped = script.replace(/"/g, '\\"');
-  return `${POWERSHELL} -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "${escaped}"`;
+function parseLines(output: string): string[] {
+  return output.split('\n').map((l) => l.trim()).filter(Boolean);
 }
 
+/**
+ * Executa um script PowerShell inline (uma linha) via exec.
+ * IMPORTANTE: O script NÃO deve conter aspas duplas externas —
+ * cada string PS deve usar aspas simples.
+ */
 async function execPS(script: string, timeoutMs = 30000): Promise<{ stdout: string; stderr: string }> {
-  const cmd = buildPSCommand(script);
-  logger.debug('powershell', 'Executando comando', { scriptLength: script.length });
+  const cmd = `${POWERSHELL} -NoProfile -Command "${script.replace(/"/g, '\\"')}"`;
+  logger.debug('powershell', 'Executando', { scriptLength: script.length });
   const result = await execAsync(cmd, {
     timeout: timeoutMs,
     maxBuffer: 1024 * 1024,
     windowsHide: true,
   });
   return { stdout: result.stdout.trim(), stderr: result.stderr.trim() };
-}
-
-function parseLines(output: string): string[] {
-  return output.split('\n').map((l) => l.trim()).filter(Boolean);
 }
 
 export const PowerShellService = {
@@ -50,87 +50,14 @@ export const PowerShellService = {
     thumbprint: string
   ): Promise<{ success: boolean; output: string; error: string | null }> {
     if (!isValidThumbprint(thumbprint)) {
-      const msg = `Thumbprint inválido: "${thumbprint}" (esperado SHA-1 hex de 40 chars)`;
+      const msg = `Thumbprint invalido: "${thumbprint}" (esperado SHA-1 hex de 40 chars)`;
       logger.error('powershell', msg);
       return { success: false, output: '', error: msg };
     }
 
     const upper = thumbprint.toUpperCase();
 
-    const script = `
-$ErrorActionPreference = 'Stop'
-$results = @()
-
-# 1. Buscar em múltiplos stores
-$stores = @('Cert:\\CurrentUser\\My', 'Cert:\\CurrentUser\\Root', 'Cert:\\CurrentUser\\CA')
-$found = $false
-
-foreach ($storePath in $stores) {
-  try {
-    $storeName = ($storePath -split '\\\\')[-1]
-    $certs = Get-ChildItem $storePath -ErrorAction SilentlyContinue |
-             Where-Object { $_.Thumbprint -eq '${upper}' }
-
-    if ($certs) {
-      foreach ($cert in $certs) {
-        $found = $true
-        $subject = $cert.Subject
-        $hasKey = $cert.HasPrivateKey
-        $results += "FOUND_IN:$storeName:$subject:HasPrivateKey=$hasKey"
-
-        # 2. Remover chave privada explicitamente (se existir)
-        if ($hasKey) {
-          try {
-            $privKey = $cert.PrivateKey
-            if ($privKey -ne $null) {
-              $privKey.Delete($true)
-              $results += "PRIVATE_KEY_DELETED:$storeName"
-            }
-          } catch {
-            $results += "PRIVATE_KEY_DELETE_FAILED:$storeName:$($_.Exception.Message)"
-          }
-        }
-
-        # 3. Remover do store via .NET (mais confiável que Remove-Item)
-        try {
-          $x509Store = New-Object System.Security.Cryptography.X509Certificates.X509Store(
-            $storeName, 'CurrentUser'
-          )
-          $x509Store.Open('ReadWrite')
-          $x509Store.Remove($cert)
-          $x509Store.Close()
-          $results += "REMOVED_VIA_DOTNET:$storeName"
-        } catch {
-          # Fallback para Remove-Item
-          try {
-            Remove-Item -Path $cert.PSPath -Force -ErrorAction Stop
-            $results += "REMOVED_VIA_REMOVEITEM:$storeName"
-          } catch {
-            $results += "REMOVE_FAILED:$storeName:$($_.Exception.Message)"
-          }
-        }
-      }
-    }
-  } catch {
-    $results += "STORE_ERROR:$($storePath):$($_.Exception.Message)"
-  }
-}
-
-# 4. Verificação pós-remoção
-$verifyRemaining = Get-ChildItem Cert:\\CurrentUser\\My -ErrorAction SilentlyContinue |
-                   Where-Object { $_.Thumbprint -eq '${upper}' }
-if ($verifyRemaining) {
-  $results += "VERIFICATION_FAILED:Cert still exists in My store"
-} else {
-  $results += "VERIFIED_REMOVED"
-}
-
-if (-not $found) {
-  $results += "NOT_FOUND_IN_ANY_STORE"
-}
-
-$results | ForEach-Object { Write-Output $_ }
-`;
+    const script = `$ErrorActionPreference='Stop'; $r=@(); $stores=@('Cert:\\CurrentUser\\My','Cert:\\CurrentUser\\Root','Cert:\\CurrentUser\\CA'); $found=$false; foreach($sp in $stores){try{$sn=$sp.Split('\\')[-1]; $cs=Get-ChildItem $sp -EA SilentlyContinue|?{$_.Thumbprint -eq '${upper}'}; if($cs){foreach($c in $cs){$found=$true; $hk=$c.HasPrivateKey; $r+='FOUND_IN:'+$sn+':'+$c.Subject+':HK='+$hk; if($hk){try{$pk=$c.PrivateKey; if($pk -ne $null){$pk.Delete($true); $r+='PK_DEL:'+$sn}}catch{$r+='PK_FAIL:'+$sn+':'+$_.Exception.Message}}; try{$x=New-Object Security.Cryptography.X509Certificates.X509Store($sn,'CurrentUser'); $x.Open('ReadWrite'); $x.Remove($c); $x.Close(); $r+='RM_DOTNET:'+$sn}catch{try{Remove-Item -Path $c.PSPath -Force -EA Stop; $r+='RM_RMI:'+$sn}catch{$r+='RM_FAIL:'+$sn+':'+$_.Exception.Message}}}}}catch{$r+='STORE_ERR:'+$sp+':'+$_.Exception.Message}}; $v=Get-ChildItem Cert:\\CurrentUser\\My -EA SilentlyContinue|?{$_.Thumbprint -eq '${upper}'}; if($v){$r+='VERIFY_FAIL'}else{$r+='VERIFIED'}; if(-not $found){$r+='NOT_FOUND'}; $r|%{Write-Output $_}`;
 
     const maxRetries = 3;
     let lastError = '';
@@ -141,10 +68,10 @@ $results | ForEach-Object { Write-Output $_ }
         const lines = parseLines(stdout);
 
         const foundIn = lines.filter((l) => l.startsWith('FOUND_IN:'));
-        const removedVia = lines.filter((l) => l.startsWith('REMOVED_VIA_'));
-        const verified = lines.includes('VERIFIED_REMOVED');
-        const notFound = lines.includes('NOT_FOUND_IN_ANY_STORE');
-        const errors = lines.filter((l) => l.includes('_FAILED:') || l.includes('_ERROR:'));
+        const removedVia = lines.filter((l) => l.startsWith('RM_DOTNET:') || l.startsWith('RM_RMI:'));
+        const verified = lines.includes('VERIFIED');
+        const notFound = lines.includes('NOT_FOUND');
+        const errors = lines.filter((l) => l.includes('_FAIL:') || l.includes('_ERR:'));
 
         logger.info('powershell', 'removeCertByThumbprint resultado', {
           thumbprint: upper,
@@ -161,12 +88,7 @@ $results | ForEach-Object { Write-Output $_ }
           return { success: true, output: lines.join('\n'), error: null };
         }
 
-        if (removedVia.length > 0 && !verified) {
-          logger.warn('powershell', 'Remoção executada mas verificação falhou', { lines });
-          lastError = `Remoção executada mas verificação pós-remoção falhou: ${errors.join('; ')}`;
-        } else {
-          lastError = errors.length > 0 ? errors.join('; ') : `Saída inesperada: ${stdout}`;
-        }
+        lastError = errors.length > 0 ? errors.join('; ') : `Saida inesperada: ${stdout}`;
       } catch (e) {
         lastError = e instanceof Error ? e.message : String(e);
         logger.warn('powershell', `Tentativa ${attempt}/${maxRetries} falhou`, { error: lastError });
@@ -177,7 +99,6 @@ $results | ForEach-Object { Write-Output $_ }
       }
     }
 
-    // 5. Fallback: certutil.exe
     logger.info('powershell', 'Tentando fallback via certutil.exe');
     const certutilResult = await this.removeViaCertutil(upper);
     if (certutilResult.success) {
@@ -187,48 +108,22 @@ $results | ForEach-Object { Write-Output $_ }
     return {
       success: false,
       output: '',
-      error: `Falha após ${maxRetries} tentativas + fallback certutil: ${lastError}`,
+      error: `Falha apos ${maxRetries} tentativas + fallback certutil: ${lastError}`,
     };
   },
 
   /**
-   * Fallback: remove certificado via certutil.exe (método nativo Windows).
+   * Fallback: remove certificado via certutil.exe (metodo nativo Windows).
    */
   async removeViaCertutil(
     thumbprint: string
   ): Promise<{ success: boolean; output: string; error: string | null }> {
-    const script = `
-$ErrorActionPreference = 'Stop'
-$results = @()
-
-# Buscar no store My
-$cert = Get-ChildItem Cert:\\CurrentUser\\My |
-        Where-Object { $_.Thumbprint -eq '${thumbprint}' }
-
-if ($cert) {
-  # Usar certutil para deletar
-  $delResult = & certutil.exe -delstore My "${thumbprint}" 2>&1
-  $results += "CERTUTIL_MY:$delResult"
-
-  # Verificar
-  $verify = Get-ChildItem Cert:\\CurrentUser\\My |
-            Where-Object { $_.Thumbprint -eq '${thumbprint}' }
-  if ($verify) {
-    $results += "CERTUTIL_VERIFICATION_FAILED"
-  } else {
-    $results += "CERTUTIL_VERIFIED_REMOVED"
-  }
-} else {
-  $results += "NOT_FOUND"
-}
-
-$results | ForEach-Object { Write-Output $_ }
-`;
+    const script = `$ErrorActionPreference='Stop'; $r=@(); $c=Get-ChildItem Cert:\\CurrentUser\\My|?{$_.Thumbprint -eq '${thumbprint}'}; if($c){$d=& certutil.exe -delstore My '${thumbprint}' 2>&1; $r+='CERTUTIL:'+($d -join ' '); $v=Get-ChildItem Cert:\\CurrentUser\\My|?{$_.Thumbprint -eq '${thumbprint}'}; if($v){$r+='CVERIFY_FAIL'}else{$r+='CVERIFY_OK'}}else{$r+='NOT_FOUND'}; $r|%{Write-Output $_}`;
 
     try {
       const { stdout } = await execPS(script, 15000);
       const lines = parseLines(stdout);
-      const verified = lines.some((l) => l.includes('CERTUTIL_VERIFIED_REMOVED'));
+      const verified = lines.some((l) => l.includes('CVERIFY_OK'));
       const notFound = lines.includes('NOT_FOUND');
 
       logger.info('powershell', 'certutil fallback resultado', {
@@ -242,7 +137,7 @@ $results | ForEach-Object { Write-Output $_ }
         return { success: true, output: lines.join('\n'), error: null };
       }
 
-      return { success: false, output: lines.join('\n'), error: 'certutil não removeu o certificado' };
+      return { success: false, output: lines.join('\n'), error: 'certutil nao removeu o certificado' };
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : String(e);
       logger.error('powershell', 'certutil fallback falhou', { error: errorMsg });
@@ -251,36 +146,17 @@ $results | ForEach-Object { Write-Output $_ }
   },
 
   /**
-   * Verifica se um certificado existe no store (pré-checagem).
+   * Verifica se um certificado existe no store (pre-checagem).
    */
   async certExists(
     thumbprint: string
   ): Promise<{ exists: boolean; stores: string[]; details: string }> {
     if (!isValidThumbprint(thumbprint)) {
-      return { exists: false, stores: [], details: 'Thumbprint inválido' };
+      return { exists: false, stores: [], details: 'Thumbprint invalido' };
     }
 
-    const script = `
-$upper = '${thumbprint.toUpperCase()}'
-$stores = @('Cert:\\CurrentUser\\My', 'Cert:\\CurrentUser\\Root', 'Cert:\\CurrentUser\\CA')
-$foundStores = @()
-
-foreach ($storePath in $stores) {
-  $cert = Get-ChildItem $storePath -ErrorAction SilentlyContinue |
-          Where-Object { $_.Thumbprint -eq $upper }
-  if ($cert) {
-    $storeName = ($storePath -split '\\\\')[-1]
-    $foundStores += "$storeName|$($cert.Subject)|NotAfter=$($cert.NotAfter)|HasPrivateKey=$($cert.HasPrivateKey)"
-  }
-}
-
-if ($foundStores.Count -gt 0) {
-  Write-Output "EXISTS:$($foundStores.Count)"
-  foreach ($f in $foundStores) { Write-Output "CERT:$f" }
-} else {
-  Write-Output "NOT_FOUND"
-}
-`;
+    const upper = thumbprint.toUpperCase();
+    const script = `$stores=@('Cert:\\CurrentUser\\My','Cert:\\CurrentUser\\Root','Cert:\\CurrentUser\\CA'); $fs=@(); foreach($sp in $stores){$c=Get-ChildItem $sp -EA SilentlyContinue|?{$_.Thumbprint -eq '${upper}'}; if($c){$sn=$sp.Split('\\')[-1]; $fs+=$sn+'|'+$c.Subject+'|NA='+$c.NotAfter+'|HK='+$c.HasPrivateKey}}; if($fs.Count -gt 0){Write-Output 'EXISTS:'+($fs.Count); $fs|%{Write-Output 'CERT:'+$_}}else{Write-Output 'NOT_FOUND'}`;
 
     try {
       const { stdout } = await execPS(script, 10000);
@@ -314,51 +190,28 @@ if ($foundStores.Count -gt 0) {
       fs.writeFileSync(pfxPath, pfxBuffer);
 
       const pfxPathEscaped = pfxPath.replace(/\\/g, '\\\\');
-      const script = `
-$ErrorActionPreference = 'Stop'
-try {
-  $pfxBytes = [System.IO.File]::ReadAllBytes('${pfxPathEscaped}')
-  $flags = [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::PersistKeySet -bor
-           [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable
-  $pfx = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2(
-    $pfxBytes, '${escapedPassword}', $flags
-  )
-  $store = New-Object System.Security.Cryptography.X509Certificates.X509Store('My', 'CurrentUser')
-  $store.Open('ReadWrite')
-  $store.Add($pfx)
-  $store.Close()
 
-  # Verificar se foi realmente adicionado
-  $verify = Get-ChildItem Cert:\\CurrentUser\\My |
-            Where-Object { $_.Thumbprint -eq $pfx.Thumbprint }
-  if ($verify) {
-    Write-Output "SUCCESS:$($pfx.Thumbprint)"
-  } else {
-    Write-Output "ERROR:Verificação pós-instalação falhou"
-  }
-} catch {
-  Write-Output "ERROR:$($_.Exception.Message)"
-}
-`;
+      // Script inline — aspas simples para strings PS, sem aspas duplas problemáticas
+      const script = `try{[Reflection.Assembly]::LoadWithPartialName('System.Security')|Out-Null; $b=[IO.File]::ReadAllBytes('${pfxPathEscaped}'); $f=[Security.Cryptography.X509Certificates.X509KeyStorageFlags]::PersistKeySet -bor [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable; $p=New-Object Security.Cryptography.X509Certificates.X509Certificate2($b,'${escapedPassword}',$f); $s=New-Object Security.Cryptography.X509Certificates.X509Store('My','CurrentUser'); $s.Open('ReadWrite'); $s.Add($p); $s.Close(); $v=Get-ChildItem Cert:\\CurrentUser\\My|?{$_.Thumbprint -eq $p.Thumbprint}; if($v){Write-Output ('SUCCESS:'+$p.Thumbprint)}else{Write-Output 'ERROR:Pos-instalacao falhou'}}catch{Write-Output ('ERROR:'+$_.Exception.Message)}`;
 
       const { stdout, stderr } = await execPS(script, 30000);
 
       if (stderr) {
-        logger.warn('powershell', 'stderr na instalação', { stderr });
+        logger.warn('powershell', 'stderr na instalacao', { stderr });
       }
 
       const output = stdout.trim();
       if (output.startsWith('SUCCESS:')) {
         const realThumbprint = output.substring(8);
-        logger.info('powershell', 'PFX instalado com verificação', { realThumbprint });
+        logger.info('powershell', 'PFX instalado com verificacao', { realThumbprint });
         return { success: true, error: null, realThumbprint };
       }
 
-      logger.error('powershell', 'Falha na instalação', { output, stderr });
+      logger.error('powershell', 'Falha na instalacao', { output, stderr });
       return { success: false, error: output, realThumbprint: null };
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : String(e);
-      logger.error('powershell', 'Exceção na instalação', { error: errorMsg });
+      logger.error('powershell', 'Excecao na instalacao', { error: errorMsg });
       return { success: false, error: errorMsg, realThumbprint: null };
     } finally {
       try {
@@ -370,57 +223,15 @@ try {
   },
 
   /**
-   * Cleanup de certificados órfãos no startup.
-   * Remove qualquer certificado com chave privada que não esteja
-   * em uso por uma sessão ativa.
+   * Cleanup de certificados orfaos no startup.
+   * Remove qualquer certificado com chave privada que nao esteja
+   * em uso por uma sessao ativa.
    */
   async cleanupOrphanCerts(): Promise<{ removed: string[]; errors: string[] }> {
     const removed: string[] = [];
     const errors: string[] = [];
 
-    const script = `
-$ErrorActionPreference = 'Continue'
-$results = @()
-
-Get-ChildItem Cert:\\CurrentUser\\My -ErrorAction SilentlyContinue |
-  Where-Object { $_.HasPrivateKey } |
-  ForEach-Object {
-    $tp = $_.Thumbprint
-    $subject = $_.Subject
-    $notAfter = $_.NotAfter
-    $daysToExpire = ($notAfter - (Get-Date)).TotalDays
-
-    # Remover qualquer certificado com chave privada que não seja
-    # um certificado de sistema (CN com nomes conhecidos)
-    $isSystemCert = $subject -match '(CN=Microsoft|CN=DigiCert|CN=GlobalSign|CN=Let.s Encrypt)'
-
-    if ($isSystemCert) {
-      $results += "SKIPPED_SYSTEM:$tp:$subject"
-      return
-    }
-
-    try {
-      # Tentar remover chave privada
-      if ($_.HasPrivateKey) {
-        try {
-          $privKey = $_.PrivateKey
-          if ($privKey -ne $null) { $privKey.Delete($true) }
-        } catch { }
-      }
-
-      # Remover via .NET
-      $store = New-Object System.Security.Cryptography.X509Certificates.X509Store('My', 'CurrentUser')
-      $store.Open('ReadWrite')
-      $store.Remove($_)
-      $store.Close()
-      $results += "REMOVED:$tp:$subject"
-    } catch {
-      $results += "ERROR:$tp:$($_.Exception.Message)"
-    }
-  }
-
-$results | ForEach-Object { Write-Output $_ }
-`;
+    const script = `$ErrorActionPreference='Continue'; Get-ChildItem Cert:\\CurrentUser\\My -EA SilentlyContinue|?{$_.HasPrivateKey}|%{$tp=$_.Thumbprint; $sj=$_.Subject; $isSys=$sj -match '(CN=Microsoft|CN=DigiCert|CN=GlobalSign|CN=Let)'; if($isSys){Write-Output ('SKIP_SYS:'+$tp+':'+$sj); return}; try{if($_.HasPrivateKey){try{$pk=$_.PrivateKey; if($pk -ne $null){$pk.Delete($true)}}catch{}}; $x=New-Object Security.Cryptography.X509Certificates.X509Store('My','CurrentUser'); $x.Open('ReadWrite'); $x.Remove($_); $x.Close(); Write-Output ('REMOVED:'+$tp+':'+$sj)}catch{Write-Output ('ERROR:'+$tp+':'+$_.Exception.Message)}}`;
 
     try {
       const { stdout } = await execPS(script, 60000);
@@ -434,7 +245,7 @@ $results | ForEach-Object { Write-Output $_ }
         }
       }
 
-      logger.info('powershell', 'Cleanup de órfãos concluído', {
+      logger.info('powershell', 'Cleanup de orfaos concluido', {
         removed: removed.length,
         errors: errors.length,
       });
@@ -442,23 +253,17 @@ $results | ForEach-Object { Write-Output $_ }
       return { removed, errors };
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : String(e);
-      logger.warn('powershell', 'Cleanup de órfãos falhou', { error: errorMsg });
+      logger.warn('powershell', 'Cleanup de orfaos falhou', { error: errorMsg });
       return { removed, errors: [errorMsg] };
     }
   },
 
   /**
    * Lista todos os certificados com chave privada no CurrentUser\My
-   * (debug/diagnóstico).
+   * (debug/diagnostico).
    */
   async listPrivateCerts(): Promise<string[]> {
-    const script = `
-Get-ChildItem Cert:\\CurrentUser\\My -ErrorAction SilentlyContinue |
-  Where-Object { $_.HasPrivateKey } |
-  ForEach-Object {
-    "$($_.Thumbprint)|$($_.Subject)|NotAfter=$($_.NotAfter)|FriendlyName=$($_.FriendlyName)"
-  }
-`;
+    const script = `Get-ChildItem Cert:\\CurrentUser\\My -EA SilentlyContinue|?{$_.HasPrivateKey}|%{Write-Output ($_.Thumbprint+'|'+$_.Subject+'|NA='+$_.NotAfter+'|FN='+$_.FriendlyName)}`;
 
     try {
       const { stdout } = await execPS(script, 10000);
